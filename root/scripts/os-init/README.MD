@@ -1,0 +1,1 @@
+if you update scripts in this folder (or any scripts called by os-init) you probably need to update the reference template since those scripts are run before the initial update system done by the docker admin app.

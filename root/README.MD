@@ -1,0 +1,2 @@
+version: 1.0.0 2025-06-03 19
+The files in this directory are monitored by the admin app if you modify them the admin app will periodically rewrite them to ensure they are consistent with the configuration.

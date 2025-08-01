@@ -1,0 +1,88 @@
+name: yundera
+services:
+  admin:
+    image: ghcr.io/yundera/settings-center-app:1.1.15
+    container_name: admin
+    hostname: admin
+    restart: unless-stopped
+    environment:
+      AUTHORITY_ENDPOINT: "https://8080-casaos-%DOMAIN%/v1/users"
+      COMPOSE_FOLDER_PATH: "/DATA/AppData/casaos/apps/yundera/"
+    env_file:
+      - .env
+    volumes:
+      # This gives the admin app ssh root access (used to update the system)
+      - type: bind
+        source: /root/.ssh/
+        target: /host_ssh/
+      # This gives the admin app access to its own data (used to update itself)
+      - type: bind
+        source: /DATA/AppData/casaos/apps/yundera/
+        target: /app/data
+    expose:
+      - "80"
+    networks:
+      pcs: null
+
+  casaos:
+    image: ghcr.io/yundera/casa-img:0.4.15-22
+    container_name: casaos
+    hostname: casaos
+    restart: unless-stopped
+    environment:
+      PUID: 1000
+      PGID: 1000
+      DATA_ROOT: "/DATA"
+      REF_DOMAIN: "%DOMAIN%"
+      REF_NET: "pcs"
+      REF_PORT: "443"
+      REF_SCHEME: "https"
+      user: "%DEFAULT_USER%"
+      default_pwd: "%DEFAULT_PWD%"
+      public_ip: "%PUBLIC_IP%"
+    networks:
+      pcs: null
+    volumes:
+      - type: bind
+        source: /DATA
+        target: /DATA
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+      - type: bind
+        source: /dev
+        target: /dev
+
+  mesh-router:
+    image: ghcr.io/yundera/mesh-router:1.0.12
+    container_name: mesh-router
+    hostname: mesh-router
+    restart: unless-stopped
+    environment:
+      - PROVIDER=%PROVIDER_STR%
+    networks:
+      pcs: null
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      net.ipv4.conf.all.src_valid_mark: "1"
+      net.ipv4.ip_forward: "1"
+
+networks:
+  pcs:
+    name: pcs
+
+x-casaos:
+  main: admin
+  author: Yundera Team
+  category: pcs
+  hostname: admin-%DOMAIN%
+  icon: https://github.com/Yundera/settings-center-app/blob/main/public/YunderaPCS-setting_iconV2.svg?raw=true
+  index: /
+  is_uncontrolled: false
+  port_map: ""
+  scheme: https
+  store_app_id: yundera
+  title:
+    custom: Settings
