@@ -13,7 +13,7 @@ echo "Installing required tools..."
 apt-get update -qq && apt-get install -y wget unzip rsync
 
 # Configuration
-DEFAULT_TEMPLATE_URL="https://github.com/Yundera/template-root/archive/refs/heads/main.zip"
+DEFAULT_TEMPLATE_URL="https://github.com/Yundera/template-root/archive/refs/heads/stable.zip"
 ENV_FILE="/DATA/AppData/casaos/apps/yundera/.env"
 ROOT_DIR="/DATA/AppData/casaos/apps/yundera"
 TEMP_DIR=$(mktemp -d)
