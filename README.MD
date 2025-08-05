@@ -39,6 +39,34 @@ Utility scripts for VM diagnostics and management.
 
 - **`.env`**: Environment variables specific to each user, used to derive the `compose.yml` from the `compose-template.yml` (customize with domain, credentials, etc.)
 
+### Environment Variables
+
+The `.env` file supports the following configuration options:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DOMAIN` | User's domain name | Required |
+| `PROVIDER_STR` | Provider configuration string | Required |
+| `UID` | User ID | Required |
+| `DEFAULT_PWD` | Default password | Required |
+| `PUBLIC_IP` | Public IP address | Required |
+| `DEFAULT_USER` | Default username | Required |
+| `UPDATE_URL` | Template repository URL for updates | `https://github.com/Yundera/template-root/archive/refs/heads/main.zip` |
+
+#### Template Repository Configuration
+
+The `UPDATE_URL` variable must be a direct zip file URL for downloading template updates:
+
+- **Official template**: `https://github.com/Yundera/template-root/archive/refs/heads/main.zip`
+- **Custom fork**: `https://github.com/your-username/template-root/archive/refs/heads/main.zip`
+- **Custom branch**: `https://github.com/Yundera/template-root/archive/refs/heads/custom-branch.zip`
+- **Any zip URL**: Must end with `.zip` and contain a valid template structure
+
+**Requirements:**
+- URL must end with `.zip`
+- Zip file must contain a `root/` directory with the template structure
+- If `UPDATE_URL` is not specified or the `.env` file doesn't exist, defaults to the official Yundera template repository
+
 ## Usage Context
 
 This folder is designed to be:
@@ -51,8 +79,8 @@ This folder is designed to be:
 This folder is intended to evolve after the template is created. 
 
 at runtime, the `self-check` scripts will be updated to ensure the system remains healthy and up-to-date.
-here is the main steps
-'ensure-template-version.sh', # Ensure the template version is up-to-date by getting the server reference template file
+here is the main steps (executed in this order)
+'ensure-template-sync.sh', # FIRST: Ensure the template is up-to-date by downloading and syncing from the repository URL - must run before other scripts to ensure file integrity
 'ensure-user-docker-compose-updated.sh', # Ensure the user's Docker Compose file is updated with the latest template and user .env changes
 'ensure-user-compose-pulled.sh', # pull the latest Docker images for the user's Docker Compose file this will use the version defined in the template to ensure it up to date
 'ensure-user-compose-stack-up.sh' # Ensure the user's Docker Compose stack is up and running with the latest images and configurations
@@ -72,8 +100,8 @@ The update process is triggered by:
 
 Both triggers follow the same four-step process:
 
-1. **`self-check/ensure-template-version.sh`**
-   Ensuring the template version is current by downloading the latest reference template file from the server.
+1. **`self-check/ensure-template-sync.sh`** (RUNS FIRST)
+   Ensuring the template is current by downloading and syncing the complete template from the repository URL. This must run before other scripts to ensure all template files have integrity.
 
 2. **`self-check/ensure-user-docker-compose-updated.sh`**
    Updates the user's Docker Compose file with the latest template and Incorporates any changes from the user's `.env` file
