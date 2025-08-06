@@ -28,10 +28,18 @@ trap cleanup EXIT
 echo "Starting template sync..."
 
 # Get template URL from .env or use default
-UPDATE_URL=$(grep "^UPDATE_URL=" "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"')
+UPDATE_URL=$(grep "^UPDATE_URL=" "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"' | tr -d ' \t\r\n')
 [ -z "$UPDATE_URL" ] && UPDATE_URL="$DEFAULT_TEMPLATE_URL"
 
 echo "Using update URL: $UPDATE_URL"
+
+# Handle local development mode
+if [ "$UPDATE_URL" = "local" ]; then
+    echo "Local development mode detected (UPDATE_URL=local)"
+    echo "Skipping template sync - using local development files"
+    echo "Template sync completed successfully (local mode)"
+    exit 0
+fi
 
 # Validate URL
 [[ "$UPDATE_URL" == *.zip ]] || { echo "Error: UPDATE_URL must end with .zip"; exit 1; }
