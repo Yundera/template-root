@@ -58,15 +58,15 @@ TEMPLATE_ROOT=$(find "$TEMP_DIR" -name "root" -type d | head -n 1)
 
 # Prepare rsync excludes from .ignore file
 RSYNC_OPTS="-av --delete"
-if [ -f "$ROOT_DIR/.ignore" ]; then
-    RSYNC_OPTS="$RSYNC_OPTS --exclude-from=$ROOT_DIR/.ignore"
+if [ -f "$TEMPLATE_ROOT/.ignore" ]; then
+    RSYNC_OPTS="$RSYNC_OPTS --exclude-from=$TEMPLATE_ROOT/.ignore"
 fi
 
 # Sync template to root directory
 echo "Syncing template files to root directory..."
 mkdir -p "$ROOT_DIR"
 
-if rsync $RSYNC_OPTS "$TEMPLATE_ROOT/" "$ROOT_DIR/"; then
+if eval "rsync $RSYNC_OPTS \"$TEMPLATE_ROOT/\" \"$ROOT_DIR/\""; then
     echo "Template sync completed successfully"
     rm -rf "$BACKUP_DIR"
 else
