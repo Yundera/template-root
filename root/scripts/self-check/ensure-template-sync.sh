@@ -10,7 +10,7 @@ set -e
 
 # Install required tools
 echo "Installing required tools..."
-apt-get update -qq && apt-get install -y wget unzip rsync
+apt-get -o DPkg::Lock::Timeout=300 update -qq && apt-get -o DPkg::Lock::Timeout=300 install -y wget unzip rsync
 
 # Configuration
 DEFAULT_TEMPLATE_URL="https://github.com/Yundera/template-root/archive/refs/heads/stable.zip"
@@ -62,12 +62,17 @@ if [ -f "$TEMPLATE_ROOT/.ignore" ]; then
     RSYNC_OPTS="$RSYNC_OPTS --exclude-from=$TEMPLATE_ROOT/.ignore"
 fi
 
+# Always exclude .env file to prevent deletion of user-specific config
+RSYNC_OPTS="$RSYNC_OPTS --exclude=.env"
+
 # Sync template to root directory
 echo "Syncing template files to root directory..."
 mkdir -p "$ROOT_DIR"
 
 if eval "rsync $RSYNC_OPTS \"$TEMPLATE_ROOT/\" \"$ROOT_DIR/\""; then
     echo "Template sync completed successfully"
+    # Force filesystem sync and wait for stability
+    sync
     rm -rf "$BACKUP_DIR"
 else
     echo "Error: Template sync failed, restoring backup"

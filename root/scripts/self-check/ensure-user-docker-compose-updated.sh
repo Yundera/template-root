@@ -7,6 +7,8 @@ OUTPUT_FILE=/DATA/AppData/casaos/apps/yundera/docker-compose.yml
 # Define required environment variables
 REQUIRED_VARS=("DOMAIN" "PROVIDER_STR" "UID")
 
+sync
+
 # Declare associative array to store environment variables
 declare -A env_vars
 
