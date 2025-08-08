@@ -16,11 +16,10 @@ retry_script() {
     local attempt=1
 
     while [ $attempt -le $max_retries ]; do
-        log "Attempt $attempt of $max_retries for $script_path"
         if execute_script_with_logging "$script_path"; then
             return 0
         else
-            log "Script failed on attempt $attempt"
+            log "WARN Script failed on attempt $attempt"
             if [ $attempt -lt $max_retries ]; then
                 log "Retrying in ${retry_delay} seconds..."
                 sleep $retry_delay
