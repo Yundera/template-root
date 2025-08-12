@@ -46,8 +46,15 @@ fi
 
 # Download and extract template
 echo "Downloading and extracting template..."
-wget --secure-protocol=auto -O "$TEMP_DIR/template.zip" "$UPDATE_URL"
-unzip -q "$TEMP_DIR/template.zip" -d "$TEMP_DIR"
+wget --secure-protocol=auto --timeout=30 --tries=3 -O "$TEMP_DIR/template.zip" "$UPDATE_URL" || {
+    echo "Error: Failed to download template"
+    exit 1
+}
+
+unzip -q "$TEMP_DIR/template.zip" -d "$TEMP_DIR" || {
+    echo "Error: Failed to extract template"
+    exit 1
+}
 
 # Find template root directory
 TEMPLATE_ROOT=$(find "$TEMP_DIR" -name "root" -type d | head -n 1)
@@ -56,23 +63,52 @@ TEMPLATE_ROOT=$(find "$TEMP_DIR" -name "root" -type d | head -n 1)
 # Create backup if root directory exists
 [ -d "$ROOT_DIR" ] && cp -r "$ROOT_DIR" "$BACKUP_DIR"
 
-# Prepare rsync excludes from .ignore file
-RSYNC_OPTS="-av --delete"
+# Build rsync command with proper exclusions
+RSYNC_OPTS=("-av" "--delete")
+
+# Create combined exclude file
+EXCLUDE_FILE="$TEMP_DIR/combined_excludes.txt"
+touch "$EXCLUDE_FILE"
+
+# Add exclusions from template .ignore file if it exists
 if [ -f "$TEMPLATE_ROOT/.ignore" ]; then
-    RSYNC_OPTS="$RSYNC_OPTS --exclude-from=$TEMPLATE_ROOT/.ignore"
+    echo "Using template .ignore file for exclusions"
+    cat "$TEMPLATE_ROOT/.ignore" >> "$EXCLUDE_FILE"
 fi
 
-# Always exclude .env file to prevent deletion of user-specific config
-RSYNC_OPTS="$RSYNC_OPTS --exclude=.env"
+# Also check for local .ignore file and merge its contents
+if [ -f "$ROOT_DIR/.ignore" ]; then
+    echo "Merging local .ignore file for exclusions"
+    cat "$ROOT_DIR/.ignore" >> "$EXCLUDE_FILE"
+fi
 
-# Sync template to root directory
+# Remove duplicate lines and empty lines from exclude file
+sort -u "$EXCLUDE_FILE" | grep -v '^$' > "$EXCLUDE_FILE.tmp" && mv "$EXCLUDE_FILE.tmp" "$EXCLUDE_FILE"
+
+# Debug: Show what will be excluded
+echo "Files/patterns to be excluded:"
+cat "$EXCLUDE_FILE"
+
+# Add exclude-from option
+RSYNC_OPTS+=("--exclude-from=$EXCLUDE_FILE")
+
+# Sync template to root directory (no eval needed)
 echo "Syncing template files to root directory..."
 mkdir -p "$ROOT_DIR"
 
-if eval "rsync $RSYNC_OPTS \"$TEMPLATE_ROOT/\" \"$ROOT_DIR/\""; then
+# Force filesystem sync and wait for stability
+sync
+sleep 2
+sync
+
+if rsync "${RSYNC_OPTS[@]}" "$TEMPLATE_ROOT/" "$ROOT_DIR/"; then
     echo "Template sync completed successfully"
+
     # Force filesystem sync and wait for stability
     sync
+    sleep 2
+    sync
+
     rm -rf "$BACKUP_DIR"
 else
     echo "Error: Template sync failed, restoring backup"
