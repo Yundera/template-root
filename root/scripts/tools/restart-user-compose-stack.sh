@@ -6,12 +6,8 @@ COMPOSE_FILE="/DATA/AppData/casaos/apps/yundera/docker-compose.yml"
 
 sync
 
-# Check for existing containers
-docker ps -a
-
 # Stop any existing containers (with error suppression)
-#docker compose -f "$COMPOSE_FILE" down 2>/dev/null || true
-docker compose -f "$COMPOSE_FILE" down -v || true
+docker compose -f "$COMPOSE_FILE" down 2>/dev/null || true
 
 # Start containers
 if docker compose -f "$COMPOSE_FILE" up --quiet-pull -d; then
