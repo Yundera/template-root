@@ -37,9 +37,11 @@ services:
       REF_NET: "pcs"
       REF_PORT: "443"
       REF_SCHEME: "https"
+      # these envs are not used directly by casaos but are forwarded to the app at creation, injected in the docker compose up
       user: "%DEFAULT_USER%"
       default_pwd: "%DEFAULT_PWD%"
       public_ip: "%PUBLIC_IP%"
+      domain: "%DOMAIN"
     networks:
       pcs: null
     volumes:
