@@ -102,13 +102,10 @@ sleep 2
 sync
 
 if rsync "${RSYNC_OPTS[@]}" "$TEMPLATE_ROOT/" "$ROOT_DIR/"; then
-    echo "Template sync completed successfully"
-
     # Force filesystem sync and wait for stability
     sync
     sleep 2
     sync
-
     rm -rf "$BACKUP_DIR"
 else
     echo "Error: Template sync failed, restoring backup"
