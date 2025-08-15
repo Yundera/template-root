@@ -6,7 +6,9 @@ This folder contains the template system for Proxmox VM deployment, including sc
 
 ```
 root/                        # Files to be installed in /DATA/AppData/casaos/apps/yundera
-├── .env                     # Environment configuration template
+├── .pcs.env                 # PCS configuration environment variables
+├── .pcs.secret.env          # Secret environment variables (JWT, passwords, etc.)
+├── .ynd.user.env           # User-specific environment variables
 ├── compose-template.yml     # Docker Compose template
 └── scripts/
     ├── os-init/             # Scripts for instance-specific initialization
@@ -37,21 +39,28 @@ Utility scripts for VM diagnostics and management.
 
 ## Configuration Files
 
-- **`.env`**: Environment variables specific to each user, used to derive the `compose.yml` from the `compose-template.yml` (customize with domain, credentials, etc.)
+- **`.pcs.env`**: PCS configuration variables (system settings, template URL)
+- **`.pcs.secret.env`**: Secret environment variables (JWT tokens, passwords, signatures)
+- **`.ynd.user.env`**: User-specific data (UID, domain, email, public IP)
+
+These files are used to derive the `compose.yml` from the `compose-template.yml`.
 
 ### Environment Variables
 
-The `.env` file supports the following configuration options:
+The environment files support the following configuration options:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DOMAIN` | User's domain name | Required |
-| `PROVIDER_STR` | Provider configuration string | Required |
-| `UID` | User ID | Required |
-| `DEFAULT_PWD` | Default password | Required |
-| `PUBLIC_IP` | Public IP address | Required |
-| `DEFAULT_USER` | Default username | Required |
-| `UPDATE_URL` | Template repository URL for updates | `https://github.com/Yundera/template-root/archive/refs/heads/main.zip` |
+| Variable | Description | File | Default |
+|----------|-------------|------|---------|
+| `DOMAIN` | User's domain name | `.ynd.user.env` | Required |
+| `UID` | User ID | `.ynd.user.env` | Required |
+| `EMAIL` | User email address | `.ynd.user.env` | Required |
+| `USERNAME` | System username | `.ynd.user.env` | Required |
+| `PUBLIC_IP` | Public IP address | `.ynd.user.env` | Required |
+| `DEFAULT_USER` | Default username | `.pcs.env` | Required |
+| `USER_JWT` | Yundera JWT token | `.pcs.secret.env` | Required |
+| `DEFAULT_PWD` | Default password | `.pcs.secret.env` | Required |
+| `PROVIDER_STR` | Provider configuration string | `.pcs.secret.env` | Required |
+| `UPDATE_URL` | Template repository URL for updates | `.pcs.env` | `https://github.com/Yundera/template-root/archive/refs/heads/main.zip` |
 
 #### Template Repository Configuration
 
@@ -65,7 +74,7 @@ The `UPDATE_URL` variable must be a direct zip file URL for downloading template
 **Requirements:**
 - URL must end with `.zip`
 - Zip file must contain a `root/` directory with the template structure
-- If `UPDATE_URL` is not specified or the `.env` file doesn't exist, defaults to the official Yundera template repository
+- If `UPDATE_URL` is not specified or the environment files don't exist, defaults to the official Yundera template repository
 
 ## Usage Context
 
@@ -81,7 +90,7 @@ This folder is intended to evolve after the template is created.
 at runtime, the `self-check` scripts will be updated to ensure the system remains healthy and up-to-date.
 here is the main steps (executed in this order)
 'ensure-template-sync.sh', # FIRST: Ensure the template is up-to-date by downloading and syncing from the repository URL - must run before other scripts to ensure file integrity
-'ensure-user-docker-compose-updated.sh', # Ensure the user's Docker Compose file is updated with the latest template and user .env changes
+'ensure-user-docker-compose-updated.sh', # Ensure the user's Docker Compose file is updated with the latest template and environment variable changes
 'ensure-user-compose-pulled.sh', # pull the latest Docker images for the user's Docker Compose file this will use the version defined in the template to ensure it up to date
 'ensure-user-compose-stack-up.sh' # Ensure the user's Docker Compose stack is up and running with the latest images and configurations
 after that a more detailed self-check will be performed by on of the container in the stack ensuring file integrity and such.
@@ -104,7 +113,7 @@ Both triggers follow the same four-step process:
    Ensuring the template is current by downloading and syncing the complete template from the repository URL. This must run before other scripts to ensure all template files have integrity.
 
 2. **`self-check/ensure-user-docker-compose-updated.sh`**
-   Updates the user's Docker Compose file with the latest template and Incorporates any changes from the user's `.env` file
+   Updates the user's Docker Compose file with the latest template and incorporates any changes from the environment files
 
 3. **`self-check/ensure-user-compose-pulled.sh`**
    Pulls the latest Docker images for the user's Docker Compose file and uses version definitions from the template to ensure consistency

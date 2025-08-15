@@ -1,6 +1,8 @@
 #!/bin/bash
 
-ENV_FILE=/DATA/AppData/casaos/apps/yundera/.env
+PCS_ENV_FILE=/DATA/AppData/casaos/apps/yundera/.pcs.env
+SECRET_ENV_FILE=/DATA/AppData/casaos/apps/yundera/.pcs.secret.env
+USER_ENV_FILE=/DATA/AppData/casaos/apps/yundera/.ynd.user.env
 TEMPLATE_FILE=/DATA/AppData/casaos/apps/yundera/compose-template.yml
 OUTPUT_FILE=/DATA/AppData/casaos/apps/yundera/docker-compose.yml
 
@@ -12,18 +14,28 @@ sync
 # Declare associative array to store environment variables
 declare -A env_vars
 
-# Read the environment file and store variables
-while IFS='=' read -r key value || [ -n "$key" ]; do
-    # Skip comments and empty lines
-    [[ $key =~ ^#.*$ || -z $key ]] && continue
+# Function to read environment file and store variables
+read_env_file() {
+    local file="$1"
+    if [ -f "$file" ]; then
+        while IFS='=' read -r key value || [ -n "$key" ]; do
+            # Skip comments and empty lines
+            [[ $key =~ ^#.*$ || -z $key ]] && continue
 
-    # Remove any surrounding quotes from the value
-    value=$(echo "$value" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+            # Remove any surrounding quotes from the value
+            value=$(echo "$value" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
 
-    # Store the key-value pair
-    env_vars["$key"]="$value"
+            # Store the key-value pair
+            env_vars["$key"]="$value"
 
-done < "$ENV_FILE"
+        done < "$file"
+    fi
+}
+
+# Read all three environment files
+read_env_file "$PCS_ENV_FILE"
+read_env_file "$SECRET_ENV_FILE"
+read_env_file "$USER_ENV_FILE"
 
 # Check if all required variables are set and not empty
 missing_vars=()
@@ -37,7 +49,7 @@ done
 if [[ ${#missing_vars[@]} -gt 0 ]]; then
     echo "Error: The following required environment variables are not set or are empty:" >&2
     printf "  - %s\n" "${missing_vars[@]}" >&2
-    echo "Please set these variables in $ENV_FILE" >&2
+    echo "Please set these variables in $PCS_ENV_FILE, $SECRET_ENV_FILE, or $USER_ENV_FILE" >&2
     exit 1
 fi
 
@@ -51,4 +63,4 @@ for key in "${!env_vars[@]}"; do
     sed -i "s|%${key}%|${value}|g" "$OUTPUT_FILE"
 done
 
-echo "Successfully generated $OUTPUT_FILE from template using environment variables from $ENV_FILE"
+echo "Successfully generated $OUTPUT_FILE from template using environment variables from $PCS_ENV_FILE, $SECRET_ENV_FILE, and $USER_ENV_FILE"

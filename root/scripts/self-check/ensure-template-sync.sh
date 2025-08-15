@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Download template from GitHub repository and sync with local root directory
-# This script reads UPDATE_URL from .env file and syncs the entire template
+# This script reads UPDATE_URL from environment files and syncs the entire template
 
 set -e
 
@@ -14,7 +14,7 @@ apt-get -o DPkg::Lock::Timeout=300 update -qq && apt-get -o DPkg::Lock::Timeout=
 
 # Configuration
 DEFAULT_TEMPLATE_URL="https://github.com/Yundera/template-root/archive/refs/heads/stable.zip"
-ENV_FILE="/DATA/AppData/casaos/apps/yundera/.env"
+ENV_FILE="/DATA/AppData/casaos/apps/yundera/.pcs.env"
 ROOT_DIR="/DATA/AppData/casaos/apps/yundera"
 TEMP_DIR=$(mktemp -d)
 BACKUP_DIR="/tmp/root-backup-$(date +%s)"
