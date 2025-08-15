@@ -1,60 +1,79 @@
 #!/bin/bash
 
 # ensure-yundera-user-data.sh - Fetch user data using JWT and update .env file
-# This script fetches user information from yundera.com/pcs/user/info API
+# This script fetches user information from the configured Yundera API endpoint
 # and updates the .env file with the complete user data
+#
+# API Configuration:
+# - Reads YUNDERA_USER_API from .pcs.env file
+# - If configured, makes POST request to fetch user data
+# - If not configured, skips API call and continues
 
 set -euo pipefail
 
+# Script directory (keeping for potential future use)
 SCRIPT_DIR="/DATA/AppData/casaos/apps/yundera/scripts"
-source ${SCRIPT_DIR}/library/common.sh
 
 SECRET_ENV_FILE="/DATA/AppData/casaos/apps/yundera/.pcs.secret.env"
 USER_ENV_FILE="/DATA/AppData/casaos/apps/yundera/.ynd.user.env"
+PCS_ENV_FILE="/DATA/AppData/casaos/apps/yundera/.pcs.env"
 TEMP_SECRET_FILE="/tmp/.pcs.secret.env.update"
 TEMP_USER_FILE="/tmp/.ynd.user.env.update"
 
-log "=== Ensuring user data is up to date ==="
+echo "=== Ensuring user data is up to date ==="
 
-# Check if secret env file exists
-if [ ! -f "$SECRET_ENV_FILE" ]; then
-    log_error "Secret env file not found at $SECRET_ENV_FILE"
-    exit 1
+# Read Yundera user API URL from PCS env file (optional)
+YUNDERA_USER_API=""
+if [ -f "$PCS_ENV_FILE" ]; then
+    YUNDERA_USER_API=$(grep "^YUNDERA_USER_API=" "$PCS_ENV_FILE" | cut -d'=' -f2- || echo "")
 fi
 
 # Create user env file if it doesn't exist
 if [ ! -f "$USER_ENV_FILE" ]; then
-    log "Creating new user env file at $USER_ENV_FILE"
+    echo "Creating new user env file at $USER_ENV_FILE"
     touch "$USER_ENV_FILE"
     chmod 644 "$USER_ENV_FILE"
+fi
+
+# Skip API call if no API URL is configured
+if [ -z "$YUNDERA_USER_API" ]; then
+    echo "No YUNDERA_USER_API configured, skipping user data fetch"
+    echo "=== User data sync completed (API call skipped) ==="
+    exit 0
+fi
+
+# Check if secret env file exists
+if [ ! -f "$SECRET_ENV_FILE" ]; then
+    echo "ERROR: Secret env file not found at $SECRET_ENV_FILE"
+    exit 1
 fi
 
 # Read USER_JWT from secret env file
 USER_JWT=$(grep "^USER_JWT=" "$SECRET_ENV_FILE" | cut -d'=' -f2- || echo "")
 
 if [ -z "$USER_JWT" ]; then
-    log_error "USER_JWT not found in $SECRET_ENV_FILE. Cannot fetch user data."
+    echo "ERROR: USER_JWT not found in $SECRET_ENV_FILE. Cannot fetch user data."
     exit 1
 fi
 
-log "Found USER_JWT, fetching user data from yundera.com/pcs API"
+echo "Found USER_JWT, fetching user data from $YUNDERA_USER_API"
 
-# Make API call to fetch user info from yundera.com/pcs/user/info
+# Make API call to fetch user info from configured API endpoint
 HTTP_RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" \
     -H "Authorization: Bearer $USER_JWT" \
     -H "Content-Type: application/json" \
     -X POST \
-    "https://yundera.com/pcs/user/info" || echo "HTTPSTATUS:000")
+    "$YUNDERA_USER_API" || echo "HTTPSTATUS:000")
 
 HTTP_CODE=$(echo "$HTTP_RESPONSE" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)
 HTTP_BODY=$(echo "$HTTP_RESPONSE" | sed -E 's/HTTPSTATUS:[0-9]*$//')
 
 if [ "$HTTP_CODE" != "200" ]; then
-    log_error "Failed to fetch user data. HTTP status: $HTTP_CODE, Response: $HTTP_BODY"
+    echo "ERROR: Failed to fetch user data. HTTP status: $HTTP_CODE, Response: $HTTP_BODY"
     exit 1
 fi
 
-log "Successfully fetched user data from API"
+echo "Successfully fetched user data from API"
 
 # Parse JSON response using basic shell tools (avoid jq dependency)
 # Extract values using grep and sed
@@ -76,11 +95,11 @@ YUNDERA_JWT=$(extract_json_value "$HTTP_BODY" "userJWT")
 if [ -n "$DOMAIN_VALUE" ] && [ -n "$UID_VALUE" ] && [ -n "$SIGNATURE" ]; then
     PROVIDER_STR="https://$DOMAIN_VALUE,$UID_VALUE,$SIGNATURE"
 else
-    log_error "Missing required user data fields for PROVIDER_STR generation"
+    echo "ERROR: Missing required user data fields for PROVIDER_STR generation"
     exit 1
 fi
 
-log "Parsed user data: UID=$UID_VALUE, DOMAIN=$DOMAIN_VALUE"
+echo "Parsed user data: UID=$UID_VALUE, DOMAIN=$DOMAIN_VALUE"
 
 # Create updated files
 cp "$SECRET_ENV_FILE" "$TEMP_SECRET_FILE"
@@ -130,17 +149,17 @@ fi
 # Fetch PUBLIC_IP from external service if not set or empty
 CURRENT_PUBLIC_IP=$(grep "^PUBLIC_IP=" "$TEMP_USER_FILE" 2>/dev/null | cut -d'=' -f2- || echo "")
 if [ -z "$CURRENT_PUBLIC_IP" ]; then
-    log "Fetching public IP from external service"
+    echo "Fetching public IP from external service"
     PUBLIC_IP_VALUE=$(curl -s --max-time 10 https://ifconfig.me/ip || curl -s --max-time 10 https://ipinfo.io/ip || echo "")
     if [ -n "$PUBLIC_IP_VALUE" ]; then
         update_env_var "PUBLIC_IP" "$PUBLIC_IP_VALUE" "$TEMP_USER_FILE"
-        log "Updated PUBLIC_IP to $PUBLIC_IP_VALUE"
+        echo "Updated PUBLIC_IP to $PUBLIC_IP_VALUE"
     else
-        log "Could not fetch public IP, keeping empty"
+        echo "Could not fetch public IP, keeping empty"
         update_env_var "PUBLIC_IP" "" "$TEMP_USER_FILE"
     fi
 else
-    log "PUBLIC_IP already set to $CURRENT_PUBLIC_IP"
+    echo "PUBLIC_IP already set to $CURRENT_PUBLIC_IP"
 fi
 
 
@@ -152,5 +171,5 @@ mv "$TEMP_USER_FILE" "$USER_ENV_FILE"
 chmod 600 "$SECRET_ENV_FILE"  # Restrictive permissions for secrets
 chmod 644 "$USER_ENV_FILE"    # Standard permissions for user data
 
-log "Successfully updated secret and user data files"
-log "=== User data sync completed successfully ==="
+echo "Successfully updated secret and user data files"
+echo "=== User data sync completed successfully ==="

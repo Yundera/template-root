@@ -1,4 +1,7 @@
 docker-compose.yml
-*.env
+.env
+.pcs.env
+.pcs.secret.env
+.ynd.user.env
 log/*.log
 *.backup
