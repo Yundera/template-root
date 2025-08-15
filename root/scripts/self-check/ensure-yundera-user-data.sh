@@ -6,7 +6,7 @@
 #
 # API Configuration:
 # - Reads YUNDERA_USER_API from .pcs.env file
-# - If configured, makes POST request to fetch user data
+# - If configured, makes GET request to fetch user data
 # - If not configured, skips API call and continues
 
 set -euo pipefail
@@ -62,7 +62,7 @@ echo "Found USER_JWT, fetching user data from $YUNDERA_USER_API"
 HTTP_RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" \
     -H "Authorization: Bearer $USER_JWT" \
     -H "Content-Type: application/json" \
-    -X POST \
+    -X GET \
     "$YUNDERA_USER_API" || echo "HTTPSTATUS:000")
 
 HTTP_CODE=$(echo "$HTTP_RESPONSE" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)
