@@ -146,21 +146,6 @@ if [ -n "$DOMAIN_VALUE" ]; then
     update_env_var "USERNAME" "$USERNAME_VALUE" "$TEMP_USER_FILE"
 fi
 
-# Fetch PUBLIC_IP from external service if not set or empty
-CURRENT_PUBLIC_IP=$(grep "^PUBLIC_IP=" "$TEMP_USER_FILE" 2>/dev/null | cut -d'=' -f2- || echo "")
-if [ -z "$CURRENT_PUBLIC_IP" ]; then
-    echo "Fetching public IP from external service"
-    PUBLIC_IP_VALUE=$(curl -s --max-time 10 https://ifconfig.me/ip || curl -s --max-time 10 https://ipinfo.io/ip || echo "")
-    if [ -n "$PUBLIC_IP_VALUE" ]; then
-        update_env_var "PUBLIC_IP" "$PUBLIC_IP_VALUE" "$TEMP_USER_FILE"
-        echo "Updated PUBLIC_IP to $PUBLIC_IP_VALUE"
-    else
-        echo "Could not fetch public IP, keeping empty"
-        update_env_var "PUBLIC_IP" "" "$TEMP_USER_FILE"
-    fi
-else
-    echo "PUBLIC_IP already set to $CURRENT_PUBLIC_IP"
-fi
 
 
 # Atomically replace the original files

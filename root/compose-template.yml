@@ -43,7 +43,7 @@ services:
       user: "%DEFAULT_USER%"
       default_pwd: "%DEFAULT_PWD%"
       public_ip: "%PUBLIC_IP%"
-      domain: "%DOMAIN"
+      domain: "%DOMAIN%"
     networks:
       pcs: null
     volumes:
