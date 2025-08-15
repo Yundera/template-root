@@ -66,31 +66,18 @@ TEMPLATE_ROOT=$(find "$TEMP_DIR" -name "root" -type d | head -n 1)
 # Build rsync command with proper exclusions
 RSYNC_OPTS=("-av" "--delete")
 
-# Create combined exclude file
-EXCLUDE_FILE="$TEMP_DIR/combined_excludes.txt"
-touch "$EXCLUDE_FILE"
-
-# Add exclusions from template .ignore file if it exists
-if [ -f "$TEMPLATE_ROOT/.ignore" ]; then
-    echo "Using template .ignore file for exclusions"
-    cat "$TEMPLATE_ROOT/.ignore" >> "$EXCLUDE_FILE"
+# error if "$TEMPLATE_ROOT/.ignore" don't exsist
+if [ ! -f "$TEMPLATE_ROOT/.ignore" ]; then
+    echo "Error: Template .ignore file not found at $TEMPLATE_ROOT/.ignore"
+    exit 1
 fi
-
-# Also check for local .ignore file and merge its contents
-if [ -f "$ROOT_DIR/.ignore" ]; then
-    echo "Merging local .ignore file for exclusions"
-    cat "$ROOT_DIR/.ignore" >> "$EXCLUDE_FILE"
-fi
-
-# Remove duplicate lines and empty lines from exclude file
-sort -u "$EXCLUDE_FILE" | grep -v '^$' > "$EXCLUDE_FILE.tmp" && mv "$EXCLUDE_FILE.tmp" "$EXCLUDE_FILE"
 
 # Debug: Show what will be excluded
 echo "Files/patterns to be excluded:"
-cat "$EXCLUDE_FILE"
+cat "$TEMPLATE_ROOT/.ignore"
 
 # Add exclude-from option
-RSYNC_OPTS+=("--exclude-from=$EXCLUDE_FILE")
+RSYNC_OPTS+=("--exclude-from=$TEMPLATE_ROOT/.ignore")
 
 # Sync template to root directory (no eval needed)
 echo "Syncing template files to root directory..."
