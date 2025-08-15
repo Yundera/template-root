@@ -32,7 +32,7 @@ execute_script_with_logging $SCRIPT_DIR/tools/generate-default-pwd.sh
 execute_script_with_logging $SCRIPT_DIR/tools/restart-user-compose-stack.sh
 
 # run os-init scripts only once in the VM lifecycle
-execute_script_with_logging $SCRIPT_DIR/os-init/lock-password-auth.sh
-execute_script_with_logging $SCRIPT_DIR/os-init/os-cleanup-before-use.sh
+execute_script_with_logging $SCRIPT_DIR/tools/lock-password-auth.sh
+execute_script_with_logging $SCRIPT_DIR/tools/os-cleanup-before-use.sh
 
 log "=== Final user hand over completed successfully ==="
