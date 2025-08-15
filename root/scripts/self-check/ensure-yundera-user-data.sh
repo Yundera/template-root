@@ -79,13 +79,13 @@ extract_json_value() {
 }
 
 # Extract user data from response
-UID=$(extract_json_value "$HTTP_BODY" "uid")
-EMAIL=$(extract_json_value "$HTTP_BODY" "email")
-DOMAIN=$(extract_json_value "$HTTP_BODY" "domain")
-PROVIDER_STR=$(extract_json_value "$HTTP_BODY" "domainSignature")
-USER_JWT=$(extract_json_value "$HTTP_BODY" "userJWT")
+RECV_UID=$(extract_json_value "$HTTP_BODY" "uid")
+RECV_EMAIL=$(extract_json_value "$HTTP_BODY" "email")
+RECV_DOMAIN=$(extract_json_value "$HTTP_BODY" "domain")
+RECV_PROVIDER_STR=$(extract_json_value "$HTTP_BODY" "domainSignature")
+RECV_USER_JWT=$(extract_json_value "$HTTP_BODY" "userJWT")
 
-echo "Parsed user data: UID=$UID, DOMAIN=$DOMAIN"
+echo "Parsed user data: UID=$RECV_UID, DOMAIN=$RECV_DOMAIN"
 
 # Function to update or add environment variable
 update_env_var() {
@@ -103,15 +103,15 @@ update_env_var() {
 }
 
 # Update secret environment variables (sensitive data)
-update_env_var "PROVIDER_STR" "$PROVIDER_STR" "$SECRET_ENV_FILE"
-update_env_var "USER_JWT" "$USER_JWT" "$SECRET_ENV_FILE"
+update_env_var "PROVIDER_STR" "$RECV_PROVIDER_STR" "$SECRET_ENV_FILE"
+update_env_var "USER_JWT" "$RECV_USER_JWT" "$SECRET_ENV_FILE"
 
 # Update user environment variables (less sensitive data)
-update_env_var "UID" "$UID" "$USER_ENV_FILE"
-update_env_var "DOMAIN" "$DOMAIN" "$USER_ENV_FILE"
+update_env_var "UID" "$RECV_UID" "$USER_ENV_FILE"
+update_env_var "DOMAIN" "$RECV_DOMAIN" "$USER_ENV_FILE"
 
 # Update email from API response (from Firebase Auth)
-update_env_var "EMAIL" "$EMAIL" "$USER_ENV_FILE"
+update_env_var "EMAIL" "$RECV_EMAIL" "$USER_ENV_FILE"
 
 # Ensure proper permissions
 chmod 600 "$SECRET_ENV_FILE"  # Restrictive permissions for secrets
