@@ -63,4 +63,7 @@ for key in "${!env_vars[@]}"; do
     sed -i "s|%${key}%|${value}|g" "$OUTPUT_FILE"
 done
 
+# Replace any remaining undefined %VARIABLE% patterns with empty strings
+sed -i 's/%[A-Z_][A-Z0-9_]*%//g' "$OUTPUT_FILE"
+
 echo "Successfully generated $OUTPUT_FILE from template using environment variables from $PCS_ENV_FILE, $SECRET_ENV_FILE, and $USER_ENV_FILE"

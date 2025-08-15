@@ -11,14 +11,9 @@
 
 set -euo pipefail
 
-# Script directory (keeping for potential future use)
-SCRIPT_DIR="/DATA/AppData/casaos/apps/yundera/scripts"
-
 SECRET_ENV_FILE="/DATA/AppData/casaos/apps/yundera/.pcs.secret.env"
 USER_ENV_FILE="/DATA/AppData/casaos/apps/yundera/.ynd.user.env"
 PCS_ENV_FILE="/DATA/AppData/casaos/apps/yundera/.pcs.env"
-TEMP_SECRET_FILE="/tmp/.pcs.secret.env.update"
-TEMP_USER_FILE="/tmp/.ynd.user.env.update"
 
 echo "=== Ensuring user data is up to date ==="
 
@@ -84,26 +79,13 @@ extract_json_value() {
 }
 
 # Extract user data from response
-UID_VALUE=$(extract_json_value "$HTTP_BODY" "uid")
-EMAIL_VALUE=$(extract_json_value "$HTTP_BODY" "email")
-DOMAIN_VALUE=$(extract_json_value "$HTTP_BODY" "domain")
-DOMAIN_UID=$(extract_json_value "$HTTP_BODY" "domainUid")
-SIGNATURE=$(extract_json_value "$HTTP_BODY" "domainSignature")
-YUNDERA_JWT=$(extract_json_value "$HTTP_BODY" "userJWT")
+UID=$(extract_json_value "$HTTP_BODY" "uid")
+EMAIL=$(extract_json_value "$HTTP_BODY" "email")
+DOMAIN=$(extract_json_value "$HTTP_BODY" "domain")
+PROVIDER_STR=$(extract_json_value "$HTTP_BODY" "domainSignature")
+USER_JWT=$(extract_json_value "$HTTP_BODY" "userJWT")
 
-# Create provider string in expected format
-if [ -n "$DOMAIN_VALUE" ] && [ -n "$UID_VALUE" ] && [ -n "$SIGNATURE" ]; then
-    PROVIDER_STR="https://$DOMAIN_VALUE,$UID_VALUE,$SIGNATURE"
-else
-    echo "ERROR: Missing required user data fields for PROVIDER_STR generation"
-    exit 1
-fi
-
-echo "Parsed user data: UID=$UID_VALUE, DOMAIN=$DOMAIN_VALUE"
-
-# Create updated files
-cp "$SECRET_ENV_FILE" "$TEMP_SECRET_FILE"
-cp "$USER_ENV_FILE" "$TEMP_USER_FILE"
+echo "Parsed user data: UID=$UID, DOMAIN=$DOMAIN"
 
 # Function to update or add environment variable
 update_env_var() {
@@ -121,36 +103,15 @@ update_env_var() {
 }
 
 # Update secret environment variables (sensitive data)
-update_env_var "PROVIDER_STR" "$PROVIDER_STR" "$TEMP_SECRET_FILE"
-
-# Update USER_JWT with yunderaJWT if available
-if [ -n "$YUNDERA_JWT" ]; then
-    update_env_var "USER_JWT" "$YUNDERA_JWT" "$TEMP_SECRET_FILE"
-fi
+update_env_var "PROVIDER_STR" "$PROVIDER_STR" "$SECRET_ENV_FILE"
+update_env_var "USER_JWT" "$USER_JWT" "$SECRET_ENV_FILE"
 
 # Update user environment variables (less sensitive data)
-update_env_var "UID" "$UID_VALUE" "$TEMP_USER_FILE"
-update_env_var "DOMAIN" "$DOMAIN_VALUE" "$TEMP_USER_FILE"
+update_env_var "UID" "$UID" "$USER_ENV_FILE"
+update_env_var "DOMAIN" "$DOMAIN" "$USER_ENV_FILE"
 
 # Update email from API response (from Firebase Auth)
-if [ -n "$EMAIL_VALUE" ]; then
-    update_env_var "EMAIL" "$EMAIL_VALUE" "$TEMP_USER_FILE"
-elif [ -n "$DOMAIN_UID" ]; then
-    # Fallback to domainUid if email is not available
-    update_env_var "EMAIL" "$DOMAIN_UID" "$TEMP_USER_FILE"
-fi
-
-# Extract username from domain (use part before first dot as username)
-if [ -n "$DOMAIN_VALUE" ]; then
-    USERNAME_VALUE=$(echo "$DOMAIN_VALUE" | cut -d'.' -f1)
-    update_env_var "USERNAME" "$USERNAME_VALUE" "$TEMP_USER_FILE"
-fi
-
-
-
-# Atomically replace the original files
-mv "$TEMP_SECRET_FILE" "$SECRET_ENV_FILE"
-mv "$TEMP_USER_FILE" "$USER_ENV_FILE"
+update_env_var "EMAIL" "$EMAIL" "$USER_ENV_FILE"
 
 # Ensure proper permissions
 chmod 600 "$SECRET_ENV_FILE"  # Restrictive permissions for secrets
