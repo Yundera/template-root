@@ -8,10 +8,6 @@ services:
     environment:
       AUTHORITY_ENDPOINT: "https://8080-casaos-%DOMAIN%/v1/users"
       COMPOSE_FOLDER_PATH: "/DATA/AppData/casaos/apps/yundera/"
-    env_file:
-      - .pcs.env
-      - .pcs.secret.env
-      - .ynd.user.env
     volumes:
       # This gives the admin app ssh root access (used to update the system)
       - type: bind
