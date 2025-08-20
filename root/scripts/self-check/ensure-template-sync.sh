@@ -35,6 +35,25 @@ run_migrations() {
     local migrations_dir="$template_root/scripts/migrations"
     local migration_runner="$template_root/scripts/tools/run-migrations.sh"
     
+    # Make all migration-related scripts executable first
+    echo "→ Setting executable permissions on migration scripts..."
+    if [ -d "$migrations_dir" ]; then
+        find "$migrations_dir" -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
+    fi
+    if [ -f "$migration_runner" ]; then
+        chmod +x "$migration_runner" 2>/dev/null || true
+    fi
+    
+    # Debug: Show what we found
+    echo "→ Checking migration setup..."
+    echo "  migrations_dir ($migrations_dir): $([ -d "$migrations_dir" ] && echo "exists" || echo "missing")"
+    echo "  migration_runner ($migration_runner): $([ -x "$migration_runner" ] && echo "executable" || echo "not executable/missing")"
+    
+    if [ -d "$migrations_dir" ]; then
+        migration_scripts_count=$(find "$migrations_dir" -name "*.sh" -type f | wc -l)
+        echo "  Found $migration_scripts_count migration scripts in directory"
+    fi
+    
     if [ -d "$migrations_dir" ] && [ -x "$migration_runner" ]; then
         migration_log=$(mktemp)
         "$migration_runner" "$migrations_dir" >"$migration_log" 2>&1
@@ -51,9 +70,7 @@ run_migrations() {
         
         echo "✓ Migrations completed successfully"
     else
-        echo "→ Skipping migrations (directory not found or runner not executable)"
-        echo "  migrations_dir exists: $([ -d "$migrations_dir" ] && echo "yes" || echo "no")"
-        echo "  migration_runner executable: $([ -x "$migration_runner" ] && echo "yes" || echo "no")"
+        echo "→ Skipping migrations (conditions not met after setup)"
     fi
     return 0
 }
