@@ -6,8 +6,8 @@
 #
 # API Configuration:
 # - Reads YUNDERA_USER_API from .pcs.env file
-# - If configured, makes GET request to fetch user data
-# - If not configured, skips API call and continues
+# - If not configured, uses default: https://app.yundera.com/service/pcs/user
+# - Makes GET request to fetch user data using configured or default endpoint
 
 set -euo pipefail
 
@@ -17,10 +17,18 @@ PCS_ENV_FILE="/DATA/AppData/casaos/apps/yundera/.pcs.env"
 
 echo "=== Ensuring user data is up to date ==="
 
-# Read Yundera user API URL from PCS env file (optional)
+# Read Yundera user API URL from PCS env file or use default
 YUNDERA_USER_API=""
 if [ -f "$PCS_ENV_FILE" ]; then
     YUNDERA_USER_API=$(grep "^YUNDERA_USER_API=" "$PCS_ENV_FILE" | cut -d'=' -f2- || echo "")
+fi
+
+# Use default URL if YUNDERA_USER_API is not configured or empty
+if [ -z "$YUNDERA_USER_API" ]; then
+    YUNDERA_USER_API="https://app.yundera.com/service/pcs/user"
+    echo "Using default YUNDERA_USER_API: $YUNDERA_USER_API"
+else
+    echo "Using configured YUNDERA_USER_API: $YUNDERA_USER_API"
 fi
 
 # Create user env file if it doesn't exist
@@ -28,13 +36,6 @@ if [ ! -f "$USER_ENV_FILE" ]; then
     echo "Creating new user env file at $USER_ENV_FILE"
     touch "$USER_ENV_FILE"
     chmod 644 "$USER_ENV_FILE"
-fi
-
-# Skip API call if no API URL is configured
-if [ -z "$YUNDERA_USER_API" ]; then
-    echo "No YUNDERA_USER_API configured, skipping user data fetch"
-    echo "=== User data sync completed (API call skipped) ==="
-    exit 0
 fi
 
 # Check if secret env file exists

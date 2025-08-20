@@ -39,21 +39,17 @@ if [ -z "$USER_UID" ]; then
     exit 1
 fi
 
-# Get YUNDERA_USER_API from PCS env file and construct JWT endpoint
+# Get YUNDERA_USER_API from PCS env file or use default
 YUNDERA_USER_API=""
 if [ -f "$PCS_ENV_FILE" ] && grep -q "^YUNDERA_USER_API=" "$PCS_ENV_FILE"; then
     YUNDERA_USER_API=$(grep "^YUNDERA_USER_API=" "$PCS_ENV_FILE" | head -1 | cut -d '=' -f2- | tr -d '"' | tr -d ' \t\r\n')
     echo "Found YUNDERA_USER_API in PCS env: $YUNDERA_USER_API"
-else
-    echo "Error: YUNDERA_USER_API not found in $PCS_ENV_FILE"
-    echo "Please ensure YUNDERA_USER_API is configured in the PCS environment file"
-    exit 1
 fi
 
-# Validate YUNDERA_USER_API is not empty
+# Use default URL if YUNDERA_USER_API is not configured or empty
 if [ -z "$YUNDERA_USER_API" ]; then
-    echo "Error: YUNDERA_USER_API is empty in $PCS_ENV_FILE"
-    exit 1
+    YUNDERA_USER_API="https://app.yundera.com/service/pcs/user"
+    echo "Using default YUNDERA_USER_API: $YUNDERA_USER_API"
 fi
 
 # Construct JWT API endpoint by appending /jwt
