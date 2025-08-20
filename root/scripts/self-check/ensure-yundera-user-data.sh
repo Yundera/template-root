@@ -51,14 +51,14 @@ if [ -z "$USER_JWT" ]; then
     exit 1
 fi
 
-echo "Found USER_JWT, fetching user data from $YUNDERA_USER_API"
+echo "Found USER_JWT (${#USER_JWT} chars), fetching user data from ${YUNDERA_USER_API}/info"
 
 # Make API call to fetch user info from configured API endpoint
 HTTP_RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" \
     -H "Authorization: Bearer $USER_JWT" \
     -H "Content-Type: application/json" \
     -X GET \
-    "$YUNDERA_USER_API" || echo "HTTPSTATUS:000")
+    "${YUNDERA_USER_API}/info" || echo "HTTPSTATUS:000")
 
 HTTP_CODE=$(echo "$HTTP_RESPONSE" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)
 HTTP_BODY=$(echo "$HTTP_RESPONSE" | sed -E 's/HTTPSTATUS:[0-9]*$//')
@@ -67,8 +67,6 @@ if [ "$HTTP_CODE" != "200" ]; then
     echo "ERROR: Failed to fetch user data. HTTP status: $HTTP_CODE, Response: $HTTP_BODY"
     exit 1
 fi
-
-echo "Successfully fetched user data from API"
 
 # Parse JSON response using basic shell tools (avoid jq dependency)
 # Extract values using grep and sed
@@ -85,7 +83,6 @@ RECV_DOMAIN=$(extract_json_value "$HTTP_BODY" "domain")
 RECV_PROVIDER_STR=$(extract_json_value "$HTTP_BODY" "domainSignature")
 RECV_USER_JWT=$(extract_json_value "$HTTP_BODY" "userJWT")
 
-echo "Parsed user data: UID=$RECV_UID, DOMAIN=$RECV_DOMAIN"
 
 # Function to update or add environment variable
 update_env_var() {
@@ -117,5 +114,5 @@ update_env_var "EMAIL" "$RECV_EMAIL" "$USER_ENV_FILE"
 chmod 600 "$SECRET_ENV_FILE"  # Restrictive permissions for secrets
 chmod 644 "$USER_ENV_FILE"    # Standard permissions for user data
 
-echo "Successfully updated secret and user data files"
+echo "Successfully updated secret and user data files (UID=$RECV_UID, DOMAIN=$RECV_DOMAIN)"
 echo "=== User data sync completed successfully ==="

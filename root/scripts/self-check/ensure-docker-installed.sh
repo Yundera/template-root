@@ -13,22 +13,22 @@ check_docker() {
     if command -v docker >/dev/null 2>&1; then
 
         # Check if Docker daemon is running
-        if sudo docker info >/dev/null 2>&1; then
+        if docker info >/dev/null 2>&1; then
 
             # Check if current user is in docker group
             if groups $USER | grep -q docker; then
-                echo "Docker is properly installed and configured : $(docker --version)"
+                echo "✓ Docker is properly installed and configured : $(docker --version)"
                 return 0
             else
-                echo "Adding user $USER to docker group"
-                sudo usermod -aG docker $USER
+                echo "→ Adding user $USER to docker group"
+                usermod -aG docker $USER
                 echo "WARNING: Please log out and log back in for group changes to take effect"
                 return 0
             fi
         else
-            echo "WARNING: Docker daemon not running, starting Docker service"
-            sudo systemctl start docker
-            sudo systemctl enable docker
+            echo "→ Docker daemon not running, starting Docker service"
+            systemctl start docker
+            systemctl enable docker
         fi
     else
         return 1
@@ -37,60 +37,64 @@ check_docker() {
 
 # Function to install Docker
 install_docker() {
-    echo "Installing Docker..."
+    echo "→ Installing Docker..."
 
-    # DockerUpdate package index
-    sudo apt-get -qq update
+    # Update package index
+    apt-get -qq update >/dev/null
 
     # Install prerequisites
-    sudo apt-get install -qq -y ca-certificates curl
+    if ! DEBIAN_FRONTEND=noninteractive apt-get install -qq -y ca-certificates curl >/dev/null 2>&1; then
+        echo "✗ Failed to install prerequisites. Running with verbose output for debugging:"
+        apt-get install -y ca-certificates curl
+        exit 1
+    fi
 
     # Create directory for keyrings
-    sudo install -m 0755 -d /etc/apt/keyrings
+    install -m 0755 -d /etc/apt/keyrings
 
     # Add Docker's official GPG key
-    sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-    sudo chmod a+r /etc/apt/keyrings/docker.asc
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+    chmod a+r /etc/apt/keyrings/docker.asc
 
     # Add Docker repository to Apt sources
     echo \
       "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
       $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-      sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+      tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-    # DockerUpdate package index again
-    sudo apt-get -qq update
+    # Update package index again
+    apt-get -qq update >/dev/null
 
     # Install Docker packages
-    echo "Installing Docker packages..."
-    sudo apt-get install -qq -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    if ! DEBIAN_FRONTEND=noninteractive apt-get install -qq -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin >/dev/null 2>&1; then
+        echo "✗ Docker package installation failed. Running with verbose output for debugging:"
+        apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+        exit 1
+    fi
 
     # Add current user to docker group
-    sudo usermod -aG docker $USER
+    usermod -aG docker $USER
 
     # Start and enable Docker service
     if [ -f /.dockerenv ]; then
-        echo "Inside Docker - dev environment detected. Skipping systemctl."
+        echo "→ Inside Docker - dev environment detected. Skipping systemctl."
     else
-      sudo systemctl start docker
-      sudo systemctl enable docker
+      systemctl start docker
+      systemctl enable docker
     fi
 
     # Check Docker version
     local docker_version=$(docker --version)
-    echo "Docker version: $docker_version"
 
     # Check Docker Compose version
     local compose_version=$(docker compose version)
-    echo "Docker Compose version: $compose_version"
-
-    echo "Docker installation completed"
+    echo "✓ Docker installation completed - (Docker Compose version: $compose_version, Docker version: $docker_version)"
 }
 
 # Main execution
 if ! check_docker; then
-    echo "Docker not found or not properly configured - proceeding with installation"
+    echo "→ Docker not found or not properly configured - proceeding with installation"
     install_docker
 
-    echo "Docker has been successfully installed!"
+    echo "✓ Docker ready"
 fi

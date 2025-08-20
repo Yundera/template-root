@@ -5,3 +5,4 @@ docker-compose.yml
 .ynd.user.env
 log/*.log
 *.backup
+migration-markers/

@@ -130,3 +130,56 @@ After the main update process completes, detailed self-checks are performed by c
 - System security status
 
 This two-tier approach ensures both infrastructure updates and application-level validation.
+
+## System Logging Philosophy
+
+All scripts follow a **"quiet success, verbose failure"** principle: show only essential information during normal operation, but provide comprehensive debugging details when things go wrong.
+
+### Core Principles
+
+**1. Users care about outcomes, not process**
+- Show final status: `✓ migration.sh completed` or `✓ migration.sh (skipped - already applied)`
+- Hide process messages: Don't log "Found file", "Running", "Starting", "Processing N files"
+- Exception: Show actual work output for one-shot operations that change the system
+
+**2. Failed operations need full context**  
+- Capture all output when commands fail, then display it for debugging
+- Include exit codes, file information, and retry suggestions
+- Example: `apt-get` runs silently but shows full output on failure
+
+**3. Progressive disclosure of information**
+- Start with minimal output during success
+- Add layers of detail only when failures occur
+- Use output redirection (`>/dev/null 2>&1`) for background operations, capture for error display
+
+### Implementation Pattern
+
+```bash
+# Good: Quiet success, verbose failure
+if ! command >/dev/null 2>&1; then
+    echo "Error: Command failed, running with verbose output:"
+    command  # Show full output for debugging
+    exit 1
+fi
+
+# Bad: Always verbose
+echo "Running command..."
+command
+echo "Command completed"
+```
+
+### Real Examples
+
+**Migration execution**: 
+- Success: `✓ migrate-env.sh (skipped - already applied)`
+- Failure: Shows full migration output with error details
+
+**Package installation**:
+- Success: `Installing required tools...` (single line)  
+- Failure: Full `apt-get` output with package conflicts
+
+**Template sync**:
+- Success: `Template sync completed` 
+- Failure: Full `rsync` output showing which files failed
+
+This philosophy prioritizes user experience: clean logs that focus on what matters, with comprehensive debugging when needed.

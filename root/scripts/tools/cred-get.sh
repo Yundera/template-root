@@ -21,4 +21,4 @@ if [ ! -f "$CRED_PATH" ]; then
 fi
 
 # Decrypt and output the credential
-sudo systemd-creds decrypt "$CRED_PATH"
+systemd-creds decrypt "$CRED_PATH"

@@ -21,14 +21,14 @@ if [ $# -eq 0 ]; then
 fi
 
 # Create credential directory if it doesn't exist
-sudo mkdir -p "$CRED_DIR"
+mkdir -p "$CRED_DIR"
 
 if [ $# -eq 2 ]; then
     # Secret provided as argument
-    echo "$2" | sudo systemd-creds encrypt --pretty - "$CRED_PATH"
+    echo "$2" | systemd-creds encrypt --pretty - "$CRED_PATH"
 else
     # Read secret from stdin
-    sudo systemd-creds encrypt --pretty - "$CRED_PATH"
+    systemd-creds encrypt --pretty - "$CRED_PATH"
 fi
 
 echo "Credential '$CRED_NAME' stored successfully at $CRED_PATH"

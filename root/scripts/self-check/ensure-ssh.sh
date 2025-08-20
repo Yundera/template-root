@@ -7,12 +7,18 @@ export DEBIAN_FRONTEND=noninteractive
 # Install and configure OpenSSH server
 
 if [ -f /.dockerenv ]; then
-    echo "Inside Docker - dev environment detected. Skipping setup."
+    echo "→ Inside Docker - dev environment detected. Skipping setup."
     exit 0
 fi
 
 # Install openssh-server only if not already installed
-dpkg-query -W openssh-server >/dev/null 2>&1 || apt-get install -qq -y openssh-server
+if ! dpkg-query -W openssh-server >/dev/null 2>&1; then
+    if ! DEBIAN_FRONTEND=noninteractive apt-get install -qq -y openssh-server >/dev/null 2>&1; then
+        echo "✗ Failed to install openssh-server. Running with verbose output for debugging:"
+        apt-get install -y openssh-server
+        exit 1
+    fi
+fi
 
 # Enable and start SSH service
 systemctl enable ssh.service
@@ -51,7 +57,7 @@ check_ssh_issues() {
 
 # Only reconfigure if there are SSH issues
 if ! check_ssh_issues; then
-    echo "SSH issues detected. Reconfiguring openssh-server..."
+    echo "→ SSH issues detected. Reconfiguring openssh-server..."
     dpkg-reconfigure openssh-server
 
     # Restart SSH service after reconfiguration
@@ -59,11 +65,11 @@ if ! check_ssh_issues; then
 
     # Verify SSH is working after reconfiguration
     if check_ssh_issues; then
-        echo "SSH has been successfully reconfigured and is working properly."
+        echo "✓ SSH has been successfully reconfigured and is working properly."
     else
-        echo "Warning: SSH issues persist after reconfiguration."
+        echo "✗ SSH issues persist after reconfiguration."
         exit 1
     fi
 else
-    echo "SSH is working properly. No reconfiguration needed."
+    echo "✓ SSH is working properly. No reconfiguration needed."
 fi

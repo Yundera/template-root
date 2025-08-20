@@ -16,32 +16,36 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-echo "Starting data partition setup script..."
+echo "→ Starting data partition setup script..."
 
 # Change to root directory to avoid issues if script is run from /DATA
 cd /
 
 if [ -f /.dockerenv ]; then
-    echo "Inside Docker - dev environment detected. Skipping setup."
+    echo "→ Inside Docker - dev environment detected. Skipping setup."
     exit 0
 fi
 
 # Install rsync only if not already present
-command -v rsync &> /dev/null || {
-    echo "Installing rsync..."
-    apt-get update -qq && apt-get install -y rsync
-}
+if ! command -v rsync &> /dev/null; then
+    echo "→ Installing rsync..."
+    if ! { DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -qq -y rsync; } >/dev/null 2>&1; then
+        echo "✗ Failed to install rsync. Running with verbose output for debugging:"
+        apt-get update && apt-get install -y rsync
+        exit 1
+    fi
+fi
 
 # Check if /mnt/data is already mounted and bind mounts are set up
 if mountpoint -q /mnt/data 2>/dev/null && mountpoint -q /DATA 2>/dev/null && mountpoint -q /var/lib/docker 2>/dev/null; then
-    echo "All mounts are already configured. Nothing to do."
+    echo "✓ All mounts are already configured. Nothing to do."
     exit 0
 fi
 
 # Check if /DATA exists as a directory (not mounted)
 DATA_BACKUP_NEEDED=false
 if [ -d "/DATA" ] && ! mountpoint -q /DATA 2>/dev/null; then
-    echo "Found existing /DATA directory. Will preserve its contents."
+    echo "→ Found existing /DATA directory. Will preserve its contents."
     DATA_BACKUP_NEEDED=true
 
     # Check if DATA.tmp already exists
@@ -59,7 +63,7 @@ fi
 # Check if /var/lib/docker exists as a directory (not mounted)
 DOCKER_BACKUP_NEEDED=false
 if [ -d "/var/lib/docker" ] && ! mountpoint -q /var/lib/docker 2>/dev/null; then
-    echo "Found existing /var/lib/docker directory. Will preserve its contents."
+    echo "→ Found existing /var/lib/docker directory. Will preserve its contents."
     DOCKER_BACKUP_NEEDED=true
 
     # Check if docker.tmp already exists
@@ -151,7 +155,7 @@ if vgdisplay data_vg >/dev/null 2>&1; then
             mkdir -p /DATA/AppData/casaos/apps/yundera
             chown -R pcs:pcs /DATA/AppData/casaos/apps/yundera 2>/dev/null || true
 
-            echo "Setup complete. Existing DATA partition mounted successfully."
+            echo "✓ Setup complete. Existing DATA partition mounted successfully."
             exit 0
         else
             echo "Failed to mount existing logical volume. Will recreate..."
@@ -159,7 +163,7 @@ if vgdisplay data_vg >/dev/null 2>&1; then
     fi
 fi
 
-echo "No existing data partition found. Creating new 1GB partition..."
+echo "→ No existing data partition found. Creating new 1GB partition..."
 
 # Fix the GPT to use all available space
 echo "Fixing GPT to use all available space..."
@@ -426,7 +430,7 @@ echo "os-init-data-partition executed successfully" >> "/DATA/AppData/casaos/app
 # Ensure the log file is also owned by pcs
 chown pcs:pcs "/DATA/AppData/casaos/apps/yundera/log/yundera.log"
 
-echo "Setup complete. New 1GB DATA partition created, mounted at /mnt/data with bind mounts to /DATA and /var/lib/docker"
+echo "✓ Setup complete. New 1GB DATA partition created, mounted at /mnt/data with bind mounts to /DATA and /var/lib/docker"
 if [ "$DATA_BACKUP_NEEDED" = true ]; then
     echo "Original /DATA contents have been successfully restored."
 fi
