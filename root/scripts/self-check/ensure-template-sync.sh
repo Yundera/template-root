@@ -36,22 +36,24 @@ run_migrations() {
     local migration_runner="$template_root/scripts/tools/run-migrations.sh"
     
     if [ -d "$migrations_dir" ] && [ -x "$migration_runner" ]; then
-        echo "→ Running migrations..."
         migration_log=$(mktemp)
         "$migration_runner" "$migrations_dir" >"$migration_log" 2>&1
         migration_exit_code=$?
         
+        # Always show migration output regardless of success/failure
+        cat "$migration_log" || echo "(no migration log output)"
+        rm -f "$migration_log"
+        
         if [ $migration_exit_code -ne 0 ]; then
             echo "✗ Migration runner failed (exit $migration_exit_code)"
-            echo "Migration log:"
-            cat "$migration_log"
-            rm -f "$migration_log"
             return 1
         fi
         
-        # Show successful migration output
-        cat "$migration_log"
-        rm -f "$migration_log"
+        echo "✓ Migrations completed successfully"
+    else
+        echo "→ Skipping migrations (directory not found or runner not executable)"
+        echo "  migrations_dir exists: $([ -d "$migrations_dir" ] && echo "yes" || echo "no")"
+        echo "  migration_runner executable: $([ -x "$migration_runner" ] && echo "yes" || echo "no")"
     fi
     return 0
 }
