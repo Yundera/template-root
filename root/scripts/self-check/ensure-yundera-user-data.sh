@@ -15,8 +15,6 @@ SECRET_ENV_FILE="/DATA/AppData/casaos/apps/yundera/.pcs.secret.env"
 USER_ENV_FILE="/DATA/AppData/casaos/apps/yundera/.ynd.user.env"
 PCS_ENV_FILE="/DATA/AppData/casaos/apps/yundera/.pcs.env"
 
-echo "=== Ensuring user data is up to date ==="
-
 # Read Yundera user API URL from PCS env file or use default
 YUNDERA_USER_API=""
 if [ -f "$PCS_ENV_FILE" ]; then
@@ -116,4 +114,3 @@ chmod 600 "$SECRET_ENV_FILE"  # Restrictive permissions for secrets
 chmod 644 "$USER_ENV_FILE"    # Standard permissions for user data
 
 echo "Successfully updated secret and user data files (UID=$RECV_UID, DOMAIN=$RECV_DOMAIN)"
-echo "=== User data sync completed successfully ==="

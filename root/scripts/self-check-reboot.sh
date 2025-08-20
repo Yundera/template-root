@@ -13,17 +13,33 @@ source ${SCRIPT_DIR}/library/common.sh
 
 log "=== Self-check-os starting  ==="
 
-# Make scripts executable first, then sync template to ensure all files are up to date
-execute_script_with_logging $SCRIPT_DIR/self-check/ensure-script-executable.sh
-execute_script_with_logging $SCRIPT_DIR/self-check/ensure-template-sync.sh;
-execute_script_with_logging $SCRIPT_DIR/self-check/ensure-user-data.sh;
-execute_script_with_logging $SCRIPT_DIR/self-check/ensure-self-check-at-reboot.sh;
-execute_script_with_logging $SCRIPT_DIR/self-check/ensure-docker-installed.sh;
-execute_script_with_logging $SCRIPT_DIR/self-check/ensure-user-docker-compose-updated.sh;
-# This ensures the user compose stack is up to date with the latest changes
-execute_script_with_logging $SCRIPT_DIR/self-check/ensure-user-compose-pulled.sh;
+# Read script configuration file and execute scripts in order
+SCRIPTS_CONFIG_FILE="$SCRIPT_DIR/self-check/scripts-config.txt"
 
-#restart the user compose stack to ensure service are in a right state for example casaos only works well after a fresh down and up
-execute_script_with_logging $SCRIPT_DIR/tools/restart-user-compose-stack.sh
+if [ ! -f "$SCRIPTS_CONFIG_FILE" ]; then
+    log "ERROR: Scripts configuration file not found: $SCRIPTS_CONFIG_FILE"
+    exit 1
+fi
+
+log "Reading self-check scripts from: $SCRIPTS_CONFIG_FILE"
+
+# Read configuration file, skip comments and empty lines
+while IFS= read -r script_name || [ -n "$script_name" ]; do
+    # Skip comments (lines starting with #) and empty lines
+    if [[ "$script_name" =~ ^[[:space:]]*# ]] || [[ -z "${script_name// }" ]]; then
+        continue
+    fi
+    
+    # Remove leading/trailing whitespace
+    script_name=$(echo "$script_name" | xargs)
+    
+    if [ -n "$script_name" ]; then
+        execute_script_with_logging "$SCRIPT_DIR/self-check/$script_name" || true
+    fi
+done < "$SCRIPTS_CONFIG_FILE"
+
+# Restart the user compose stack to ensure services are in a right state
+log "Restarting user compose stack"
+execute_script_with_logging "$SCRIPT_DIR/tools/restart-user-compose-stack.sh" || true
 
 log "=== Self-check-os completed successfully ==="
