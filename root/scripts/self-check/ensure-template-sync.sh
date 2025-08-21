@@ -17,7 +17,7 @@ if ! { DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noni
 fi
 
 # Configuration
-DEFAULT_TEMPLATE_URL="https://github.com/Yundera/template-root/archive/refs/heads/main.zip"
+DEFAULT_TEMPLATE_URL="https://github.com/Yundera/template-root/archive/refs/heads/stable.zip"
 ENV_FILE="/DATA/AppData/casaos/apps/yundera/.pcs.env"
 ROOT_DIR="/DATA/AppData/casaos/apps/yundera"
 TEMP_DIR=$(mktemp -d)

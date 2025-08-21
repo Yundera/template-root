@@ -67,7 +67,7 @@ else
     echo "No UPDATE_URL found in environment"
     
     # Set a reasonable default if none exists
-    DEFAULT_UPDATE_URL="https://github.com/Yundera/template-root/archive/refs/heads/main.zip"
+    DEFAULT_UPDATE_URL="https://github.com/Yundera/template-root/archive/refs/heads/stable.zip"
     echo "Setting default UPDATE_URL: $DEFAULT_UPDATE_URL"
     update_env_var "UPDATE_URL" "$DEFAULT_UPDATE_URL" "$PCS_ENV_FILE"
     chmod 644 "$PCS_ENV_FILE"
