@@ -56,24 +56,6 @@ if [ -f "$PCS_ENV_FILE" ] && grep -q "^UPDATE_URL=" "$PCS_ENV_FILE"; then
     fi
 fi
 
-# Migrate UPDATE_URL from environment if it exists
-if [ -n "${UPDATE_URL:-}" ]; then
-    echo "Found UPDATE_URL in environment: $UPDATE_URL"
-    update_env_var "UPDATE_URL" "$UPDATE_URL" "$PCS_ENV_FILE"
-    chmod 644 "$PCS_ENV_FILE"  # Standard permissions for PCS config
-    echo "Successfully migrated UPDATE_URL to $PCS_ENV_FILE"
-else
-    # Check for common default values that might need to be set
-    echo "No UPDATE_URL found in environment"
-    
-    # Set a reasonable default if none exists
-    DEFAULT_UPDATE_URL="https://github.com/Yundera/template-root/archive/refs/heads/stable.zip"
-    echo "Setting default UPDATE_URL: $DEFAULT_UPDATE_URL"
-    update_env_var "UPDATE_URL" "$DEFAULT_UPDATE_URL" "$PCS_ENV_FILE"
-    chmod 644 "$PCS_ENV_FILE"
-    echo "Set default UPDATE_URL in $PCS_ENV_FILE"
-fi
-
 # Mark completion
 echo "Migration completed at: $(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$MARKER_FILE"
 echo "Migration $MIGRATION_NAME completed successfully"
