@@ -34,12 +34,12 @@ while IFS= read -r script_name || [ -n "$script_name" ]; do
     script_name=$(echo "$script_name" | xargs)
     
     if [ -n "$script_name" ]; then
-        execute_script_with_logging "$SCRIPT_DIR/self-check/$script_name" || true
+        execute_script_with_load_monitoring "$SCRIPT_DIR/self-check/$script_name" || true
     fi
 done < "$SCRIPTS_CONFIG_FILE"
 
 # Restart the user compose stack to ensure services are in a right state
 log "Restarting user compose stack"
-execute_script_with_logging "$SCRIPT_DIR/tools/restart-user-compose-stack.sh" || true
+execute_script_with_load_monitoring "$SCRIPT_DIR/tools/restart-user-compose-stack.sh" || true
 
 log "=== Self-check-os completed successfully ==="

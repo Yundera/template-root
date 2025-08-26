@@ -97,6 +97,10 @@ set_log_file() {
     log_info "Log file set to: $LOG_FILE"
 }
 
+# =================================================================
+# SCRIPT EXECUTION FUNCTIONS
+# =================================================================
+
 # Function to execute a script with logging
 # Usage: execute_script_with_logging <script_path>
 execute_script_with_logging() {
@@ -154,3 +158,4 @@ execute_script_with_logging() {
 
     return "$exit_code"
 }
+
