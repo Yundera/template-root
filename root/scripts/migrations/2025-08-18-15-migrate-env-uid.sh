@@ -23,9 +23,8 @@ if [ ! -f "$OLD_ENV_FILE" ]; then
             exit 1
         fi
     else
-        echo "Error: No old .env file and no existing UID found - UID migration cannot proceed"
+        echo "No old .env file and no existing UID found - skipping migration"
         echo "Note: If this is a fresh installation, UID should be configured through the setup process"
-        exit 1
     fi
 else
     echo "Found old .env file, checking for UID"
@@ -69,8 +68,8 @@ else
         
         echo "Successfully migrated UID from .env to .ynd.user.env"
     else
-        echo "Error: No UID value found in old .env file to migrate"
-        exit 1
+        echo "No UID value found in old .env file - skipping migration"
+        echo "Note: If UID is needed, it should be configured through the setup process"
     fi
 fi
 
