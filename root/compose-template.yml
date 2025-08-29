@@ -1,7 +1,7 @@
 name: yundera
 services:
   admin:
-    image: ghcr.io/yundera/settings-center-app:1.1.23
+    image: ghcr.io/yundera/settings-center-app:1.1.24
     container_name: admin
     hostname: admin
     restart: unless-stopped
