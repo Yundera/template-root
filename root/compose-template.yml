@@ -46,6 +46,9 @@ services:
       - type: bind
         source: /DATA
         target: /DATA
+        # Add bind propagation for FUSE mounts
+        bind:
+          propagation: rshared
       - type: bind
         source: /var/run/docker.sock
         target: /var/run/docker.sock
