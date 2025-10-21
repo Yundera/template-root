@@ -51,6 +51,11 @@ services:
       PCS_PUBLIC_IP: "%PUBLIC_IP%"
       PCS_EMAIL: "admin@%DOMAIN%"
 
+      # SMTP Configuration for email sending via Yundera API
+      SMTP_USERNAME: "casaos"
+      SMTP_PASSWORD: "%DEFAULT_PWD%"
+      USER_JWT: "%USER_JWT%"
+
     networks:
       pcs: null
     volumes:
