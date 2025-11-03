@@ -94,7 +94,7 @@ services:
     restart: unless-stopped
     environment:
       USER_JWT: "%USER_JWT%"
-      ORCHESTRATOR_URL: "https://nasselle.com/service/pcs"
+      ORCHESTRATOR_URL: "%YUNDERA_USER_API%"
       SMTP_PORT: "587"
     expose:
       - "587"
