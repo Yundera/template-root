@@ -51,10 +51,9 @@ services:
       PCS_PUBLIC_IP: "%PUBLIC_IP%"
       PCS_EMAIL: "admin@%DOMAIN%"
 
-      # SMTP Configuration for email sending via Yundera API
-      SMTP_USERNAME: "casaos"
-      SMTP_PASSWORD: "%DEFAULT_PWD%"
-      USER_JWT: "%USER_JWT%"
+      # SMTP configuration for magic link and password reset emails
+      SMTP_HOST: "smtp"
+      SMTP_PORT: "587"
 
     networks:
       pcs: null
@@ -87,6 +86,20 @@ services:
     sysctls:
       net.ipv4.conf.all.src_valid_mark: "1"
       net.ipv4.ip_forward: "1"
+
+  smtp:
+    image: ghcr.io/yundera/yundera-smtp-handler:latest
+    container_name: smtp
+    hostname: smtp
+    restart: unless-stopped
+    environment:
+      USER_JWT: "%USER_JWT%"
+      ORCHESTRATOR_URL: "https://nasselle.com/service/pcs"
+      SMTP_PORT: "587"
+    expose:
+      - "587"
+    networks:
+      pcs: null
 
 networks:
   pcs:
