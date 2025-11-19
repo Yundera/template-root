@@ -55,7 +55,8 @@ The environment files support the following configuration options:
 | `UID` | User ID | `.ynd.user.env` | Required |
 | `EMAIL` | User email address | `.ynd.user.env` | Required |
 | `USERNAME` | System username | `.ynd.user.env` | Required |
-| `PUBLIC_IP` | Public IP address | `.ynd.user.env` | Required |
+| `PUBLIC_IPV4` | Public IPv4 address (if available) | `.ynd.user.env` | Optional |
+| `PUBLIC_IPV6` | Public IPv6 address (if available) | `.ynd.user.env` | Optional |
 | `DEFAULT_USER` | Default username | `.pcs.env` | Required |
 | `USER_JWT` | Yundera JWT token | `.pcs.secret.env` | Required |
 | `DEFAULT_PWD` | Default password | `.pcs.secret.env` | Required |

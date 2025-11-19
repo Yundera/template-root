@@ -15,6 +15,7 @@ This folder contains idempotent setup scripts that ensure various system compone
 | `ensure-script-executable.sh` | Makes all scripts executable and sets proper ownership to pcs user |
 | `ensure-self-check-at-reboot.sh` | Configures cron job to run self-check script at system boot |
 | `ensure-ssh.sh` | Installs and configures OpenSSH server |
+| `ensure-public-ip.sh` | Detects and stores public IP addresses (IPv4/IPv6) in environment; currently supports IPv6 via SLAAC on ens19 |
 | `ensure-swap.sh` | Creates and configures 4GB swap file with optimized swappiness settings |
 | `ensure-ubuntu-up-to-date.sh` | Updates package lists and displays available system upgrades |
 | `ensure-user-compose-pulled.sh` | Pulls latest images for user's Docker Compose services |

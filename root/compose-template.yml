@@ -41,14 +41,15 @@ services:
 
       # V1 these envs are not used directly by casaos but are forwarded to the app at creation, injected in the docker compose up
       default_pwd: "%DEFAULT_PWD%"
-      public_ip: "%PUBLIC_IP%"
+      public_ip: "%PUBLIC_IPV4%"
       domain: "%DOMAIN%"
 
       # V2 these envs are not used directly by casaos but are forwarded to the app at creation, injected in the docker compose up
       PCS_DEFAULT_PASSWORD: "%DEFAULT_PWD%"
       PCS_DOMAIN: "%DOMAIN%" # without https://
       PCS_DATA_ROOT: "/DATA"
-      PCS_PUBLIC_IP: "%PUBLIC_IP%"
+      PCS_PUBLIC_IP: "%PUBLIC_IPV4%"
+      PCS_PUBLIC_IPV6: "%PUBLIC_IPV6%"
       PCS_EMAIL: "admin@%DOMAIN%"
 
       # SMTP configuration for magic link and password reset emails
