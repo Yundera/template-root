@@ -15,7 +15,7 @@ fi
 # Define the IPv6 interface name (typically ens19 - the second network device)
 IPV6_INTERFACE="ens19"
 NETPLAN_CONFIG="/etc/netplan/50-cloud-init.yaml"
-ENV_FILE="/DATA/AppData/casaos/apps/yundera/.ynd.user.env"
+ENV_FILE="/DATA/AppData/casaos/apps/yundera/.pcs.env"
 
 # Check if IPv6 interface exists
 if ! ip link show "$IPV6_INTERFACE" >/dev/null 2>&1; then
