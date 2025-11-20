@@ -35,12 +35,7 @@ check_netplan_config() {
     fi
 
     # Check if accept-ra is enabled (required for SLAAC)
-    if ! grep -A 5 "^\s*$IPV6_INTERFACE:" "$NETPLAN_CONFIG" | grep -q "accept-ra:\s*true" 2>/dev/null; then
-        return 1
-    fi
-
-    # Check if MTU is set to 1400
-    if ! grep -A 5 "^\s*$IPV6_INTERFACE:" "$NETPLAN_CONFIG" | grep -q "mtu:\s*1400" 2>/dev/null; then
+    if ! grep -A 3 "^\s*$IPV6_INTERFACE:" "$NETPLAN_CONFIG" | grep -q "accept-ra:\s*true" 2>/dev/null; then
         return 1
     fi
 
@@ -68,7 +63,6 @@ if ! check_netplan_config; then
       dhcp4: false
       dhcp6: false
       accept-ra: true
-      mtu: 1400
 EOF
     then
         echo "✗ Failed to write IPv6 configuration to netplan"
