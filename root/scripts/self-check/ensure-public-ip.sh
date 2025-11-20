@@ -23,61 +23,81 @@ if ! ip link show "$IPV6_INTERFACE" >/dev/null 2>&1; then
     exit 0
 fi
 
-# Function to check if netplan configuration has IPv6 interface
+# Function to check if netplan configuration has IPv6 interface properly configured
 check_netplan_config() {
     if [ ! -f "$NETPLAN_CONFIG" ]; then
         return 1
     fi
 
-    if grep -q "^\s*$IPV6_INTERFACE:" "$NETPLAN_CONFIG" 2>/dev/null; then
-        return 0
-    else
+    # Check if interface is defined
+    if ! grep -q "^\s*$IPV6_INTERFACE:" "$NETPLAN_CONFIG" 2>/dev/null; then
         return 1
     fi
+
+    # Check if accept-ra is enabled (required for SLAAC)
+    if ! grep -A 5 "^\s*$IPV6_INTERFACE:" "$NETPLAN_CONFIG" | grep -q "accept-ra:\s*true" 2>/dev/null; then
+        return 1
+    fi
+
+    # Check if MTU is set to 1400
+    if ! grep -A 5 "^\s*$IPV6_INTERFACE:" "$NETPLAN_CONFIG" | grep -q "mtu:\s*1400" 2>/dev/null; then
+        return 1
+    fi
+
+    return 0
 }
 
 # Configure netplan if IPv6 interface is not configured
 if ! check_netplan_config; then
-    echo "→ Configuring $IPV6_INTERFACE in netplan..."
-
-    # Backup existing netplan config
+    # Backup existing netplan config before modification
     if [ -f "$NETPLAN_CONFIG" ]; then
-        cp "$NETPLAN_CONFIG" "${NETPLAN_CONFIG}.bak.$(date +%Y%m%d-%H%M%S)"
+        if ! cp "$NETPLAN_CONFIG" "${NETPLAN_CONFIG}.bak.$(date +%Y%m%d-%H%M%S)" 2>/dev/null; then
+            echo "✗ Failed to backup netplan configuration at $NETPLAN_CONFIG"
+            echo "  Error: Unable to create backup file. Check permissions."
+            exit 1
+        fi
+    else
+        echo "✗ Netplan configuration file not found: $NETPLAN_CONFIG"
+        echo "  Expected netplan config at $NETPLAN_CONFIG but file does not exist."
+        exit 1
     fi
 
-    # Add IPv6 interface configuration
-    if [ -f "$NETPLAN_CONFIG" ]; then
-        # Check if we need to add the interface
-        if ! grep -q "^\s*$IPV6_INTERFACE:" "$NETPLAN_CONFIG"; then
-            # Add the interface configuration under ethernets section
-            if grep -q "^\s*ethernets:" "$NETPLAN_CONFIG"; then
-                # Insert after the last ethernet interface definition
-                cat >> "$NETPLAN_CONFIG" <<EOF
+    # Add IPv6 interface configuration to netplan
+    if ! cat >> "$NETPLAN_CONFIG" <<EOF
     $IPV6_INTERFACE:
       dhcp4: false
       dhcp6: false
       accept-ra: true
+      mtu: 1400
 EOF
-            fi
-        fi
-    fi
-
-    # Apply netplan configuration
-    if ! netplan apply >/dev/null 2>&1; then
-        echo "✗ Failed to apply netplan configuration. Running with verbose output:"
-        netplan apply
+    then
+        echo "✗ Failed to write IPv6 configuration to netplan"
+        echo "  Error: Unable to append to $NETPLAN_CONFIG"
         exit 1
     fi
 
-    # Wait for interface to come up
+    # Apply netplan configuration with netplan try (safer - auto-reverts on failure)
+    # Use timeout of 30 seconds and auto-confirm after 5 seconds if successful
+    if ! (sleep 5 && echo) | netplan try --timeout=30 >/dev/null 2>&1; then
+        echo "✗ Failed to apply netplan configuration. Running with verbose output for debugging:"
+        netplan apply 2>&1 || true
+        echo "  Note: Configuration may have been reverted automatically by netplan try"
+        exit 1
+    fi
+
+    # Wait for SLAAC to assign address (additional time after netplan try)
     sleep 3
 fi
 
-# Check if interface is UP
+# Ensure interface is UP
 if ! ip link show "$IPV6_INTERFACE" | grep -q "state UP"; then
-    echo "→ Bringing up $IPV6_INTERFACE interface..."
+    # Try to bring up the interface
     if ! ip link set "$IPV6_INTERFACE" up >/dev/null 2>&1; then
-        echo "✗ Failed to bring up $IPV6_INTERFACE interface"
+        echo "✗ Failed to bring up $IPV6_INTERFACE interface. Running diagnostic:"
+        echo "  Interface status:"
+        ip link show "$IPV6_INTERFACE" 2>&1 || echo "  Unable to query interface"
+        echo "  Attempting to bring up with verbose output:"
+        ip link set "$IPV6_INTERFACE" up 2>&1 || true
         exit 1
     fi
     # Wait for SLAAC to assign address
@@ -99,35 +119,47 @@ get_ipv6_from_external() {
     timeout 5 curl -6 -s ident.me 2>/dev/null || echo ""
 }
 
-# Try to get IPv6 address
+# Try to get IPv6 address from interface
 PUBLIC_IPV6=$(get_ipv6_from_interface)
 
-# If interface method failed, try external service
+# If interface method failed, try external service as fallback
 if [ -z "$PUBLIC_IPV6" ]; then
-    echo "→ No IPv6 address found on interface. Trying external detection..."
     PUBLIC_IPV6=$(get_ipv6_from_external)
 fi
 
 # Update environment file with PUBLIC_IPV6
 if [ -n "$PUBLIC_IPV6" ]; then
     # Create directory if it doesn't exist
-    mkdir -p "$(dirname "$ENV_FILE")"
+    if ! mkdir -p "$(dirname "$ENV_FILE")" 2>/dev/null; then
+        echo "✗ Failed to create directory for environment file"
+        echo "  Directory: $(dirname "$ENV_FILE")"
+        exit 1
+    fi
 
     # Create env file if it doesn't exist
     if [ ! -f "$ENV_FILE" ]; then
-        touch "$ENV_FILE"
+        if ! touch "$ENV_FILE" 2>/dev/null; then
+            echo "✗ Failed to create environment file at $ENV_FILE"
+            exit 1
+        fi
     fi
 
     # Update or add PUBLIC_IPV6 variable
     if grep -q "^PUBLIC_IPV6=" "$ENV_FILE" 2>/dev/null; then
         # Update existing entry
-        sed -i "s|^PUBLIC_IPV6=.*|PUBLIC_IPV6=$PUBLIC_IPV6|" "$ENV_FILE"
+        if ! sed -i "s|^PUBLIC_IPV6=.*|PUBLIC_IPV6=$PUBLIC_IPV6|" "$ENV_FILE" 2>/dev/null; then
+            echo "✗ Failed to update PUBLIC_IPV6 in $ENV_FILE"
+            exit 1
+        fi
     else
         # Add new entry
-        echo "PUBLIC_IPV6=$PUBLIC_IPV6" >> "$ENV_FILE"
+        if ! echo "PUBLIC_IPV6=$PUBLIC_IPV6" >> "$ENV_FILE" 2>/dev/null; then
+            echo "✗ Failed to add PUBLIC_IPV6 to $ENV_FILE"
+            exit 1
+        fi
     fi
 
-    echo "✓ IPv6 network configured. Public IPv6: $PUBLIC_IPV6"
+    echo "✓ IPv6 configured: $PUBLIC_IPV6"
 else
-    echo "→ No public IPv6 address available. This is normal if IPv6 is not configured on this cluster."
+    echo "→ No public IPv6 address available"
 fi
