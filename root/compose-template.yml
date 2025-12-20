@@ -89,7 +89,7 @@ services:
       net.ipv4.ip_forward: "1"
 
   smtp:
-    image: ghcr.io/yundera/casaos-smtp-relay:1.0.0
+    image: ghcr.io/yundera/yundera-smtp-handler:1.0.0
     container_name: smtp
     hostname: smtp
     restart: unless-stopped
