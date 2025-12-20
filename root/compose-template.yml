@@ -23,7 +23,7 @@ services:
       pcs: null
 
   casaos:
-    image: ghcr.io/yundera/casa-img:0.4.15-39
+    image: ghcr.io/yundera/casa-img:0.4.15-40
     container_name: casaos
     hostname: casaos
     restart: unless-stopped
