@@ -23,7 +23,7 @@ services:
       pcs: null
 
   casaos:
-    image: ghcr.io/yundera/casa-img:0.4.15-40
+    image: ghcr.io/yundera/casa-img:0.4.15-41
     container_name: casaos
     hostname: casaos
     restart: unless-stopped
@@ -89,7 +89,7 @@ services:
       net.ipv4.ip_forward: "1"
 
   smtp:
-    image: ghcr.io/yundera/yundera-smtp-handler:1.0.0
+    image: ghcr.io/yundera/yundera-smtp-handler:1.0.1
     container_name: smtp
     hostname: smtp
     restart: unless-stopped
