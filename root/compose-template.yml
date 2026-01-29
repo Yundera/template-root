@@ -73,7 +73,9 @@ services:
         target: /dev
 
   mesh-router:
-    image: ghcr.io/yundera/mesh-router:1.0.12
+    # Use temporary verion of mesh router the repo is being refactored and the image name is broken for now - will be fix in new version
+    image: pierreh37/mesh-router:1.0.12
+    # image: ghcr.io/yundera/mesh-router:1.0.12
     container_name: mesh-router
     hostname: mesh-router
     restart: unless-stopped
