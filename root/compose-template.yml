@@ -113,7 +113,7 @@ x-casaos:
   author: Yundera Team
   category: pcs
   hostname: admin-%DOMAIN%
-  icon: https://cdn.statically.io/gh/Yundera/settings-center-app/main/public/YunderaPCS-setting_iconV2.svg
+  icon: https://cdn.jsdelivr.net/gh/Yundera/settings-center-app@main/public/YunderaPCS-setting_iconV2.svg
   index: /
   is_uncontrolled: false
   port_map: ""
