@@ -39,18 +39,27 @@ services:
       REF_PORT: "443"
       REF_SCHEME: "https"
 
-      # V1 these envs are not used directly by casaos but are forwarded to the app at creation, injected in the docker compose up
+      # (deprecated) V1 these envs are not used directly by casaos but are forwarded to the app at creation, injected in the docker compose up
       default_pwd: "%DEFAULT_PWD%"
       public_ip: "%PUBLIC_IPV4%"
       domain: "%DOMAIN%"
 
-      # V2 these envs are not used directly by casaos but are forwarded to the app at creation, injected in the docker compose up
+      # (deprecated) V2 these envs are not used directly by casaos but are forwarded to the app at creation, injected in the docker compose up
       PCS_DEFAULT_PASSWORD: "%DEFAULT_PWD%"
       PCS_DOMAIN: "%DOMAIN%" # without https://
       PCS_DATA_ROOT: "/DATA"
       PCS_PUBLIC_IP: "%PUBLIC_IPV4%"
       PCS_PUBLIC_IPV6: "%PUBLIC_IPV6%"
       PCS_EMAIL: "admin@%DOMAIN%"
+      
+      # V3 these envs are not used directly by casaos but are forwarded to the app at creation, injected in the docker compose up
+      APP_DEFAULT_PASSWORD: "%DEFAULT_PWD%"
+      APP_DOMAIN: "%DOMAIN%" # without https://
+      APP_DATA_ROOT: "/DATA"
+      APP_PUBLIC_IP: "%PUBLIC_IPV4%"
+      APP_PUBLIC_IPV6: "%PUBLIC_IPV6%"
+      APP_EMAIL: "admin@%DOMAIN%"
+      APP_NET: pcs
 
       # SMTP configuration for magic link and password reset emails
       SMTP_HOST: "smtp"
