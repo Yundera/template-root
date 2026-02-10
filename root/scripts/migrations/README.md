@@ -11,6 +11,22 @@ Examples:
 - `2024-02-20-14-migrate-config-format.sh`
 - `2024-03-05-09-fix-permissions.sh`
 
+### Always-Run Migrations
+
+For migrations that need to run on **every** template sync (not just once), use the `.always.sh` suffix:
+
+Format: `YYYY-MM-DD-HH-name.always.sh`
+
+Examples:
+- `2024-03-10-10-ensure-app-env-files.always.sh`
+- `2024-04-15-12-validate-config.always.sh`
+
+Always-run migrations:
+- Execute on every template sync
+- Do not create or check marker files
+- Must handle their own idempotency (check state before making changes)
+- Useful for ensuring state consistency after new apps are installed
+
 ## Execution Order
 
 Migration scripts are executed in **alphabetical order** based on their filenames. This ensures chronological execution when using the proper naming format.
@@ -82,10 +98,18 @@ Migrations are automatically executed by the template sync system:
 
 ## Migration Types
 
-Common migration scenarios:
+### One-Shot Migrations (default)
+Standard migrations that run once and are tracked with marker files:
 - Configuration file format changes
 - Directory structure modifications
 - Permission updates
 - Service configuration updates
 - Database schema changes (if applicable)
 - File cleanup and reorganization
+
+### Always-Run Migrations (.always.sh)
+Migrations that run on every template sync:
+- Ensuring config files exist for newly installed apps
+- Validating and repairing system state
+- Generating derived configuration from environment
+- Cleanup tasks that should run periodically

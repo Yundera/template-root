@@ -40,14 +40,18 @@ while IFS= read -r -d '' migration_file; do
         continue
     fi
     
-    # Check if migration has already been applied using marker file
-    marker_file="/DATA/AppData/casaos/apps/yundera/migration-markers/$(basename "$migration_file" .sh).marker"
-    mkdir -p "$(dirname "$marker_file")"
-    
-    if [ -f "$marker_file" ]; then
-        echo "✓ $migration_name (skipped - already applied)"
-        skipped_count=$((skipped_count + 1))
-        continue
+    # Check if this is an "always run" migration (.always.sh suffix)
+    # These migrations run on every sync without marker tracking
+    if [[ "$migration_file" != *.always.sh ]]; then
+        # Standard marker check for one-shot migrations
+        marker_file="/DATA/AppData/casaos/apps/yundera/migration-markers/$(basename "$migration_file" .sh).marker"
+        mkdir -p "$(dirname "$marker_file")"
+
+        if [ -f "$marker_file" ]; then
+            echo "✓ $migration_name (skipped - already applied)"
+            skipped_count=$((skipped_count + 1))
+            continue
+        fi
     fi
     
     # Execute migration script with output capture
@@ -60,10 +64,12 @@ while IFS= read -r -d '' migration_file; do
         cat "$migration_output" 2>/dev/null || echo "(no output)"
         echo "✓ $migration_name completed"
         
-        # Create marker file to indicate successful completion
-        echo "Migration completed at: $(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$marker_file"
-        echo "Migration: $migration_name" >> "$marker_file"
-        echo "Description: $(head -n 10 "$migration_file" | grep "^# Migration:" | head -1 | cut -d':' -f2- | xargs)" >> "$marker_file"
+        # Create marker file for one-shot migrations only (skip for .always.sh)
+        if [[ "$migration_file" != *.always.sh ]]; then
+            echo "Migration completed at: $(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$marker_file"
+            echo "Migration: $migration_name" >> "$marker_file"
+            echo "Description: $(head -n 10 "$migration_file" | grep "^# Migration:" | head -1 | cut -d':' -f2- | xargs)" >> "$marker_file"
+        fi
         
         rm -f "$migration_output"
         executed_count=$((executed_count + 1))
