@@ -1,0 +1,59 @@
+services:
+  # PCS emulation for testing template-root scripts
+  pcs-test:
+    build: .
+    container_name: template-root-test
+    hostname: pcs-test
+    volumes:
+      # Mount template-root source (read-only)
+      - ../root/:/tmp/template-root/:ro
+
+      # Mount production apps as source (read-only) - will be copied to test location
+      - /d/workspace/tmp-claude/apps/:/tmp/production-apps/:ro
+
+      # Mount env files
+      - ./test-pcs.env:/tmp/.pcs.env:ro
+      - ./test-pcs.secret.env:/tmp/.pcs.secret.env:ro
+      - ./test-ynd.user.env:/tmp/.ynd.user.env:ro
+
+    # Setup template-root and keep container alive for interactive testing
+    command:
+      - bash
+      - -c
+      - |
+        echo '=== Setting up template-root test environment ==='
+
+        # Create apps directory structure
+        mkdir -p /DATA/AppData/casaos/apps/yundera
+
+        # Copy template files to yundera directory
+        cp -r /tmp/template-root/* /DATA/AppData/casaos/apps/yundera/
+
+        # Copy production apps (excluding yundera - that's the template-root itself)
+        for app in /tmp/production-apps/*/; do
+          app_name=$$(basename "$$app")
+          if [ "$$app_name" != "yundera" ]; then
+            echo "Copying app: $$app_name"
+            cp -r "$$app" /DATA/AppData/casaos/apps/
+          fi
+        done
+
+        # Copy env files
+        cp /tmp/.pcs.env /DATA/AppData/casaos/apps/yundera/.pcs.env
+        cp /tmp/.pcs.secret.env /DATA/AppData/casaos/apps/yundera/.pcs.secret.env
+        cp /tmp/.ynd.user.env /DATA/AppData/casaos/apps/yundera/.ynd.user.env
+
+        # Make scripts executable
+        chmod -R +x /DATA/AppData/casaos/apps/yundera/scripts/
+
+        echo '=== Template-root ready for testing ==='
+        echo ''
+        echo 'Apps loaded:'
+        ls -1 /DATA/AppData/casaos/apps/
+        echo ''
+        echo 'Useful commands:'
+        echo '  # Run Caddy labels migration:'
+        echo '  bash /DATA/AppData/casaos/apps/yundera/scripts/migrations/2026-02-11-10-ensure-caddy-labels.always.sh'
+        echo ''
+
+        tail -f /dev/null

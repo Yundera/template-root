@@ -21,6 +21,9 @@ services:
       - "80"
     networks:
       pcs: null
+    labels:
+      caddy: admin-%DOMAIN%
+      caddy.reverse_proxy: "{{upstreams 80}}"
 
   casaos:
     image: ghcr.io/yundera/casa-img:0.4.15-42
@@ -51,7 +54,7 @@ services:
       PCS_PUBLIC_IP: "%PUBLIC_IPV4%"
       PCS_PUBLIC_IPV6: "%PUBLIC_IPV6%"
       PCS_EMAIL: "admin@%DOMAIN%"
-      
+
       # V3 these envs are not used directly by casaos but are forwarded to the app at creation, injected in the docker compose up
       APP_DEFAULT_PASSWORD: "%DEFAULT_PWD%"
       APP_DOMAIN: "%DOMAIN%" # without https://
@@ -67,6 +70,9 @@ services:
 
     networks:
       pcs: null
+    labels:
+      caddy: casaos-%DOMAIN%, %DOMAIN%
+      caddy.reverse_proxy: "{{upstreams 80}}"
     volumes:
       - type: bind
         source: /DATA
