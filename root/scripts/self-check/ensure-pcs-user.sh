@@ -34,9 +34,13 @@ fi
 # Ensure basic folders exist
 mkdir -p /DATA/AppData/casaos/apps/yundera/scripts
 mkdir -p /DATA/AppData/casaos/apps/yundera/log
+mkdir -p /DATA/AppData/yundera/data/certs
+mkdir -p /DATA/AppData/yundera/data/caddy/data
+mkdir -p /DATA/AppData/yundera/data/caddy/config
 
 touch /DATA/AppData/casaos/apps/yundera/log/yundera.log
 
 chown -R pcs:pcs /DATA/AppData/casaos/apps/yundera/
+chown -R pcs:pcs /DATA/AppData/yundera/
 
 echo "✓ User '$USER_NAME' exist and has sudo privileges."
