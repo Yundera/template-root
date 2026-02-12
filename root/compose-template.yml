@@ -125,12 +125,12 @@ services:
       net.ipv4.conf.all.src_valid_mark: "1"
     environment:
       - PROVIDER=%PROVIDER_STR%
-      - ROUTING_TARGET_HOST=caddy
+      - ROUTING_TARGET_HOST=mesh-router-caddy
       - ROUTING_TARGET_PORT=80
     networks:
       pcs: null
     depends_on:
-      - caddy
+      - mesh-router-caddy
 
   # =============================================================================
   # MESH ROUTER AGENT (v2)
@@ -151,13 +151,13 @@ services:
       pcs: null
 
   # =============================================================================
-  # CADDY (v2)
+  # MESH ROUTER CADDY (v2)
   # Reverse proxy with Docker container discovery via labels
   # =============================================================================
-  caddy:
+  mesh-router-caddy:
     image: lucaslorentz/caddy-docker-proxy:2.9.1-alpine
-    container_name: caddy
-    hostname: caddy
+    container_name: mesh-router-caddy
+    hostname: mesh-router-caddy
     restart: unless-stopped
     ports:
       - "10080:80"
