@@ -26,7 +26,7 @@ services:
       caddy.reverse_proxy: "{{upstreams 80}}"
 
   casaos:
-    image: ghcr.io/yundera/casa-img:0.4.15-42
+    image: ghcr.io/yundera/casa-img:0.4.15-41
     container_name: casaos
     hostname: casaos
     restart: unless-stopped
