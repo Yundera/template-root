@@ -12,7 +12,7 @@ if [ ! -f "$COMPOSE_FILE" ]; then
 fi
 
 # Pull images
-if docker compose -f "$COMPOSE_FILE" pull --quiet; then
+if docker compose --project-directory "$COMPOSE_DIR" -f "$COMPOSE_FILE" pull --quiet; then
     echo "User compose stack pulled successfully"
 else
     echo "ERROR: Failed to pull user compose stack"

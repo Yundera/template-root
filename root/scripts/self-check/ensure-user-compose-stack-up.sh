@@ -14,7 +14,7 @@ fi
 
 # Use nohup to ensure the docker compose command survives any signal interruptions
 # Redirect output to log file to capture everything
-nohup docker compose -f "$COMPOSE_FILE" up --quiet-pull -d >> "$LOG_FILE" 2>&1 &
+nohup docker compose --project-directory "$COMPOSE_DIR" -f "$COMPOSE_FILE" up --quiet-pull -d >> "$LOG_FILE" 2>&1 &
 DOCKER_PID=$!
 
 echo "Docker compose started with nohup (PID: $DOCKER_PID)"
