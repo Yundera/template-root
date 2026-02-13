@@ -1,8 +1,9 @@
 #!/bin/bash
 set -e
 
-COMPOSE_FILE="/DATA/AppData/casaos/apps/yundera/docker-compose.yml"
-LOG_FILE="/DATA/AppData/casaos/apps/yundera/log/yundera.log"
+COMPOSE_DIR="/DATA/AppData/casaos/apps/yundera"
+COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
+LOG_FILE="$COMPOSE_DIR/log/yundera.log"
 
 touch "$LOG_FILE"  # Ensure the log file exists
 

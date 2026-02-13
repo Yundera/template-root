@@ -1,8 +1,8 @@
 #!/bin/bash
+set -e
 
-set -e  # Exit on any error
-
-COMPOSE_FILE="/DATA/AppData/casaos/apps/yundera/docker-compose.yml"
+COMPOSE_DIR="/DATA/AppData/casaos/apps/yundera"
+COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
 
 sync
 

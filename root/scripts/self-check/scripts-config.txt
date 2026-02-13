@@ -33,6 +33,6 @@ ensure-self-check-at-reboot.sh
 
 # Docker and application setup
 ensure-docker-installed.sh
-ensure-user-docker-compose-updated.sh
+ensure-env-vars-valid.sh
 ensure-user-compose-pulled.sh
 ensure-user-compose-stack-up.sh

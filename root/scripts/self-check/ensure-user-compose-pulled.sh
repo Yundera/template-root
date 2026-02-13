@@ -1,8 +1,9 @@
 #!/bin/bash
-# Script to ensure Docker Compose services are running
-set -e  # Exit on any error
+# Script to ensure Docker Compose images are pulled
+set -e
 
-COMPOSE_FILE="/DATA/AppData/casaos/apps/yundera/docker-compose.yml"
+COMPOSE_DIR="/DATA/AppData/casaos/apps/yundera"
+COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
 
 # Check if compose file exists
 if [ ! -f "$COMPOSE_FILE" ]; then
@@ -10,7 +11,7 @@ if [ ! -f "$COMPOSE_FILE" ]; then
     exit 1
 fi
 
-# Start containers
+# Pull images
 if docker compose -f "$COMPOSE_FILE" pull --quiet; then
     echo "User compose stack pulled successfully"
 else
