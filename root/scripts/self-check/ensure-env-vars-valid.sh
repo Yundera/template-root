@@ -67,10 +67,19 @@ fi
     echo "#"
     echo "# To modify environment variables, edit the source files above."
     echo ""
+    echo "# ============================================"
+    echo "# From .pcs.env (system configuration)"
+    echo "# ============================================"
     cat "$PCS_ENV_FILE" 2>/dev/null || true
     echo ""
+    echo "# ============================================"
+    echo "# From .pcs.secret.env (secrets)"
+    echo "# ============================================"
     cat "$SECRET_ENV_FILE" 2>/dev/null || true
     echo ""
+    echo "# ============================================"
+    echo "# From .ynd.user.env (user data)"
+    echo "# ============================================"
     cat "$USER_ENV_FILE" 2>/dev/null || true
 } > "$OUTPUT_ENV_FILE"
 
