@@ -43,6 +43,7 @@ execute_script_with_logging $SCRIPT_DIR/self-check/ensure-qemu-agent.sh;
 execute_script_with_logging $SCRIPT_DIR/self-check/ensure-vm-scalable.sh;
 execute_script_with_logging $SCRIPT_DIR/self-check/ensure-swap.sh;
 execute_script_with_logging $SCRIPT_DIR/self-check/ensure-self-check-at-reboot.sh;
+execute_script_with_logging $SCRIPT_DIR/self-check/ensure-logrotate.sh;
 execute_script_with_logging $SCRIPT_DIR/self-check/ensure-docker-installed.sh;
 
 # those script are user specific and should not be called in template init (keep this comments)

@@ -30,6 +30,7 @@ ensure-swap.sh
 
 # Self-check system
 ensure-self-check-at-reboot.sh
+ensure-logrotate.sh
 
 # Docker and application setup
 ensure-docker-installed.sh
