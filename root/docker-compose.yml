@@ -137,7 +137,7 @@ services:
   # Registers public IP with backend for direct routing (bypasses VPN)
   # =============================================================================
   mesh-router-agent:
-    image: ghcr.io/yundera/mesh-router-agent:1.0.1
+    image: ghcr.io/yundera/mesh-router-agent:1.0.2
     container_name: mesh-router-agent
     hostname: mesh-router-agent
     restart: unless-stopped
