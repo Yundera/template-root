@@ -1,12 +1,8 @@
 # =============================================================================
 # CADDY CONFIGURATION - PCS Template
 # =============================================================================
-# Certificate strategy:
-#   - Port 443: Uses shared certificate from mesh-router-agent (/certs/)
-#   - Port 80: HTTP for tunnel traffic + ACME challenges
-#
 # Container routing is handled via Docker labels (caddy-docker-proxy)
-# This file defines global config and default routes for tunnel traffic
+# This file defines global config and reusable snippets only
 # =============================================================================
 
 {
@@ -24,65 +20,18 @@
 }
 
 # =============================================================================
-# Port 80 - HTTP (Tunnel traffic + ACME challenges)
+# Snippet: tls_enabled
 # =============================================================================
-# Handles:
-#   - ACME HTTP-01 challenges for Let's Encrypt (automatic)
-#   - Internal tunnel traffic from mesh-router-tunnel
+# Use this snippet via Docker label: caddy.import: tls_enabled
+# Provides:
+#   - TLS with shared certificate from mesh-router-agent
+#   - WebSocket support headers
+#   - Timeout configuration
+#   - Large file upload support (20GB)
 # =============================================================================
-:80 {
-    reverse_proxy casaos:80 {
-        header_up Host {host}
-        header_up X-Real-IP {remote_host}
-
-        # WebSocket support
-        header_up Connection {header.Connection}
-        header_up Upgrade {header.Upgrade}
-
-        # Timeouts
-        transport http {
-            dial_timeout 60s
-            response_header_timeout 300s
-        }
-    }
-
-    # Large file upload support (20GB)
-    request_body {
-        max_size 20GB
-    }
-}
-
-# =============================================================================
-# Port 443 - HTTPS with Agent Certificate
-# =============================================================================
-# Uses shared certificate from mesh-router-agent
-# Browser will show warning (CN mismatch) but connection is encrypted
-# =============================================================================
-:443 {
-    # Use agent's shared certificate
+(tls_enabled) {
     tls /certs/cert.pem /certs/key.pem
 
-    log {
-        output stdout
-        format console
-    }
-
-    reverse_proxy casaos:80 {
-        header_up Host {host}
-        header_up X-Real-IP {remote_host}
-
-        # WebSocket support
-        header_up Connection {header.Connection}
-        header_up Upgrade {header.Upgrade}
-
-        # Timeouts
-        transport http {
-            dial_timeout 60s
-            response_header_timeout 300s
-        }
-    }
-
-    # Large file upload support (20GB)
     request_body {
         max_size 20GB
     }
