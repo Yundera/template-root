@@ -11,12 +11,8 @@
         format console
     }
 
-    # ACME configuration for Let's Encrypt (used when domains specify it via labels)
-    acme_ca https://acme-v02.api.letsencrypt.org/directory
-    email {$PCS_EMAIL:admin@example.com}
-
-    # Uncomment for testing (avoids rate limits):
-    # acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+    # Disable automatic certificate management (using agent certs instead)
+    auto_https disable_certs
 }
 
 # =============================================================================
@@ -25,8 +21,6 @@
 # Use this snippet via Docker label: caddy.import: tls_enabled
 # Provides:
 #   - TLS with shared certificate from mesh-router-agent
-#   - WebSocket support headers
-#   - Timeout configuration
 #   - Large file upload support (20GB)
 # =============================================================================
 (tls_enabled) {
@@ -35,4 +29,10 @@
     request_body {
         max_size 20GB
     }
+}
+
+# Fallback for direct IP/port access (not matched by label-based routes)
+:443 {
+    tls /certs/cert.pem /certs/key.pem
+    respond "No route matched" 502
 }
