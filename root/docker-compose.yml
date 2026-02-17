@@ -73,7 +73,7 @@ services:
     networks:
       pcs: null
     labels:
-      caddy: casaos-${DOMAIN}, ${DOMAIN}
+      caddy: 8080-casaos-${DOMAIN}, casaos-${DOMAIN}, ${DOMAIN}
       caddy.reverse_proxy: "{{upstreams 8080}}"
       caddy.import: tls_enabled
     volumes:
