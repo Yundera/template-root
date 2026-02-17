@@ -53,9 +53,7 @@ execute_script_with_logging $SCRIPT_DIR/self-check/ensure-docker-installed.sh;
 apt-get upgrade -y
 
 # pre-pull necessary Docker images for faster vm creation for clients
-docker pull ghcr.io/yundera/settings-center-app
-docker pull ghcr.io/yundera/casa-img
-docker pull ghcr.io/yundera/mesh-router
+docker compose -f ${SCRIPT_DIR}/../docker-compose.yml pull
 
 execute_script_with_logging $SCRIPT_DIR/tools/ssh-regen-service-setup.sh;
 execute_script_with_logging $SCRIPT_DIR/tools/template-cleanup-before-use.sh;
