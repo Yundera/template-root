@@ -116,7 +116,7 @@ services:
   # Establishes WireGuard VPN tunnel to the provider for NAT traversal
   # =============================================================================
   mesh-router-tunnel:
-    image: ghcr.io/yundera/mesh-router-tunnel:1.2.2
+    image: ghcr.io/yundera/mesh-router-tunnel:1.2.3
     container_name: mesh-router-tunnel
     hostname: mesh-router-tunnel
     restart: unless-stopped
