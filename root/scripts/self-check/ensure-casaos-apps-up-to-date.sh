@@ -76,6 +76,7 @@ for app_dir in "$APPS_DIR"/*/; do
 
     # Run docker compose up -d with remixed environment variables
     # Variables are exported inline to avoid temp files
+    AppID="$app_name" \
     PUID=1000 \
     PGID=1000 \
     TZ="$TZ" \
