@@ -9,6 +9,21 @@ SECRET_ENV_FILE="$COMPOSE_DIR/.pcs.secret.env"
 USER_ENV_FILE="$COMPOSE_DIR/.ynd.user.env"
 OUTPUT_ENV_FILE="$COMPOSE_DIR/.env"
 
+# Sanitize env file: squeeze consecutive blank lines and ensure trailing newline
+# This cleans up any accumulated empty lines from previous script versions
+sanitize_env_file() {
+    local file="$1"
+    if [ -f "$file" ]; then
+        cat -s "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+        sed -i -e '$a\' "$file" 2>/dev/null || true
+    fi
+}
+
+# Sanitize all env files before processing
+sanitize_env_file "$PCS_ENV_FILE"
+sanitize_env_file "$SECRET_ENV_FILE"
+sanitize_env_file "$USER_ENV_FILE"
+
 # Define required environment variables
 REQUIRED_VARS=("DOMAIN" "PROVIDER_STR" "UID")
 

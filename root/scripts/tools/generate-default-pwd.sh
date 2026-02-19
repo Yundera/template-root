@@ -25,11 +25,7 @@ fi
 # Using openssl for cryptographically secure random generation
 GENERATED_PWD=$(openssl rand -base64 18 | tr -d "=+/" | cut -c1-24)
 
-# Check if DEFAULT_PWD line exists but is empty
-if grep -q "^DEFAULT_PWD=" "$SECRET_ENV_FILE"; then
-    # Replace empty DEFAULT_PWD line
-    sed -i "s/^DEFAULT_PWD=$/DEFAULT_PWD=$GENERATED_PWD/" "$SECRET_ENV_FILE"
-else
-    # Add DEFAULT_PWD line
-    echo "DEFAULT_PWD=$GENERATED_PWD" >> "$SECRET_ENV_FILE"
-fi
+# Add or update DEFAULT_PWD
+# This one-liner safely handles env files that may be missing a trailing newline:
+# 1. Deletes any existing DEFAULT_PWD= line, 2. Ensures file ends with newline, 3. Appends new value
+sed -i -e "/^DEFAULT_PWD=/d" -e '$a\' "$SECRET_ENV_FILE" && echo "DEFAULT_PWD=$GENERATED_PWD" >> "$SECRET_ENV_FILE"

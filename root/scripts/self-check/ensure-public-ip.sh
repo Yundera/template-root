@@ -139,18 +139,13 @@ if [ -n "$PUBLIC_IPV6" ]; then
     fi
 
     # Update or add PUBLIC_IPV6 variable
-    if grep -q "^PUBLIC_IPV6=" "$ENV_FILE" 2>/dev/null; then
-        # Update existing entry
-        if ! sed -i "s|^PUBLIC_IPV6=.*|PUBLIC_IPV6=$PUBLIC_IPV6|" "$ENV_FILE" 2>/dev/null; then
-            echo "✗ Failed to update PUBLIC_IPV6 in $ENV_FILE"
-            exit 1
-        fi
-    else
-        # Add new entry
-        if ! echo "PUBLIC_IPV6=$PUBLIC_IPV6" >> "$ENV_FILE" 2>/dev/null; then
-            echo "✗ Failed to add PUBLIC_IPV6 to $ENV_FILE"
-            exit 1
-        fi
+    # This one-liner safely handles env files that may be missing a trailing newline:
+    # 1. Deletes any existing PUBLIC_IPV6= line
+    # 2. Ensures file ends with a newline (prevents concatenation with previous line)
+    # 3. Appends the new value
+    if ! (sed -i -e "/^PUBLIC_IPV6=/d" -e '$a\' "$ENV_FILE" && echo "PUBLIC_IPV6=$PUBLIC_IPV6" >> "$ENV_FILE") 2>/dev/null; then
+        echo "✗ Failed to update PUBLIC_IPV6 in $ENV_FILE"
+        exit 1
     fi
 
     echo "✓ IPv6 configured: $PUBLIC_IPV6"

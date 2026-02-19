@@ -25,22 +25,17 @@ update_env_var() {
     local var_name="$1"
     local var_value="$2"
     local env_file="$3"
-    
+
     # Create env file if it doesn't exist
     if [ ! -f "$env_file" ]; then
         touch "$env_file"
         echo "# PCS environment configuration" > "$env_file"
     fi
-    
-    if grep -q "^${var_name}=" "$env_file"; then
-        # Update existing variable
-        sed -i "s|^${var_name}=.*|${var_name}=${var_value}|" "$env_file"
-        echo "Updated ${var_name} in $env_file"
-    else
-        # Add new variable
-        echo "${var_name}=${var_value}" >> "$env_file"
-        echo "Added ${var_name} to $env_file"
-    fi
+
+    # This one-liner safely handles env files that may be missing a trailing newline:
+    # 1. Deletes any existing var_name= line, 2. Ensures file ends with newline, 3. Appends new value
+    sed -i -e "/^${var_name}=/d" -e '$a\' "$env_file" && echo "${var_name}=${var_value}" >> "$env_file"
+    echo "Updated ${var_name} in $env_file"
 }
 
 echo "=== Migrating UPDATE_URL to .pcs.env ==="

@@ -84,18 +84,14 @@ RECV_USER_JWT=$(extract_json_value "$HTTP_BODY" "userJWT")
 
 
 # Function to update or add environment variable
+# This safely handles env files that may be missing a trailing newline:
+# 1. Deletes any existing var_name= line, 2. Ensures file ends with newline, 3. Appends new value
 update_env_var() {
     local var_name="$1"
     local var_value="$2"
     local env_file="$3"
-    
-    if grep -q "^${var_name}=" "$env_file"; then
-        # Update existing variable
-        sed -i "s|^${var_name}=.*|${var_name}=${var_value}|" "$env_file"
-    else
-        # Add new variable
-        echo "${var_name}=${var_value}" >> "$env_file"
-    fi
+
+    sed -i -e "/^${var_name}=/d" -e '$a\' "$env_file" && echo "${var_name}=${var_value}" >> "$env_file"
 }
 
 # Update secret environment variables (sensitive data)

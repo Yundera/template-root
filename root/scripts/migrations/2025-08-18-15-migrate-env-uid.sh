@@ -57,9 +57,10 @@ else
                 echo "Updated UID in $USER_ENV_FILE"
             fi
         else
-            # Add UID to user env file (ensure newline before appending)
-            echo "" >> "$USER_ENV_FILE"
-            echo "UID=$OLD_UID" >> "$USER_ENV_FILE"
+            # Add UID to user env file
+            # This one-liner safely handles env files that may be missing a trailing newline:
+            # 1. Deletes any existing UID= line, 2. Ensures file ends with newline, 3. Appends new value
+            sed -i -e "/^UID=/d" -e '$a\' "$USER_ENV_FILE" && echo "UID=$OLD_UID" >> "$USER_ENV_FILE"
             echo "Added UID to $USER_ENV_FILE"
         fi
         

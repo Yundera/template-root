@@ -44,9 +44,10 @@ else
                 echo "Updated DEFAULT_PWD in $SECRET_ENV_FILE"
             fi
         else
-            # Add DEFAULT_PWD to secret env file (ensure newline before appending)
-            echo "" >> "$SECRET_ENV_FILE"
-            echo "DEFAULT_PWD=$OLD_DEFAULT_PWD" >> "$SECRET_ENV_FILE"
+            # Add DEFAULT_PWD to secret env file
+            # This one-liner safely handles env files that may be missing a trailing newline:
+            # 1. Deletes any existing DEFAULT_PWD= line, 2. Ensures file ends with newline, 3. Appends new value
+            sed -i -e "/^DEFAULT_PWD=/d" -e '$a\' "$SECRET_ENV_FILE" && echo "DEFAULT_PWD=$OLD_DEFAULT_PWD" >> "$SECRET_ENV_FILE"
             echo "Added DEFAULT_PWD to $SECRET_ENV_FILE"
         fi
         
