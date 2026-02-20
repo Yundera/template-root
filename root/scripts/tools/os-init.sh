@@ -15,6 +15,11 @@ execute_script_with_load_monitoring  $SCRIPT_DIR/self-check/ensure-pcs-user.sh
 execute_script_with_load_monitoring  $SCRIPT_DIR/self-check/ensure-script-executable.sh
 execute_script_with_load_monitoring "$SCRIPT_DIR/tools/generate-default-pwd.sh"
 
+# Remove provisioning-in-progress marker so self-check-reboot.sh can run
+# This also allows @reboot cron to run on subsequent boots
+rm -f /DATA/AppData/yundera/.provisioning-in-progress
+log "Removed provisioning-in-progress marker"
+
 # First run the full self-check process
 chmod +x $SCRIPT_DIR/self-check-reboot.sh
 execute_script_with_load_monitoring "$SCRIPT_DIR/self-check-reboot.sh"

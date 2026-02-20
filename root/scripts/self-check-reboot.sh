@@ -8,6 +8,24 @@
 
 set -e
 
+MARKER_FILE="/DATA/AppData/yundera/.provisioning-in-progress"
+LOCK_FILE="/var/run/yundera-self-check.lock"
+
+# During initial provisioning, os-init.sh handles everything
+# Only run from @reboot cron after provisioning is complete
+if [ -f "$MARKER_FILE" ]; then
+    echo "Provisioning in progress, skipping self-check (os-init.sh will handle it)"
+    exit 0
+fi
+
+# Prevent concurrent execution using flock
+# Lock auto-releases when process exits (cleanly or via crash/kill)
+exec 200>"$LOCK_FILE"
+if ! flock -n 200; then
+    echo "Another self-check instance is running, exiting"
+    exit 0
+fi
+
 SCRIPT_DIR="/DATA/AppData/casaos/apps/yundera/scripts"
 source ${SCRIPT_DIR}/library/common.sh
 

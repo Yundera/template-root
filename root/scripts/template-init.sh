@@ -60,4 +60,12 @@ docker compose -f ${SCRIPT_DIR}/../docker-compose.yml pull
 execute_script_with_logging $SCRIPT_DIR/tools/ssh-regen-service-setup.sh;
 execute_script_with_logging $SCRIPT_DIR/tools/template-cleanup-before-use.sh;
 
+# Create provisioning-in-progress marker to prevent @reboot cron from running
+# during initial VM provisioning. os-init.sh will remove this marker when done.
+# Placed in /DATA/AppData/yundera (runtime folder) to avoid template sync issues.
+mkdir -p /DATA/AppData/yundera
+chown pcs:pcs /DATA/AppData/yundera
+touch /DATA/AppData/yundera/.provisioning-in-progress
+log "Created provisioning-in-progress marker"
+
 log "=== Template-init completed successfully ==="
