@@ -16,6 +16,7 @@ execute_script_with_load_monitoring  $SCRIPT_DIR/self-check/ensure-script-execut
 execute_script_with_load_monitoring "$SCRIPT_DIR/tools/generate-default-pwd.sh"
 
 # First run the full self-check process
+chmod +x $SCRIPT_DIR/self-check-reboot.sh
 execute_script_with_load_monitoring "$SCRIPT_DIR/self-check-reboot.sh"
 
 # Then run os-init specific scripts only once in the VM lifecycle
