@@ -5,11 +5,15 @@ set -e
 # Ensure PCS User Script
 # This script ensures the 'pcs' user exists and has sudo privileges
 
+YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+
 USER_NAME="pcs"
 
 if ! dpkg-query -W sudo >/dev/null 2>&1; then
+    [ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
     if ! DEBIAN_FRONTEND=noninteractive apt-get install -qq -y sudo >/dev/null 2>&1; then
         echo "✗ Failed to install sudo. Running with verbose output for debugging:"
+        [ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
         apt-get install -y sudo
         exit 1
     fi

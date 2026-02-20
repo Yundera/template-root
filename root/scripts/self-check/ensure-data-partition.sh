@@ -10,6 +10,8 @@ set -e
 
 export DEBIAN_FRONTEND=noninteractive
 
+YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+
 # Check if running as root
 if [ "$(id -u)" -ne 0 ]; then
     echo "This script must be run as root" >&2
@@ -29,8 +31,10 @@ fi
 # Install rsync only if not already present
 if ! command -v rsync &> /dev/null; then
     echo "→ Installing rsync..."
+    [ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
     if ! { DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -qq -y rsync; } >/dev/null 2>&1; then
         echo "✗ Failed to install rsync. Running with verbose output for debugging:"
+        [ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
         apt-get update && apt-get install -y rsync
         exit 1
     fi

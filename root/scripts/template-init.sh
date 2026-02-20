@@ -11,7 +11,8 @@
 
 set -e
 
-SCRIPT_DIR="/DATA/AppData/casaos/apps/yundera/scripts"
+YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+SCRIPT_DIR="$YND_ROOT/scripts"
 source ${SCRIPT_DIR}/library/common.sh
 
 mkdir -p /DATA/AppData/casaos/apps/yundera/
@@ -50,6 +51,7 @@ execute_script_with_logging $SCRIPT_DIR/self-check/ensure-docker-installed.sh;
 #$SCRIPT_DIR/self-check/ensure-user-docker-dev-updated.sh;
 #$SCRIPT_DIR/self-check/ensure-user-dev-stack-up.sh
 
+[ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
 apt-get upgrade -y
 
 # pre-pull necessary Docker images for faster vm creation for clients

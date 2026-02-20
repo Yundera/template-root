@@ -8,10 +8,14 @@ set -e
 # Check for root privileges
 [ "$EUID" -eq 0 ] || { echo "✗ This script must be run as root"; exit 1; }
 
+YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+
 # Install required tools
 echo "→ Installing required tools..."
+[ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
 if ! { DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -qq -y wget curl apt-utils unzip rsync; } >/dev/null 2>&1; then
     echo "✗ Failed to install required tools. Running with verbose output for debugging:"
+    [ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
     apt-get update && apt-get install -y wget unzip rsync
     exit 1
 fi

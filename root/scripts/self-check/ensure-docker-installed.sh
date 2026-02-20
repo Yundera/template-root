@@ -7,6 +7,7 @@ set -e  # Exit on any error
 export DEBIAN_FRONTEND=noninteractive
 
 USER=pcs
+YND_ROOT="/DATA/AppData/casaos/apps/yundera"
 
 # Function to check if Docker is installed and working
 check_docker() {
@@ -40,11 +41,13 @@ install_docker() {
     echo "→ Installing Docker..."
 
     # Update package index
+    [ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
     apt-get -qq update >/dev/null
 
     # Install prerequisites
     if ! DEBIAN_FRONTEND=noninteractive apt-get install -qq -y ca-certificates curl >/dev/null 2>&1; then
         echo "✗ Failed to install prerequisites. Running with verbose output for debugging:"
+        [ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
         apt-get install -y ca-certificates curl
         exit 1
     fi
@@ -63,11 +66,13 @@ install_docker() {
       tee /etc/apt/sources.list.d/docker.list > /dev/null
 
     # Update package index again
+    [ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
     apt-get -qq update >/dev/null
 
     # Install Docker packages
     if ! DEBIAN_FRONTEND=noninteractive apt-get install -qq -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin >/dev/null 2>&1; then
         echo "✗ Docker package installation failed. Running with verbose output for debugging:"
+        [ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
         apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
         exit 1
     fi

@@ -9,12 +9,14 @@ if [ -f /.dockerenv ]; then
     exit 0
 fi
 
+YND_ROOT="/DATA/AppData/casaos/apps/yundera"
 LOGROTATE_CONFIG="/etc/logrotate.d/yundera"
 LOG_FILE="/DATA/AppData/casaos/apps/yundera/log/yundera.log"
 
 # Ensure logrotate is installed
 if ! command -v logrotate &> /dev/null; then
     echo "→ Installing logrotate..."
+    [ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
     apt-get update -qq
     apt-get install -qq -y logrotate
 fi

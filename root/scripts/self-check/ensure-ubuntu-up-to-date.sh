@@ -6,7 +6,10 @@ export DEBIAN_FRONTEND=noninteractive
 
 # Script to ensure Ubuntu is up to date
 
-# DockerUpdate package list
+YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+
+# Update package list
+[ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
 apt-get update -qq
 
 # Show available upgrades (optional)

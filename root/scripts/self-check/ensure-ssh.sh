@@ -6,6 +6,8 @@ export DEBIAN_FRONTEND=noninteractive
 
 # Install and configure OpenSSH server
 
+YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+
 if [ -f /.dockerenv ]; then
     echo "→ Inside Docker - dev environment detected. Skipping setup."
     exit 0
@@ -13,8 +15,10 @@ fi
 
 # Install openssh-server only if not already installed
 if ! dpkg-query -W openssh-server >/dev/null 2>&1; then
+    [ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
     if ! DEBIAN_FRONTEND=noninteractive apt-get install -qq -y openssh-server >/dev/null 2>&1; then
         echo "✗ Failed to install openssh-server. Running with verbose output for debugging:"
+        [ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
         apt-get install -y openssh-server
         exit 1
     fi
