@@ -6,9 +6,6 @@ SCRIPT_DIR="/DATA/AppData/casaos/apps/yundera/scripts"
 # Source the common logging utilities
 source ${SCRIPT_DIR}/library/log.sh
 
-# Source the load monitoring utilities
-source ${SCRIPT_DIR}/library/load-monitoring.sh
-
 # Function to check if running as root
 check_root() {
     if [ "$(id -u)" -ne 0 ]; then
