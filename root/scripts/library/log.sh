@@ -106,6 +106,8 @@ set_log_file() {
 execute_script_with_logging() {
     local script_path="$1"
     local script_name=$(basename "$script_path")
+    local start_time=$(date +%s)
+    local start_datetime=$(date '+%Y-%m-%d %H:%M:%S')
 
     cd "$(dirname "$script_path")" || {
         log_error "Failed to change directory to $(dirname "$script_path")"
@@ -129,7 +131,7 @@ execute_script_with_logging() {
     fi
 
     # Log start
-    log_info "=== $script_name : Starting  ==="
+    log_info "=== [$start_datetime] $script_name : starting ==="
 
     # Execute script with real-time output and logging
     # Use stdbuf to disable buffering for real-time output
@@ -149,11 +151,16 @@ execute_script_with_logging() {
     # Capture the exit code from the script (not the while loop)
     local exit_code=${PIPESTATUS[0]}
 
+    # Calculate execution time
+    local end_time=$(date +%s)
+    local duration=$((end_time - start_time))
+    local end_datetime=$(date '+%Y-%m-%d %H:%M:%S')
+
     # Log result
     if [ "$exit_code" -eq 0 ]; then
-        log_success "=== $script_name : success ==="
+        log_success "=== [$end_datetime] $script_name : success (${duration}s) ==="
     else
-        log_error "=== $script_name : failed (exit code: $exit_code) ==="
+        log_error "=== [$end_datetime] $script_name : failed (exit code: $exit_code, ${duration}s) ==="
     fi
 
     return "$exit_code"
