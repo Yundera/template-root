@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -eo pipefail
 
 COMPOSE_DIR="/DATA/AppData/casaos/apps/yundera"
 COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
@@ -12,23 +12,24 @@ if [ ! -f "$COMPOSE_FILE" ]; then
     exit 1
 fi
 
-# Use nohup to ensure the docker compose command survives any signal interruptions
-# Redirect output to log file to capture everything
-nohup docker compose --project-directory "$COMPOSE_DIR" -f "$COMPOSE_FILE" up --quiet-pull -d >> "$LOG_FILE" 2>&1 &
-DOCKER_PID=$!
+# Wait for Docker to be fully ready after previous operations (pull, etc.)
+# This prevents race conditions with containerd/overlay filesystem
+echo "Waiting for Docker to stabilize..."
+for i in {1..10}; do
+    if docker info > /dev/null 2>&1 && docker network ls > /dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+sync  # Flush filesystem buffers
 
-echo "Docker compose started with nohup (PID: $DOCKER_PID)"
-
-# Check the exit code
-if wait $DOCKER_PID 2>/dev/null; then
-    EXIT_CODE=0
-else
-    EXIT_CODE=$?
-fi
-
-if [ $EXIT_CODE -eq 0 ]; then
+# Run docker compose and capture output to both console and log file
+if docker compose --project-directory "$COMPOSE_DIR" -f "$COMPOSE_FILE" up --quiet-pull -d 2>&1 | tee -a "$LOG_FILE"; then
     echo "User compose stack is up successfully"
 else
-    echo "ERROR: Failed to start docker containers (exit code: $EXIT_CODE)"
-    exit $EXIT_CODE
+    echo "ERROR: Failed to start docker containers"
+    echo "--- Docker compose output (last 20 lines) ---"
+    tail -20 "$LOG_FILE" 2>/dev/null || true
+    echo "--- End of docker compose output ---"
+    exit 1
 fi
