@@ -161,7 +161,7 @@ services:
       - mesh-router-agent
 
   smtp:
-    image: ghcr.io/yundera/yundera-smtp-handler:1.0.1
+    image: ghcr.io/yundera/yundera-smtp-handler:1.0.2
     container_name: smtp
     hostname: smtp
     restart: unless-stopped
