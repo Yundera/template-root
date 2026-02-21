@@ -11,9 +11,10 @@
 
 set -euo pipefail
 
-SECRET_ENV_FILE="/DATA/AppData/casaos/apps/yundera/.pcs.secret.env"
-USER_ENV_FILE="/DATA/AppData/casaos/apps/yundera/.ynd.user.env"
-PCS_ENV_FILE="/DATA/AppData/casaos/apps/yundera/.pcs.env"
+YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+SECRET_ENV_FILE="$YND_ROOT/.pcs.secret.env"
+USER_ENV_FILE="$YND_ROOT/.ynd.user.env"
+PCS_ENV_FILE="$YND_ROOT/.pcs.env"
 
 # Read Yundera user API URL from PCS env file or use default
 YUNDERA_USER_API=""
@@ -82,28 +83,16 @@ RECV_DOMAIN=$(extract_json_value "$HTTP_BODY" "domain")
 RECV_PROVIDER_STR=$(extract_json_value "$HTTP_BODY" "domainSignature")
 RECV_USER_JWT=$(extract_json_value "$HTTP_BODY" "userJWT")
 
-
-# Function to update or add environment variable
-# This safely handles env files that may be missing a trailing newline:
-# 1. Deletes any existing var_name= line, 2. Ensures file ends with newline, 3. Appends new value
-update_env_var() {
-    local var_name="$1"
-    local var_value="$2"
-    local env_file="$3"
-
-    sed -i -e "/^${var_name}=/d" -e '$a\' "$env_file" && echo "${var_name}=${var_value}" >> "$env_file"
-}
-
 # Update secret environment variables (sensitive data)
-update_env_var "PROVIDER_STR" "$RECV_PROVIDER_STR" "$SECRET_ENV_FILE"
-update_env_var "USER_JWT" "$RECV_USER_JWT" "$SECRET_ENV_FILE"
+$YND_ROOT/scripts/tools/env-file-manager.sh set PROVIDER_STR "$RECV_PROVIDER_STR" "$SECRET_ENV_FILE"
+$YND_ROOT/scripts/tools/env-file-manager.sh set USER_JWT "$RECV_USER_JWT" "$SECRET_ENV_FILE"
 
 # Update user environment variables (less sensitive data)
-update_env_var "UID" "$RECV_UID" "$USER_ENV_FILE"
-update_env_var "DOMAIN" "$RECV_DOMAIN" "$USER_ENV_FILE"
+$YND_ROOT/scripts/tools/env-file-manager.sh set UID "$RECV_UID" "$USER_ENV_FILE"
+$YND_ROOT/scripts/tools/env-file-manager.sh set DOMAIN "$RECV_DOMAIN" "$USER_ENV_FILE"
 
 # Update email from API response (from Firebase Auth)
-update_env_var "EMAIL" "$RECV_EMAIL" "$USER_ENV_FILE"
+$YND_ROOT/scripts/tools/env-file-manager.sh set EMAIL "$RECV_EMAIL" "$USER_ENV_FILE"
 
 # Ensure proper permissions
 chmod 600 "$SECRET_ENV_FILE"  # Restrictive permissions for secrets

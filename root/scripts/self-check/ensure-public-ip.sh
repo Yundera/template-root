@@ -15,7 +15,8 @@ fi
 # Define the IPv6 interface name (typically ens19 - the second network device)
 IPV6_INTERFACE="ens19"
 NETPLAN_CONFIG="/etc/netplan/50-cloud-init.yaml"
-ENV_FILE="/DATA/AppData/casaos/apps/yundera/.pcs.env"
+YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+ENV_FILE="$YND_ROOT/.pcs.env"
 
 # Check if IPv6 interface exists
 if ! ip link show "$IPV6_INTERFACE" >/dev/null 2>&1; then
@@ -138,12 +139,8 @@ if [ -n "$PUBLIC_IPV6" ]; then
         fi
     fi
 
-    # Update or add PUBLIC_IPV6 variable
-    # This one-liner safely handles env files that may be missing a trailing newline:
-    # 1. Deletes any existing PUBLIC_IPV6= line
-    # 2. Ensures file ends with a newline (prevents concatenation with previous line)
-    # 3. Appends the new value
-    if ! (sed -i -e "/^PUBLIC_IPV6=/d" -e '$a\' "$ENV_FILE" && echo "PUBLIC_IPV6=$PUBLIC_IPV6" >> "$ENV_FILE") 2>/dev/null; then
+    # Update or add PUBLIC_IPV6 variable using unified env file manager
+    if ! "$YND_ROOT/scripts/tools/env-file-manager.sh" set PUBLIC_IPV6 "$PUBLIC_IPV6" "$ENV_FILE"; then
         echo "✗ Failed to update PUBLIC_IPV6 in $ENV_FILE"
         exit 1
     fi

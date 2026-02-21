@@ -7,7 +7,8 @@
 
 set -euo pipefail
 
-SECRET_ENV_FILE="/DATA/AppData/casaos/apps/yundera/.pcs.secret.env"
+YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+SECRET_ENV_FILE="$YND_ROOT/.pcs.secret.env"
 
 # Check if secret env file exists, create it if not
 if [ ! -f "$SECRET_ENV_FILE" ]; then
@@ -25,7 +26,5 @@ fi
 # Using openssl for cryptographically secure random generation
 GENERATED_PWD=$(openssl rand -base64 18 | tr -d "=+/" | cut -c1-24)
 
-# Add or update DEFAULT_PWD
-# This one-liner safely handles env files that may be missing a trailing newline:
-# 1. Deletes any existing DEFAULT_PWD= line, 2. Ensures file ends with newline, 3. Appends new value
-sed -i -e "/^DEFAULT_PWD=/d" -e '$a\' "$SECRET_ENV_FILE" && echo "DEFAULT_PWD=$GENERATED_PWD" >> "$SECRET_ENV_FILE"
+# Add or update DEFAULT_PWD using unified env file manager
+"$YND_ROOT/scripts/tools/env-file-manager.sh" set DEFAULT_PWD "$GENERATED_PWD" "$SECRET_ENV_FILE"

@@ -6,7 +6,8 @@ set -e
 # with remixed environment variables matching CasaOS injection pattern
 
 APPS_DIR="/DATA/AppData/casaos/apps"
-YUNDERA_ENV="/DATA/AppData/casaos/apps/yundera/.env"
+YND_ROOT="$APPS_DIR/yundera"
+YUNDERA_ENV="$YND_ROOT/.env"
 
 # Skip if apps directory doesn't exist
 if [ ! -d "$APPS_DIR" ]; then
@@ -20,21 +21,11 @@ if [ ! -f "$YUNDERA_ENV" ]; then
     exit 0
 fi
 
-# Read a variable from the yundera .env file
-read_env_var() {
-    local var_name="$1"
-    local value=""
-    if [ -f "$YUNDERA_ENV" ]; then
-        value=$(grep "^${var_name}=" "$YUNDERA_ENV" 2>/dev/null | cut -d'=' -f2- | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//" || true)
-    fi
-    echo "$value"
-}
-
-# Read source variables
-DEFAULT_PWD=$(read_env_var "DEFAULT_PWD")
-DOMAIN=$(read_env_var "DOMAIN")
-PUBLIC_IPV4=$(read_env_var "PUBLIC_IPV4")
-PUBLIC_IPV6=$(read_env_var "PUBLIC_IPV6")
+# Read source variables using unified env file manager
+DEFAULT_PWD=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get DEFAULT_PWD "$YUNDERA_ENV")
+DOMAIN=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get DOMAIN "$YUNDERA_ENV")
+PUBLIC_IPV4=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get PUBLIC_IPV4 "$YUNDERA_ENV")
+PUBLIC_IPV6=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get PUBLIC_IPV6 "$YUNDERA_ENV")
 
 # Detect timezone
 if [ -f /etc/timezone ]; then
