@@ -22,8 +22,7 @@ fi
 
 # Configuration
 DEFAULT_TEMPLATE_URL="https://github.com/Yundera/template-root/archive/refs/heads/stable.zip"
-ENV_FILE="/DATA/AppData/casaos/apps/yundera/.pcs.env"
-ROOT_DIR="/DATA/AppData/casaos/apps/yundera"
+ENV_FILE="$YND_ROOT/.pcs.env"
 TEMP_DIR=$(mktemp -d)
 BACKUP_DIR="/tmp/root-backup-$(date +%s)"
 
@@ -80,7 +79,7 @@ run_migrations() {
 }
 
 # Get template URL from .env or use default
-UPDATE_URL=$(grep "^UPDATE_URL=" "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"' | tr -d ' \t\r\n')
+UPDATE_URL=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get UPDATE_URL "$ENV_FILE")
 [ -z "$UPDATE_URL" ] && UPDATE_URL="$DEFAULT_TEMPLATE_URL"
 
 echo "→ Using update URL: $UPDATE_URL"
@@ -90,7 +89,7 @@ if [ "$UPDATE_URL" = "local" ]; then
     echo "→ Local mode: running migrations..."
     
     # Run migrations from local template
-    if ! run_migrations "$ROOT_DIR"; then
+    if ! run_migrations "$YND_ROOT"; then
         exit 1
     fi
     
@@ -133,7 +132,7 @@ if ! run_migrations "$TEMPLATE_ROOT"; then
 fi
 
 # Create backup if root directory exists
-[ -d "$ROOT_DIR" ] && cp -r "$ROOT_DIR" "$BACKUP_DIR"
+[ -d "$YND_ROOT" ] && cp -r "$YND_ROOT" "$BACKUP_DIR"
 
 # Build rsync command with proper exclusions
 RSYNC_OPTS=("-a" "--delete")
@@ -151,14 +150,14 @@ RSYNC_OPTS+=("--exclude-from=$TEMPLATE_ROOT/.ignore")
 
 # Sync template to root directory
 echo "→ Syncing files..."
-mkdir -p "$ROOT_DIR"
+mkdir -p "$YND_ROOT"
 
 # Force filesystem sync and wait for stability
 sync
 sleep 2
 sync
 
-if rsync "${RSYNC_OPTS[@]}" "$TEMPLATE_ROOT/" "$ROOT_DIR/" >/dev/null; then
+if rsync "${RSYNC_OPTS[@]}" "$TEMPLATE_ROOT/" "$YND_ROOT/" >/dev/null; then
     # Force filesystem sync and wait for stability
     sync
     sleep 2
@@ -168,14 +167,14 @@ else
     rsync_exit_code=$?
     echo "✗ Template sync failed with exit code $rsync_exit_code"
     echo "Debug info: Running rsync with verbose output for debugging:"
-    rsync -av --delete --exclude-from="$TEMPLATE_ROOT/.ignore" "$TEMPLATE_ROOT/" "$ROOT_DIR/" || true
+    rsync -av --delete --exclude-from="$TEMPLATE_ROOT/.ignore" "$TEMPLATE_ROOT/" "$YND_ROOT/" || true
     echo "Restoring backup..."
-    [ -d "$BACKUP_DIR" ] && { rm -rf "$ROOT_DIR"; mv "$BACKUP_DIR" "$ROOT_DIR"; }
+    [ -d "$BACKUP_DIR" ] && { rm -rf "$YND_ROOT"; mv "$BACKUP_DIR" "$YND_ROOT"; }
     exit $rsync_exit_code
 fi
 
 # Set proper ownership and permissions
-chown -R pcs:pcs "$ROOT_DIR"
-find "$ROOT_DIR/scripts" -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
+chown -R pcs:pcs "$YND_ROOT"
+find "$YND_ROOT/scripts" -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
 
 echo "✓ Template sync completed successfully"

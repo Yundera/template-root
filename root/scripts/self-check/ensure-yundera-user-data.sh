@@ -17,10 +17,7 @@ USER_ENV_FILE="$YND_ROOT/.ynd.user.env"
 PCS_ENV_FILE="$YND_ROOT/.pcs.env"
 
 # Read Yundera user API URL from PCS env file or use default
-YUNDERA_USER_API=""
-if [ -f "$PCS_ENV_FILE" ]; then
-    YUNDERA_USER_API=$(grep "^YUNDERA_USER_API=" "$PCS_ENV_FILE" | cut -d'=' -f2- || echo "")
-fi
+YUNDERA_USER_API=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get YUNDERA_USER_API "$PCS_ENV_FILE")
 
 # Use default URL if YUNDERA_USER_API is not configured or empty
 if [ -z "$YUNDERA_USER_API" ]; then
@@ -44,7 +41,7 @@ if [ ! -f "$SECRET_ENV_FILE" ]; then
 fi
 
 # Read USER_JWT from secret env file
-USER_JWT=$(grep "^USER_JWT=" "$SECRET_ENV_FILE" | cut -d'=' -f2- || echo "")
+USER_JWT=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get USER_JWT "$SECRET_ENV_FILE")
 
 if [ -z "$USER_JWT" ]; then
     echo "ERROR: USER_JWT not found in $SECRET_ENV_FILE. Cannot fetch user data."
