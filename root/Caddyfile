@@ -18,48 +18,6 @@
     # HTTP-01 challenge requires port 80 to be accessible
 }
 
-# =============================================================================
-# Snippet: tls_enabled
-# =============================================================================
-# Use this snippet via Docker label: caddy.import: tls_enabled
-# Provides:
-#   - TLS with Let's Encrypt automatic certificates
-#   - Large file upload support (20GB)
-# =============================================================================
-(tls_enabled) {
-    tls {
-        # Use Let's Encrypt for automatic certificate management
-    }
-
-    request_body {
-        max_size 20GB
-    }
-}
-
-# =============================================================================
-# Snippet: tls_nip
-# =============================================================================
-# Use this snippet for nip.io domains
-# nip.io is a wildcard DNS service that maps <anything>.<IP>.nip.io to <IP>
-# Let's Encrypt works with nip.io via HTTP-01 challenge
-# =============================================================================
-(tls_nip) {
-    tls {
-        # Use Let's Encrypt for automatic certificate management
-    }
-
-    request_body {
-        max_size 20GB
-    }
-}
-
-# Fallback for direct IP/port access (not matched by label-based routes)
-:443 {
-    tls internal
-    respond "No route matched" 502
-}
-
-# HTTP to HTTPS redirect for all unmatched hosts
-:80 {
-    redir https://{host}{uri} permanent
-}
+# No :80 block needed - caddy-docker-proxy handles HTTP→HTTPS redirects
+# via container labels, and Caddy's internal ACME handler responds to
+# /.well-known/acme-challenge/* requests automatically

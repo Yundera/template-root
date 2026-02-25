@@ -24,7 +24,6 @@ services:
     labels:
       caddy: admin-${DOMAIN}
       caddy.reverse_proxy: "{{upstreams 80}}"
-      caddy.import: tls_enabled
 
   casaos:
     image: ghcr.io/yundera/casa-img:0.4.15-42
@@ -75,7 +74,6 @@ services:
     labels:
       caddy: 8080-casaos-${DOMAIN}, casaos-${DOMAIN}, ${DOMAIN}
       caddy.reverse_proxy: "{{upstreams 8080}}"
-      caddy.import: tls_enabled
     volumes:
       - type: bind
         source: /DATA
@@ -159,6 +157,37 @@ services:
       pcs: null
     depends_on:
       - mesh-router-agent
+
+  # =============================================================================
+  # WHOAMI - TLS Testing Service (all routes via caddy labels)
+  # =============================================================================
+  # Test endpoints:
+  #   - https://<IP> → agent's custom cert (fallback :443)
+  #   - https://whoami-<domain> → Let's Encrypt cert
+  #   - https://whoami-<IP-dashed>.nip.io → Let's Encrypt cert via nip.io
+  # Requires PUBLIC_IPV4_DASH in .env (e.g., 192-168-1-1 for 192.168.1.1)
+  # =============================================================================
+  whoami:
+    image: traefik/whoami:latest
+    container_name: whoami
+    hostname: whoami
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      pcs: null
+    labels:
+      # Direct IP with agent's custom cert (fallback)
+      caddy_0: ":443"
+      caddy_0.tls: /certs/cert.pem /certs/key.pem
+      caddy_0.reverse_proxy: "{{upstreams 80}}"
+      # Standard domain with Let's Encrypt
+      caddy_1: whoami-${DOMAIN}
+      caddy_1.reverse_proxy: "{{upstreams 80}}"
+      # nip.io domain with Let's Encrypt (HTTP-01 challenge)
+      # Uses dash notation: whoami-192-168-1-1.nip.io (set PUBLIC_IPV4_DASH in .env)
+      caddy_2: whoami-${PUBLIC_IPV4_DASH}.nip.io
+      caddy_2.reverse_proxy: "{{upstreams 80}}"
 
   smtp:
     image: ghcr.io/yundera/yundera-smtp-handler:1.0.2
