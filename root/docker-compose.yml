@@ -109,7 +109,7 @@ services:
     environment:
       - PROVIDER=${PROVIDER_STR}
       - ROUTING_TARGET_HOST=mesh-router-caddy
-      - ROUTING_TARGET_PORT=80
+      - ROUTING_TARGET_PORT=443
     networks:
       pcs: null
     depends_on:
@@ -127,7 +127,7 @@ services:
     environment:
       - PROVIDER=${PROVIDER_STR}
       - PUBLIC_IP=${PUBLIC_IPV6}
-      - TARGET_PORT=10443
+      - TARGET_PORT=443
     volumes:
       - /DATA/AppData/yundera/data/certs:/app/data
     networks:
@@ -143,8 +143,8 @@ services:
     hostname: mesh-router-caddy
     restart: unless-stopped
     ports:
-      - "10080:80"
-      - "10443:443"
+      - "80:80"
+      - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /DATA/AppData/casaos/apps/yundera/Caddyfile:/etc/caddy/Caddyfile:ro

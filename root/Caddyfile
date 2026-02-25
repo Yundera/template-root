@@ -11,8 +11,11 @@
         format console
     }
 
-    # Disable automatic certificate management (using agent certs instead)
-    auto_https disable_certs
+    # Let's Encrypt email for certificate registration
+    email {$PCS_EMAIL}
+
+    # Enable automatic HTTPS with Let's Encrypt
+    # HTTP-01 challenge requires port 80 to be accessible
 }
 
 # =============================================================================
@@ -20,11 +23,30 @@
 # =============================================================================
 # Use this snippet via Docker label: caddy.import: tls_enabled
 # Provides:
-#   - TLS with shared certificate from mesh-router-agent
+#   - TLS with Let's Encrypt automatic certificates
 #   - Large file upload support (20GB)
 # =============================================================================
 (tls_enabled) {
-    tls /certs/cert.pem /certs/key.pem
+    tls {
+        # Use Let's Encrypt for automatic certificate management
+    }
+
+    request_body {
+        max_size 20GB
+    }
+}
+
+# =============================================================================
+# Snippet: tls_nip
+# =============================================================================
+# Use this snippet for nip.io domains
+# nip.io is a wildcard DNS service that maps <anything>.<IP>.nip.io to <IP>
+# Let's Encrypt works with nip.io via HTTP-01 challenge
+# =============================================================================
+(tls_nip) {
+    tls {
+        # Use Let's Encrypt for automatic certificate management
+    }
 
     request_body {
         max_size 20GB
@@ -33,6 +55,11 @@
 
 # Fallback for direct IP/port access (not matched by label-based routes)
 :443 {
-    tls /certs/cert.pem /certs/key.pem
+    tls internal
     respond "No route matched" 502
+}
+
+# HTTP to HTTPS redirect for all unmatched hosts
+:80 {
+    redir https://{host}{uri} permanent
 }
