@@ -22,8 +22,12 @@ services:
     networks:
       pcs: null
     labels:
-      caddy: admin-${DOMAIN}
-      caddy.reverse_proxy: "{{upstreams 80}}"
+      # Standard domain with Let's Encrypt
+      caddy_0: admin-${DOMAIN}
+      caddy_0.reverse_proxy: "{{upstreams 80}}"
+      # nip.io variant for CF Worker direct connection
+      caddy_1: admin-${PUBLIC_IP_DASH}.nip.io
+      caddy_1.reverse_proxy: "{{upstreams 80}}"
 
   casaos:
     image: ghcr.io/yundera/casa-img:0.4.15-42
@@ -72,8 +76,12 @@ services:
     networks:
       pcs: null
     labels:
-      caddy: 8080-casaos-${DOMAIN}, casaos-${DOMAIN}, ${DOMAIN}
-      caddy.reverse_proxy: "{{upstreams 8080}}"
+      # Standard domains with Let's Encrypt
+      caddy_0: 8080-casaos-${DOMAIN}, casaos-${DOMAIN}, ${DOMAIN}
+      caddy_0.reverse_proxy: "{{upstreams 8080}}"
+      # nip.io variants for CF Worker direct connection
+      caddy_1: 8080-casaos-${PUBLIC_IP_DASH}.nip.io, casaos-${PUBLIC_IP_DASH}.nip.io, ${PUBLIC_IP_DASH}.nip.io
+      caddy_1.reverse_proxy: "{{upstreams 8080}}"
     volumes:
       - type: bind
         source: /DATA
@@ -159,8 +167,6 @@ services:
       - CADDY_DOCKER_CADDYFILE_PATH=/etc/caddy/Caddyfile
       - CADDY_INGRESS_NETWORKS=pcs
       - PCS_EMAIL=admin@${DOMAIN}
-      # nip.io catch-all for CF Worker direct connection
-      - PUBLIC_IP_DASH=${PUBLIC_IP_DASH}
     networks:
       pcs: null
     depends_on:

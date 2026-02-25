@@ -21,17 +21,6 @@
 # No :80 block needed - caddy-docker-proxy handles HTTP→HTTPS redirects
 # via container labels, and Caddy's internal ACME handler responds to
 # /.well-known/acme-challenge/* requests automatically
-
-# =============================================================================
-# NIP.IO CATCH-ALL - CF Worker Direct Connection
-# =============================================================================
-# Enables Cloudflare Workers to connect directly to PCS via nip.io hostname.
-# CF Worker connects to https://{IP_DASH}.nip.io with original Host header.
-# This block terminates TLS (Let's Encrypt), then proxies internally where
-# caddy-docker-proxy routes to the correct container based on Host header.
 #
-# Flow: CF Worker → nip.io:443 (TLS) → localhost:80 → container (by Host)
-# =============================================================================
-{$PUBLIC_IP_DASH}.nip.io {
-    reverse_proxy 127.0.0.1:80
-}
+# nip.io routing for CF Worker direct connections is handled via container labels
+# (e.g., caddy_1: admin-${PUBLIC_IP_DASH}.nip.io) in docker-compose.yml
