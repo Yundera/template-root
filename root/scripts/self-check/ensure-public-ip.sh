@@ -5,7 +5,10 @@ set -e
 export DEBIAN_FRONTEND=noninteractive
 
 # Ensure public IP addresses (IPv4 and IPv6) are detected and stored in environment
-# Currently implements IPv6 detection - IPv4 detection will be added in future updates
+# Sets: PUBLIC_IP, PUBLIC_IP_DASH (main IP, prefers IPv6)
+#       PUBLIC_IPV4, PUBLIC_IPV4_DASH (if available)
+#       PUBLIC_IPV6, PUBLIC_IPV6_DASH (if available)
+# Dash versions use - instead of . or : for nip.io compatibility
 
 if [ -f /.dockerenv ]; then
     echo "→ Inside Docker - dev environment detected. Skipping setup."
@@ -145,7 +148,74 @@ if [ -n "$PUBLIC_IPV6" ]; then
         exit 1
     fi
 
-    echo "✓ IPv6 configured: $PUBLIC_IPV6"
+    # Generate dash version for nip.io (replace : with -)
+    PUBLIC_IPV6_DASH=$(echo "$PUBLIC_IPV6" | tr ':' '-')
+    if ! "$YND_ROOT/scripts/tools/env-file-manager.sh" set PUBLIC_IPV6_DASH "$PUBLIC_IPV6_DASH" "$ENV_FILE"; then
+        echo "✗ Failed to update PUBLIC_IPV6_DASH in $ENV_FILE"
+        exit 1
+    fi
+
+    echo "✓ IPv6 configured: $PUBLIC_IPV6 (dash: $PUBLIC_IPV6_DASH)"
 else
     echo "→ No public IPv6 address available"
+fi
+
+# =============================================================================
+# PUBLIC IPv4 DETECTION
+# =============================================================================
+
+# Get public IPv4 address via external service
+get_ipv4_from_external() {
+    timeout 5 curl -4 -s ident.me 2>/dev/null || echo ""
+}
+
+PUBLIC_IPV4=$(get_ipv4_from_external)
+
+if [ -n "$PUBLIC_IPV4" ]; then
+    # Update or add PUBLIC_IPV4 variable
+    if ! "$YND_ROOT/scripts/tools/env-file-manager.sh" set PUBLIC_IPV4 "$PUBLIC_IPV4" "$ENV_FILE"; then
+        echo "✗ Failed to update PUBLIC_IPV4 in $ENV_FILE"
+        exit 1
+    fi
+
+    # Generate dash version for nip.io (replace . with -)
+    PUBLIC_IPV4_DASH=$(echo "$PUBLIC_IPV4" | tr '.' '-')
+    if ! "$YND_ROOT/scripts/tools/env-file-manager.sh" set PUBLIC_IPV4_DASH "$PUBLIC_IPV4_DASH" "$ENV_FILE"; then
+        echo "✗ Failed to update PUBLIC_IPV4_DASH in $ENV_FILE"
+        exit 1
+    fi
+
+    echo "✓ IPv4 configured: $PUBLIC_IPV4 (dash: $PUBLIC_IPV4_DASH)"
+else
+    echo "→ No public IPv4 address available"
+fi
+
+# =============================================================================
+# PUBLIC_IP - Main public IP (uses whichever is available, prefers IPv6)
+# =============================================================================
+
+# Use IPv6 if available, otherwise fall back to IPv4
+if [ -n "$PUBLIC_IPV6" ]; then
+    PUBLIC_IP="$PUBLIC_IPV6"
+    PUBLIC_IP_DASH="$PUBLIC_IPV6_DASH"
+elif [ -n "$PUBLIC_IPV4" ]; then
+    PUBLIC_IP="$PUBLIC_IPV4"
+    PUBLIC_IP_DASH="$PUBLIC_IPV4_DASH"
+fi
+
+if [ -n "$PUBLIC_IP" ]; then
+    if ! "$YND_ROOT/scripts/tools/env-file-manager.sh" set PUBLIC_IP "$PUBLIC_IP" "$ENV_FILE"; then
+        echo "✗ Failed to update PUBLIC_IP in $ENV_FILE"
+        exit 1
+    fi
+
+    if ! "$YND_ROOT/scripts/tools/env-file-manager.sh" set PUBLIC_IP_DASH "$PUBLIC_IP_DASH" "$ENV_FILE"; then
+        echo "✗ Failed to update PUBLIC_IP_DASH in $ENV_FILE"
+        exit 1
+    fi
+
+    echo "✓ PUBLIC_IP set to: $PUBLIC_IP (dash: $PUBLIC_IP_DASH)"
+else
+    echo "✗ No public IP address available (neither IPv4 nor IPv6)"
+    exit 1
 fi
