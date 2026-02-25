@@ -159,6 +159,8 @@ services:
       - CADDY_DOCKER_CADDYFILE_PATH=/etc/caddy/Caddyfile
       - CADDY_INGRESS_NETWORKS=pcs
       - PCS_EMAIL=admin@${DOMAIN}
+      # nip.io catch-all for CF Worker direct connection
+      - PUBLIC_IP_DASH=${PUBLIC_IP_DASH}
     networks:
       pcs: null
     depends_on:
