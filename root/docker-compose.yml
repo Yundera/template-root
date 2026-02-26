@@ -22,10 +22,11 @@ services:
     networks:
       pcs: null
     labels:
-      # Standard domain with Let's Encrypt
+      # Standard domain with custom CA (gateway-routed)
       caddy_0: admin-${DOMAIN}
+      caddy_0.import: gateway_tls
       caddy_0.reverse_proxy: "{{upstreams 80}}"
-      # nip.io variant for CF Worker direct connection
+      # nip.io variant for direct access (Let's Encrypt)
       caddy_1: admin-${PUBLIC_IP_DASH}.nip.io
       caddy_1.reverse_proxy: "{{upstreams 80}}"
 
@@ -76,10 +77,11 @@ services:
     networks:
       pcs: null
     labels:
-      # Standard domains with Let's Encrypt
+      # Standard domains with custom CA (gateway-routed)
       caddy_0: 8080-casaos-${DOMAIN}, casaos-${DOMAIN}, ${DOMAIN}
+      caddy_0.import: gateway_tls
       caddy_0.reverse_proxy: "{{upstreams 8080}}"
-      # nip.io variants for CF Worker direct connection
+      # nip.io variants for direct access (Let's Encrypt)
       caddy_1: 8080-casaos-${PUBLIC_IP_DASH}.nip.io, casaos-${PUBLIC_IP_DASH}.nip.io, ${PUBLIC_IP_DASH}.nip.io
       caddy_1.reverse_proxy: "{{upstreams 8080}}"
     volumes:
@@ -190,14 +192,15 @@ services:
     networks:
       pcs: null
     labels:
-      # Direct IP access with agent's custom cert
+      # Direct IP access with custom CA
       caddy_0: "https://${PUBLIC_IP}"
-      caddy_0.tls: /certs/cert.pem /certs/key.pem
+      caddy_0.import: gateway_tls
       caddy_0.reverse_proxy: "{{upstreams 80}}"
-      # Standard domain with Let's Encrypt
+      # Standard domain with custom CA (gateway-routed)
       caddy_1: whoami-${DOMAIN}
+      caddy_1.import: gateway_tls
       caddy_1.reverse_proxy: "{{upstreams 80}}"
-      # nip.io domain with Let's Encrypt (HTTP-01 challenge)
+      # nip.io domain for direct access (Let's Encrypt)
       caddy_2: whoami-${PUBLIC_IP_DASH}.nip.io
       caddy_2.reverse_proxy: "{{upstreams 80}}"
 

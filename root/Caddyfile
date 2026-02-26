@@ -11,11 +11,14 @@
         format console
     }
 
-    # Let's Encrypt email for certificate registration
+    # Let's Encrypt email for certificate registration (used for nip.io domains)
     email {$PCS_EMAIL}
+}
 
-    # Enable automatic HTTPS with Let's Encrypt
-    # HTTP-01 challenge requires port 80 to be accessible
+# Custom CA TLS for gateway-routed domains
+# Gateway trusts this CA, so no LE needed for these routes
+(gateway_tls) {
+    tls /certs/cert.pem /certs/key.pem
 }
 
 # No :80 block needed - caddy-docker-proxy handles HTTP→HTTPS redirects
