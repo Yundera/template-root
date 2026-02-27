@@ -45,6 +45,24 @@ read_env_file "$PCS_ENV_FILE"
 read_env_file "$SECRET_ENV_FILE"
 read_env_file "$USER_ENV_FILE"
 
+# Set default values for optional variables if not already set
+ENV_MANAGER="$YND_ROOT/scripts/tools/env-file-manager.sh"
+
+# DEFAULT_SERVICE_HOST: container name for root domain routing (default: casaos)
+if ! "$ENV_MANAGER" exists DEFAULT_SERVICE_HOST "$PCS_ENV_FILE"; then
+    "$ENV_MANAGER" set DEFAULT_SERVICE_HOST "casaos" "$PCS_ENV_FILE"
+    echo "Set default DEFAULT_SERVICE_HOST=casaos"
+fi
+
+# DEFAULT_SERVICE_PORT: port for root domain routing (default: 8080)
+if ! "$ENV_MANAGER" exists DEFAULT_SERVICE_PORT "$PCS_ENV_FILE"; then
+    "$ENV_MANAGER" set DEFAULT_SERVICE_PORT "8080" "$PCS_ENV_FILE"
+    echo "Set default DEFAULT_SERVICE_PORT=8080"
+fi
+
+# Re-read PCS env file to include any newly set defaults
+read_env_file "$PCS_ENV_FILE"
+
 # Check if all required variables are set and not empty
 missing_vars=()
 for var in "${REQUIRED_VARS[@]}"; do

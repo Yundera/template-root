@@ -26,9 +26,13 @@ services:
       caddy_0: admin-${DOMAIN}
       caddy_0.import: gateway_tls
       caddy_0.reverse_proxy: "{{upstreams 80}}"
-      # nip.io variant for direct access (Let's Encrypt)
+      # nip.io variant for direct access (custom CA)
       caddy_1: admin-${PUBLIC_IP_DASH}.nip.io
+      caddy_1.import: gateway_tls
       caddy_1.reverse_proxy: "{{upstreams 80}}"
+      # sslip.io variant for direct access (Let's Encrypt)
+      caddy_2: admin-${PUBLIC_IP_DASH}.sslip.io
+      caddy_2.reverse_proxy: "{{upstreams 80}}"
 
   casaos:
     image: ghcr.io/yundera/casa-img:0.4.15-42
@@ -78,12 +82,18 @@ services:
       pcs: null
     labels:
       # Standard domains with custom CA (gateway-routed)
-      caddy_0: 8080-casaos-${DOMAIN}, casaos-${DOMAIN}, ${DOMAIN}
+      caddy_0: 8080-casaos-${DOMAIN}, casaos-${DOMAIN}
       caddy_0.import: gateway_tls
       caddy_0.reverse_proxy: "{{upstreams 8080}}"
-      # nip.io variants for direct access (Let's Encrypt)
-      caddy_1: 8080-casaos-${PUBLIC_IP_DASH}.nip.io, casaos-${PUBLIC_IP_DASH}.nip.io, ${PUBLIC_IP_DASH}.nip.io
+      # nip.io variants for direct access (custom CA)
+      caddy_1: 8080-casaos-${PUBLIC_IP_DASH}.nip.io, casaos-${PUBLIC_IP_DASH}.nip.io
+      caddy_1.import: gateway_tls
       caddy_1.reverse_proxy: "{{upstreams 8080}}"
+      # sslip.io variants for direct access (Let's Encrypt)
+      caddy_2: 8080-casaos-${PUBLIC_IP_DASH}.sslip.io, casaos-${PUBLIC_IP_DASH}.sslip.io
+      caddy_2.reverse_proxy: "{{upstreams 8080}}"
+      # NOTE: Root domains (${DOMAIN}, ${PUBLIC_IP_DASH}.nip.io, ${PUBLIC_IP_DASH}.sslip.io)
+      # are handled in Caddyfile with configurable DEFAULT_SERVICE_HOST/PORT
     volumes:
       - type: bind
         source: /DATA
@@ -169,6 +179,11 @@ services:
       - CADDY_DOCKER_CADDYFILE_PATH=/etc/caddy/Caddyfile
       - CADDY_INGRESS_NETWORKS=pcs
       - PCS_EMAIL=admin@${DOMAIN}
+      # Root domain routing configuration
+      - DOMAIN=${DOMAIN}
+      - PUBLIC_IP_DASH=${PUBLIC_IP_DASH}
+      - DEFAULT_SERVICE_HOST=${DEFAULT_SERVICE_HOST}
+      - DEFAULT_SERVICE_PORT=${DEFAULT_SERVICE_PORT}
     networks:
       pcs: null
     depends_on:
@@ -204,9 +219,13 @@ services:
       caddy_0: perf-${DOMAIN}
       caddy_0.import: gateway_tls
       caddy_0.reverse_proxy: "{{upstreams 3000}}"
-      # nip.io domain for direct access (Let's Encrypt)
+      # nip.io domain for direct access (custom CA)
       caddy_1: perf-${PUBLIC_IP_DASH}.nip.io
+      caddy_1.import: gateway_tls
       caddy_1.reverse_proxy: "{{upstreams 3000}}"
+      # sslip.io domain for direct access (Let's Encrypt)
+      caddy_2: perf-${PUBLIC_IP_DASH}.sslip.io
+      caddy_2.reverse_proxy: "{{upstreams 3000}}"
 
   # =============================================================================
   # WHOAMI - TLS Testing Service (all routes via caddy labels)
@@ -234,9 +253,13 @@ services:
       caddy_1: whoami-${DOMAIN}
       caddy_1.import: gateway_tls
       caddy_1.reverse_proxy: "{{upstreams 80}}"
-      # nip.io domain for direct access (Let's Encrypt)
+      # nip.io domain for direct access (custom CA)
       caddy_2: whoami-${PUBLIC_IP_DASH}.nip.io
+      caddy_2.import: gateway_tls
       caddy_2.reverse_proxy: "{{upstreams 80}}"
+      # sslip.io domain for direct access (Let's Encrypt)
+      caddy_3: whoami-${PUBLIC_IP_DASH}.sslip.io
+      caddy_3.reverse_proxy: "{{upstreams 80}}"
 
   smtp:
     image: ghcr.io/yundera/yundera-smtp-handler:1.0.2
