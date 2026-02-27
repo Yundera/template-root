@@ -96,7 +96,7 @@ services:
   # Establishes WireGuard VPN tunnel to the provider for NAT traversal
   # =============================================================================
   mesh-router-tunnel:
-    image: ghcr.io/yundera/mesh-router-tunnel:1.2.3
+    image: ghcr.io/yundera/mesh-router-tunnel:1.2.4
     container_name: mesh-router-tunnel
     hostname: mesh-router-tunnel
     restart: unless-stopped
@@ -110,6 +110,9 @@ services:
       - PROVIDER=${PROVIDER_STR}
       - ROUTING_TARGET_HOST=mesh-router-caddy
       - ROUTING_TARGET_PORT=80
+      # Dual-port support for transparent HTTP/HTTPS routing
+      - ROUTING_TARGET_PORT_HTTPS=443
+      - ROUTING_TARGET_PORT_HTTP=80
     networks:
       pcs: null
     depends_on:
