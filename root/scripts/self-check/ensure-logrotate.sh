@@ -4,6 +4,8 @@ set -e
 
 # Script to ensure logrotate is configured for yundera logs
 
+export DEBIAN_FRONTEND=noninteractive
+
 if [ -f /.dockerenv ]; then
     echo "Inside Docker - dev environment detected. Skipping setup."
     exit 0
@@ -17,8 +19,12 @@ LOG_FILE="/DATA/AppData/casaos/apps/yundera/log/yundera.log"
 if ! command -v logrotate &> /dev/null; then
     echo "→ Installing logrotate..."
     [ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
-    apt-get update -qq
-    apt-get install -qq -y logrotate
+    if ! { DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -qq -y logrotate; } >/dev/null 2>&1; then
+        echo "✗ Failed to install logrotate. Running with verbose output for debugging:"
+        [ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
+        apt-get update && apt-get install -y logrotate
+        exit 1
+    fi
 fi
 
 # Create logrotate configuration
