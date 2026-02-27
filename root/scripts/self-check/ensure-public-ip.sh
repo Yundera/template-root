@@ -194,28 +194,30 @@ fi
 # PUBLIC_IP - Main public IP (uses whichever is available, prefers IPv6)
 # =============================================================================
 
-# Use IPv6 if available, otherwise fall back to IPv4
+# Use IPv6 if available, otherwise fall back to IPv4, then localhost
 if [ -n "$PUBLIC_IPV6" ]; then
     PUBLIC_IP="$PUBLIC_IPV6"
     PUBLIC_IP_DASH="$PUBLIC_IPV6_DASH"
 elif [ -n "$PUBLIC_IPV4" ]; then
     PUBLIC_IP="$PUBLIC_IPV4"
     PUBLIC_IP_DASH="$PUBLIC_IPV4_DASH"
+else
+    # Default to localhost if no public IP available
+    # This allows local access via custom CA certificates
+    # Note: sslip.io (Let's Encrypt) won't work without a public IP
+    PUBLIC_IP="127.0.0.1"
+    PUBLIC_IP_DASH="127-0-0-1"
+    echo "→ No public IP detected, defaulting to localhost (127.0.0.1)"
 fi
 
-if [ -n "$PUBLIC_IP" ]; then
-    if ! "$YND_ROOT/scripts/tools/env-file-manager.sh" set PUBLIC_IP "$PUBLIC_IP" "$ENV_FILE"; then
-        echo "✗ Failed to update PUBLIC_IP in $ENV_FILE"
-        exit 1
-    fi
-
-    if ! "$YND_ROOT/scripts/tools/env-file-manager.sh" set PUBLIC_IP_DASH "$PUBLIC_IP_DASH" "$ENV_FILE"; then
-        echo "✗ Failed to update PUBLIC_IP_DASH in $ENV_FILE"
-        exit 1
-    fi
-
-    echo "✓ PUBLIC_IP set to: $PUBLIC_IP (dash: $PUBLIC_IP_DASH)"
-else
-    echo "✗ No public IP address available (neither IPv4 nor IPv6)"
+if ! "$YND_ROOT/scripts/tools/env-file-manager.sh" set PUBLIC_IP "$PUBLIC_IP" "$ENV_FILE"; then
+    echo "✗ Failed to update PUBLIC_IP in $ENV_FILE"
     exit 1
 fi
+
+if ! "$YND_ROOT/scripts/tools/env-file-manager.sh" set PUBLIC_IP_DASH "$PUBLIC_IP_DASH" "$ENV_FILE"; then
+    echo "✗ Failed to update PUBLIC_IP_DASH in $ENV_FILE"
+    exit 1
+fi
+
+echo "✓ PUBLIC_IP set to: $PUBLIC_IP (dash: $PUBLIC_IP_DASH)"
