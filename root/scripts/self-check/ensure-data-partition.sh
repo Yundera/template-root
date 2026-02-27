@@ -28,14 +28,25 @@ if [ -f /.dockerenv ]; then
     exit 0
 fi
 
-# Install rsync only if not already present
+# Install required packages only if not already present
+PACKAGES_TO_INSTALL=""
 if ! command -v rsync &> /dev/null; then
-    echo "→ Installing rsync..."
+    PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL rsync"
+fi
+if ! command -v parted &> /dev/null; then
+    PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL parted"
+fi
+if ! command -v bc &> /dev/null; then
+    PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL bc"
+fi
+
+if [ -n "$PACKAGES_TO_INSTALL" ]; then
+    echo "→ Installing missing packages:$PACKAGES_TO_INSTALL..."
     [ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
-    if ! { DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -qq -y rsync; } >/dev/null 2>&1; then
-        echo "✗ Failed to install rsync. Running with verbose output for debugging:"
+    if ! { DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -qq -y $PACKAGES_TO_INSTALL; } >/dev/null 2>&1; then
+        echo "✗ Failed to install packages. Running with verbose output for debugging:"
         [ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
-        apt-get update && apt-get install -y rsync
+        apt-get update && apt-get install -y $PACKAGES_TO_INSTALL
         exit 1
     fi
 fi
