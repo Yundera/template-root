@@ -40,17 +40,8 @@ check_docker() {
 install_docker() {
     echo "→ Installing Docker..."
 
-    # Update package index
-    [ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
-    apt-get -qq update >/dev/null
-
     # Install prerequisites
-    if ! DEBIAN_FRONTEND=noninteractive apt-get install -qq -y ca-certificates curl >/dev/null 2>&1; then
-        echo "✗ Failed to install prerequisites. Running with verbose output for debugging:"
-        [ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
-        apt-get install -y ca-certificates curl
-        exit 1
-    fi
+    "$YND_ROOT/scripts/tools/ensure-packages.sh" ca-certificates curl
 
     # Create directory for keyrings
     install -m 0755 -d /etc/apt/keyrings
@@ -70,10 +61,10 @@ install_docker() {
     apt-get -qq update >/dev/null
 
     # Install Docker packages
-    if ! DEBIAN_FRONTEND=noninteractive apt-get install -qq -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin >/dev/null 2>&1; then
+    if ! { DEBIAN_FRONTEND=noninteractive apt-get install -qq -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin; } >/dev/null 2>&1; then
         echo "✗ Docker package installation failed. Running with verbose output for debugging:"
         [ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
-        apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+        DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
         exit 1
     fi
 

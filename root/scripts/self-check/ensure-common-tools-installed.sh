@@ -1,16 +1,12 @@
 #!/bin/bash
 # Script to ensure common tools are installed
-export DEBIAN_FRONTEND=noninteractive
+
+set -e
 
 YND_ROOT="/DATA/AppData/casaos/apps/yundera"
 
-[ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
-if ! apt-get install -qq -y wget unzip rsync htop isc-dhcp-client apt-utils >/dev/null 2>&1; then
-    echo "✗ Failed to install common tools. Running with verbose output for debugging:"
-    [ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"
-    apt-get install -y wget unzip rsync htop isc-dhcp-client apt-utils
-    exit 1
-fi
+# Install common tools
+"$YND_ROOT/scripts/tools/ensure-packages.sh" wget unzip rsync htop isc-dhcp-client apt-utils
 
 echo "✓ Common tools are installed"
 
