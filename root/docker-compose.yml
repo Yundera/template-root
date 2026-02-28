@@ -109,8 +109,6 @@ services:
     environment:
       - PROVIDER=${PROVIDER_STR}
       - ROUTING_TARGET_HOST=mesh-router-caddy
-      - ROUTING_TARGET_PORT=80
-      # Dual-port support for transparent HTTP/HTTPS routing
       - ROUTING_TARGET_PORT_HTTPS=443
       - ROUTING_TARGET_PORT_HTTP=80
     networks:
