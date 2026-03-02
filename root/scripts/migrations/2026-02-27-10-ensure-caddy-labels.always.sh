@@ -71,7 +71,7 @@ for app_dir in "$APPS_DIR"/*/; do
     store_app_id=$(yq -r '.x-casaos.store_app_id // ""' "$compose_file" 2>/dev/null || echo "")
     category=$(yq -r '.x-casaos.category // ""' "$compose_file" 2>/dev/null || echo "")
     main_service=$(yq -r '.x-casaos.main // ""' "$compose_file" 2>/dev/null || echo "")
-    webui_port=$(yq -r '.x-casaos.port_map // ""' "$compose_file" 2>/dev/null || echo "")
+    webui_port=$(yq -r '.x-casaos.webui_port // ""' "$compose_file" 2>/dev/null || echo "")
     hostname=$(yq -r '.x-casaos.hostname // ""' "$compose_file" 2>/dev/null || echo "")
 
     # Skip yundera core stack
@@ -88,7 +88,7 @@ for app_dir in "$APPS_DIR"/*/; do
     fi
 
     if [ -z "$webui_port" ]; then
-        echo "Warning: $app_name has no port_map defined, skipping"
+        echo "Warning: $app_name has no webui_port defined, skipping"
         skipped_count=$((skipped_count + 1))
         continue
     fi
