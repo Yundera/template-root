@@ -35,6 +35,7 @@ services:
       caddy_2: admin-${PUBLIC_IP_DASH}.sslip.io
       caddy_2.reverse_proxy: "{{upstreams 80}}"
 
+  
   casaos:
     image: ghcr.io/yundera/casa-img:0.4.15-42
     container_name: casaos
@@ -111,6 +112,8 @@ services:
         target: /dev
 
 
+  
+  
   # =============================================================================
   # MESH ROUTER TUNNEL (v2)
   # Establishes WireGuard VPN tunnel to the provider for NAT traversal
@@ -138,6 +141,7 @@ services:
     depends_on:
       - mesh-router-caddy
 
+  
   # =============================================================================
   # MESH ROUTER AGENT (v2)
   # Registers public IP with backend for direct routing (bypasses VPN)
@@ -159,12 +163,13 @@ services:
     networks:
       pcs: null
 
+  
   # =============================================================================
   # MESH ROUTER CADDY (v2)
   # Reverse proxy with Docker container discovery via labels
   # =============================================================================
   mesh-router-caddy:
-    image: lucaslorentz/caddy-docker-proxy:2.9.1-alpine
+    image: ghcr.io/yundera/mesh-router-caddy:1.0.0
     container_name: mesh-router-caddy
     hostname: mesh-router-caddy
     restart: unless-stopped
@@ -192,6 +197,7 @@ services:
     depends_on:
       - mesh-router-agent
 
+  
   # =============================================================================
   # MESH ROUTER PERF - Performance Testing Service
   # =============================================================================
@@ -231,6 +237,7 @@ services:
       caddy_2: perf-${PUBLIC_IP_DASH}.sslip.io
       caddy_2.reverse_proxy: "{{upstreams 3000}}"
 
+  
   # =============================================================================
   # WHOAMI - TLS Testing Service (all routes via caddy labels)
   # =============================================================================
@@ -266,6 +273,7 @@ services:
       caddy_3: whoami-${PUBLIC_IP_DASH}.sslip.io
       caddy_3.reverse_proxy: "{{upstreams 80}}"
 
+  
   smtp:
     image: ghcr.io/yundera/yundera-smtp-handler:1.0.2
     container_name: smtp
