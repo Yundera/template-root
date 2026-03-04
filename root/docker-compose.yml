@@ -5,6 +5,7 @@ services:
     container_name: admin
     hostname: admin
     restart: unless-stopped
+    cpu_shares: 90
     environment:
       AUTHORITY_ENDPOINT: "https://8080-casaos-${DOMAIN}/v1/users"
       COMPOSE_FOLDER_PATH: "/DATA/AppData/casaos/apps/yundera/"
@@ -39,6 +40,7 @@ services:
     container_name: casaos
     hostname: casaos
     restart: unless-stopped
+    cpu_shares: 90
     environment:
       PUID: 1000 # user ID used by casaos to read and write files
       PGID: 1000 # group ID used by casaos to read and write files
@@ -118,6 +120,7 @@ services:
     container_name: mesh-router-tunnel
     hostname: mesh-router-tunnel
     restart: unless-stopped
+    cpu_shares: 90
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
@@ -144,6 +147,7 @@ services:
     container_name: mesh-router-agent
     hostname: mesh-router-agent
     restart: unless-stopped
+    cpu_shares: 90
     environment:
       - PROVIDER=${PROVIDER_STR}
       - PUBLIC_IP=${PUBLIC_IPV6}
@@ -164,6 +168,7 @@ services:
     container_name: mesh-router-caddy
     hostname: mesh-router-caddy
     restart: unless-stopped
+    cpu_shares: 90
     ports:
       - "80:80"
       - "443:443"
@@ -200,6 +205,7 @@ services:
     container_name: mesh-router-perf
     hostname: mesh-router-perf
     restart: unless-stopped
+    cpu_shares: 90
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -238,6 +244,7 @@ services:
     container_name: whoami
     hostname: whoami
     restart: unless-stopped
+    cpu_shares: 20
     expose:
       - "80"
     networks:
@@ -264,6 +271,7 @@ services:
     container_name: smtp
     hostname: smtp
     restart: unless-stopped
+    cpu_shares: 70
     environment:
       USER_JWT: "${USER_JWT}"
       ORCHESTRATOR_URL: "${YUNDERA_USER_API}"
