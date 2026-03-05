@@ -207,7 +207,7 @@ services:
   # Endpoints: /health, /echo, /download/:size, /upload, /ws, /delay/:ms
   # =============================================================================
   mesh-router-perf:
-    image: ghcr.io/yundera/mesh-router-perf:latest
+    image: ghcr.io/yundera/mesh-router-perf:1.1.0
     container_name: mesh-router-perf
     hostname: mesh-router-perf
     restart: unless-stopped
@@ -236,43 +236,6 @@ services:
       # sslip.io domain for direct access (Let's Encrypt)
       caddy_2: perf-${PUBLIC_IP_DASH}.sslip.io
       caddy_2.reverse_proxy: "{{upstreams 3000}}"
-
-  
-  # =============================================================================
-  # WHOAMI - TLS Testing Service (all routes via caddy labels)
-  # =============================================================================
-  # Test endpoints:
-  #   - https://<IP> → agent's custom cert (direct IP access)
-  #   - https://whoami-<domain> → Let's Encrypt cert
-  #   - https://whoami-<IP-DASH>.nip.io → Let's Encrypt cert via nip.io
-  # =============================================================================
-  whoami:
-    image: traefik/whoami:latest
-    container_name: whoami
-    hostname: whoami
-    restart: unless-stopped
-    cpu_shares: 20
-    expose:
-      - "80"
-    networks:
-      pcs: null
-    labels:
-      # Direct IP access with custom CA
-      caddy_0: "https://${PUBLIC_IP}"
-      caddy_0.import: gateway_tls
-      caddy_0.reverse_proxy: "{{upstreams 80}}"
-      # Standard domain with custom CA (gateway-routed)
-      caddy_1: whoami-${DOMAIN}
-      caddy_1.import: gateway_tls
-      caddy_1.reverse_proxy: "{{upstreams 80}}"
-      # nip.io domain for direct access (custom CA)
-      caddy_2: whoami-${PUBLIC_IP_DASH}.nip.io
-      caddy_2.import: gateway_tls
-      caddy_2.reverse_proxy: "{{upstreams 80}}"
-      # sslip.io domain for direct access (Let's Encrypt)
-      caddy_3: whoami-${PUBLIC_IP_DASH}.sslip.io
-      caddy_3.reverse_proxy: "{{upstreams 80}}"
-
   
   smtp:
     image: ghcr.io/yundera/yundera-smtp-handler:1.0.2
