@@ -207,7 +207,7 @@ services:
   # Endpoints: /health, /echo, /download/:size, /upload, /ws, /delay/:ms
   # =============================================================================
   mesh-router-perf:
-    image: ghcr.io/yundera/mesh-router-perf:1.1.1
+    image: ghcr.io/yundera/mesh-router-perf:1.1.2
     container_name: mesh-router-perf
     hostname: mesh-router-perf
     restart: unless-stopped
