@@ -207,7 +207,7 @@ services:
   # Endpoints: /health, /echo, /download/:size, /upload, /ws, /delay/:ms
   # =============================================================================
   mesh-router-perf:
-    image: ghcr.io/yundera/mesh-router-perf:1.1.0
+    image: ghcr.io/yundera/mesh-router-perf:1.1.1
     container_name: mesh-router-perf
     hostname: mesh-router-perf
     restart: unless-stopped
@@ -236,6 +236,7 @@ services:
       # sslip.io domain for direct access (Let's Encrypt)
       caddy_2: perf-${PUBLIC_IP_DASH}.sslip.io
       caddy_2.reverse_proxy: "{{upstreams 3000}}"
+  
   
   smtp:
     image: ghcr.io/yundera/yundera-smtp-handler:1.0.2
