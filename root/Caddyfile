@@ -13,15 +13,6 @@
 
     # Let's Encrypt email for certificate registration (used for sslip.io domains)
     email {$PCS_EMAIL}
-
-    # Force HTTP/1.1 for all incoming connections
-    # This fixes WebSocket over CF Worker's nip.io path where HTTP/2 breaks
-    # the traditional WebSocket upgrade mechanism (Upgrade/Connection headers
-    # are hop-by-hop and invalid in HTTP/2).
-    # See: doc/HTTP2_WEBSOCKET_FIX.md for full explanation
-    servers {
-        protocols h1
-    }
 }
 
 # Custom CA TLS for gateway-routed and nip.io domains
