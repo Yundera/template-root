@@ -72,8 +72,11 @@ services:
       APP_DOMAIN: "${DOMAIN}" # without https://
       APP_DATA_ROOT: "/DATA"
       APP_PUBLIC_IP: "${PUBLIC_IPV6}" #can be either v4 or v6 public ip but is regarded as the main IP
+      APP_PUBLIC_IP_DASH: "${PUBLIC_IP_DASH}"
       APP_PUBLIC_IPV4: "${PUBLIC_IPV4}"
+      APP_PUBLIC_IPV4_DASH: "${PUBLIC_IPV4_DASH}"
       APP_PUBLIC_IPV6: "${PUBLIC_IPV6}"
+      APP_PUBLIC_IPV6_DASH: "${PUBLIC_IPV6_DASH}"
       APP_EMAIL: "admin@${DOMAIN}"
       APP_NET: pcs
 
