@@ -62,15 +62,24 @@
 # =============================================================================
 # CUSTOM DOMAIN CATCH-ALL
 # =============================================================================
-# Handles any domain pointed at this server that doesn't match above routes.
-# Auto-generates self-signed certs for unknown SNI values.
-# Works with Cloudflare "Full" mode (non-strict) - CF doesn't verify cert CA.
+# NOTE: This block is dropped by caddy-docker-proxy during config regeneration.
+# The mesh-router-caddy entrypoint injects equivalent config via Admin API:
+#   1. TLS automation policy with on_demand + internal issuer
+#   2. Catch-all HTTP route (no host matcher, appended last)
+#
+# This Caddyfile block is kept for documentation purposes only.
+# The actual config is injected by entrypoint.sh after each reload.
+#
+# What it does:
+#   - Handles any domain pointed at this server that doesn't match other routes
+#   - Auto-generates self-signed certs (issuer internal) for unknown SNI values
+#   - Works with Cloudflare "Full" mode (non-strict) - CF doesn't verify cert CA
 # =============================================================================
-
-:443 {
-    tls {
-        on_demand
-        issuer internal
-    }
-    reverse_proxy {$DEFAULT_SERVICE_HOST}:{$DEFAULT_SERVICE_PORT}
-}
+#
+#:443 {
+#    tls {
+#        on_demand
+#        issuer internal
+#    }
+#    reverse_proxy {$DEFAULT_SERVICE_HOST}:{$DEFAULT_SERVICE_PORT}
+#}
