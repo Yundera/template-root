@@ -58,3 +58,19 @@
 {$PUBLIC_IP_DASH}.sslip.io {
     reverse_proxy {$DEFAULT_SERVICE_HOST}:{$DEFAULT_SERVICE_PORT}
 }
+
+# =============================================================================
+# CUSTOM DOMAIN CATCH-ALL
+# =============================================================================
+# Handles any domain pointed at this server that doesn't match above routes.
+# Auto-generates self-signed certs for unknown SNI values.
+# Works with Cloudflare "Full" mode (non-strict) - CF doesn't verify cert CA.
+# =============================================================================
+
+:443 {
+    tls {
+        on_demand
+        issuer internal
+    }
+    reverse_proxy {$DEFAULT_SERVICE_HOST}:{$DEFAULT_SERVICE_PORT}
+}
