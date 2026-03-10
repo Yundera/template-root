@@ -19,6 +19,12 @@
 # Gateway trusts this CA, so no LE needed for these routes
 # nip.io domains also use this custom CA for consistency
 (gateway_tls) {
+    # Restore original host when request comes through CF worker
+    # The CF worker rewrites Host to nip.io for routing, but preserves
+    # the original nsl.sh domain in X-Original-Host. Restoring it ensures
+    # apps generate correct redirect URLs and cookie domains.
+    @has_original_host header X-Original-Host *
+    request_header @has_original_host Host {http.request.header.X-Original-Host}
     tls /certs/cert.pem /certs/key.pem
 }
 
