@@ -172,7 +172,7 @@ services:
   # Reverse proxy with Docker container discovery via labels
   # =============================================================================
   mesh-router-caddy:
-    image: ghcr.io/yundera/mesh-router-caddy:1.1.3
+    image: ghcr.io/yundera/mesh-router-caddy:1.2.3
     container_name: mesh-router-caddy
     hostname: mesh-router-caddy
     restart: unless-stopped
