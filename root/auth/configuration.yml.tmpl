@@ -1,0 +1,61 @@
+# =============================================================================
+# Authelia Configuration for Yundera PCS (OIDC provider mode)
+#
+# Rendered by ensure-auth-secrets.sh. See that script for the list of template
+# placeholders and the sources each one is substituted from.
+#
+# Yundera routes apps on a dash-separated subdomain scheme, so every app is a
+# distinct origin with no shared parent domain. Session cookies cannot be
+# shared across apps — SSO works via OIDC redirects, not cookie scoping.
+# =============================================================================
+
+server:
+  address: 'tcp://0.0.0.0:9091'
+  buffers:
+    read: 16384
+    write: 16384
+
+log:
+  level: info
+
+authentication_backend:
+  file:
+    path: /config/users_database.yml
+
+session:
+  cookies:
+    - domain: 'auth-${DOMAIN}'
+      authelia_url: 'https://auth-${DOMAIN}'
+      name: 'authelia_session'
+      same_site: 'lax'
+      inactivity: '5m'
+      expiration: '1h'
+      remember_me: '1M'
+
+storage:
+  local:
+    path: /config/db.sqlite
+
+access_control:
+  default_policy: one_factor
+
+totp:
+  issuer: 'Yundera'
+  period: 30
+  skew: 1
+
+notifier:
+  filesystem:
+    filename: /config/notifications.txt
+
+identity_providers:
+  oidc:
+    hmac_secret: '__OIDC_HMAC__'
+    jwks:
+      - key_id: 'yundera-pcs'
+        algorithm: 'RS256'
+        use: 'sig'
+        key: |
+__OIDC_JWKS_KEY__
+    clients:
+__OIDC_CLIENTS__

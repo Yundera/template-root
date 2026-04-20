@@ -256,6 +256,43 @@ services:
     networks:
       pcs: null
 
+
+  # =============================================================================
+  # AUTHELIA - OIDC identity provider for PCS apps
+  # Apps delegate login via OIDC authorization_code flow. Endpoints:
+  #   https://auth-${DOMAIN}/.well-known/openid-configuration
+  # Register new clients with scripts/tools/register-oidc-client.sh.
+  # =============================================================================
+  authelia:
+    image: authelia/authelia:4.39
+    container_name: authelia
+    hostname: authelia
+    restart: unless-stopped
+    cpu_shares: 80
+    environment:
+      AUTHELIA_JWT_SECRET_FILE: /config/secrets/jwt
+      AUTHELIA_SESSION_SECRET_FILE: /config/secrets/session
+      AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE: /config/secrets/storage
+      AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE: /config/secrets/reset
+    volumes:
+      - /DATA/AppData/yundera/auth:/config
+    expose:
+      - "9091"
+    networks:
+      pcs: null
+    labels:
+      # Standard domain with custom CA (gateway-routed)
+      caddy_0: auth-${DOMAIN}
+      caddy_0.import: gateway_tls
+      caddy_0.reverse_proxy: "{{upstreams 9091}}"
+      # nip.io variant for direct access (custom CA)
+      caddy_1: auth-${PUBLIC_IP_DASH}.nip.io
+      caddy_1.import: gateway_tls
+      caddy_1.reverse_proxy: "{{upstreams 9091}}"
+      # sslip.io variant for direct access (Let's Encrypt)
+      caddy_2: auth-${PUBLIC_IP_DASH}.sslip.io
+      caddy_2.reverse_proxy: "{{upstreams 9091}}"
+
 networks:
   pcs:
     name: pcs

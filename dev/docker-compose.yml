@@ -16,6 +16,12 @@ services:
       - ./test-pcs.secret.env:/tmp/.pcs.secret.env:ro
       - ./test-ynd.user.env:/tmp/.ynd.user.env:ro
 
+      # Host Docker socket — ensure-auth-secrets.sh spawns
+      # `docker run authelia/authelia:4.39 crypto hash ...` to argon2-hash the
+      # admin password. Running against the host daemon keeps the dev image
+      # small (no docker-in-docker).
+      - /var/run/docker.sock:/var/run/docker.sock
+
     # Setup template-root and keep container alive for interactive testing
     command:
       - bash
@@ -54,6 +60,11 @@ services:
         echo 'Useful commands:'
         echo '  # Run Caddy labels migration:'
         echo '  bash /DATA/AppData/casaos/apps/yundera/scripts/migrations/2026-02-11-10-ensure-caddy-labels.always.sh'
+        echo ''
+        echo '  # Test Authelia secrets + config render (pulls authelia image first run):'
+        echo '  bash /DATA/AppData/casaos/apps/yundera/scripts/self-check/ensure-auth-secrets.sh'
+        echo '  ls -la /DATA/AppData/yundera/auth/'
+        echo '  cat /DATA/AppData/yundera/auth/configuration.yml'
         echo ''
 
         tail -f /dev/null

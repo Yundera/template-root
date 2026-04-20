@@ -35,6 +35,7 @@ ensure-logrotate.sh
 # Docker and application setup
 ensure-docker-installed.sh
 ensure-env-vars-valid.sh
+ensure-auth-secrets.sh
 ensure-casaos-apps-up-to-date.sh
 ensure-user-compose-pulled.sh
 ensure-user-compose-stack-up.sh

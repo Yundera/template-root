@@ -3,7 +3,9 @@ FROM ubuntu:24.04
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install common tools needed by template scripts
+# Install common tools needed by template scripts.
+# docker.io gives us the docker CLI; the daemon stays on the host and is
+# reached via the mounted /var/run/docker.sock. gettext-base provides envsubst.
 RUN apt-get update && apt-get install -y \
     wget \
     unzip \
@@ -12,6 +14,9 @@ RUN apt-get update && apt-get install -y \
     curl \
     bash \
     apt-utils \
+    docker.io \
+    gettext-base \
+    openssl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install yq (YAML processor)
