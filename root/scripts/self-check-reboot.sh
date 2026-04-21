@@ -41,20 +41,46 @@ fi
 
 log "Reading self-check scripts from: $SCRIPTS_CONFIG_FILE"
 
-# Read configuration file, skip comments and empty lines
-while IFS= read -r script_name || [ -n "$script_name" ]; do
-    # Skip comments (lines starting with #) and empty lines
-    if [[ "$script_name" =~ ^[[:space:]]*# ]] || [[ -z "${script_name// }" ]]; then
-        continue
-    fi
-    
-    # Remove leading/trailing whitespace
-    script_name=$(echo "$script_name" | xargs)
-    
-    if [ -n "$script_name" ]; then
+# Parse scripts-config.txt into an array of script names (strips comments,
+# empty lines, and surrounding whitespace).
+read_scripts_config() {
+    local line
+    SCRIPTS=()
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [[ "$line" =~ ^[[:space:]]*# ]] || [[ -z "${line// }" ]]; then
+            continue
+        fi
+        line=$(echo "$line" | xargs)
+        [ -n "$line" ] && SCRIPTS+=("$line")
+    done < "$SCRIPTS_CONFIG_FILE"
+}
+
+# Main pass: slurp the script list into memory FIRST, then iterate. This is
+# deterministic even if scripts-config.txt gets replaced mid-run (e.g. by
+# ensure-template-sync.sh's rsync, which atomically swaps inodes — a naive
+# `while ... done < file` would keep reading the old inode via its open FD).
+read_scripts_config
+EXECUTED=("${SCRIPTS[@]}")
+for script_name in "${EXECUTED[@]}"; do
+    execute_script_with_logging "$SCRIPT_DIR/self-check/$script_name" || true
+done
+
+# Second pass: template-sync (or any other script) may have added new entries
+# to scripts-config.txt during the main pass. Re-read and run anything we
+# haven't executed yet. Ordering caveat: newly-added scripts run AFTER all
+# existing ones this cycle; proper ordering takes effect on the next reboot.
+read_scripts_config
+for script_name in "${SCRIPTS[@]}"; do
+    already_ran=false
+    for ran in "${EXECUTED[@]}"; do
+        [ "$ran" = "$script_name" ] && { already_ran=true; break; }
+    done
+    if [ "$already_ran" = false ]; then
+        log "Running newly-added script from refreshed config: $script_name"
         execute_script_with_logging "$SCRIPT_DIR/self-check/$script_name" || true
+        EXECUTED+=("$script_name")
     fi
-done < "$SCRIPTS_CONFIG_FILE"
+done
 
 # Restart the user compose stack to ensure services are in a right state
 log "Restarting user compose stack"
