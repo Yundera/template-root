@@ -85,33 +85,40 @@ else
     log_info "No OIDC clients registered; Authelia config rendered without identity_providers block"
 fi
 
-# Ensure users_database.yml exists (Authelia's file auth backend requires it
-# even when empty). Seed admin user ONLY on first run when both DEFAULT_USER
-# and DEFAULT_PWD are set; otherwise leave the file empty and let the admin
-# manage users manually. Presence of any `password:` field is the one-shot
-# marker — once set (either by our seed or by Authelia writing changes back),
-# we never overwrite.
-if [ ! -f "$USERS_DB" ]; then
-    echo "users: {}" > "$USERS_DB"
-    chmod 600 "$USERS_DB"
-fi
-
-if grep -q "^[[:space:]]*password:" "$USERS_DB"; then
+# Seed admin user. Authelia 4.38+ requires users_database.yml to contain at
+# least one user (empty `users: {}` fails the startup schema check), so we
+# only write the file after we can produce a valid entry.
+#
+# One-shot marker: presence of any `password:` field in an existing file
+# (either from our seed or from Authelia writing password changes back).
+if [ -f "$USERS_DB" ] && grep -q "^[[:space:]]*password:" "$USERS_DB"; then
     log_info "users_database.yml has existing users, skipping admin seed"
 else
     DEFAULT_USER="$("$ENV_MGR" get DEFAULT_USER "$PCS_ENV")"
     DEFAULT_PWD="$("$ENV_MGR" get DEFAULT_PWD "$SECRET_ENV")"
-    if [ -z "$DEFAULT_USER" ] || [ -z "$DEFAULT_PWD" ]; then
-        log_warn "DEFAULT_USER or DEFAULT_PWD not set; Authelia started with an empty users_database.yml. Set both in env files (or add users via Authelia) to enable login."
-    else
-        ADMIN_HASH="$(docker run --rm "$AUTHELIA_IMAGE" \
-            authelia crypto hash generate argon2 --password "$DEFAULT_PWD" 2>/dev/null \
-            | awk '/^Digest:/{print $2}')"
-        if [ -z "$ADMIN_HASH" ]; then
-            log_error "Failed to generate argon2 hash via $AUTHELIA_IMAGE; leaving users_database.yml empty"
-        else
-            TMP="$(mktemp)"
-            cat > "$TMP" <<EOF
+
+    # DEFAULT_USER is documented as optional in .pcs.env.example. When unset,
+    # fall back to 'admin' so Authelia always has a seedable username.
+    if [ -z "$DEFAULT_USER" ]; then
+        DEFAULT_USER="admin"
+        log_info "DEFAULT_USER not set; using '${DEFAULT_USER}' as Authelia admin username"
+    fi
+
+    if [ -z "$DEFAULT_PWD" ]; then
+        log_error "DEFAULT_PWD not set in $SECRET_ENV; cannot seed Authelia admin. Run scripts/tools/generate-default-pwd.sh, then re-run this script."
+        exit 1
+    fi
+
+    ADMIN_HASH="$(docker run --rm "$AUTHELIA_IMAGE" \
+        authelia crypto hash generate argon2 --password "$DEFAULT_PWD" 2>/dev/null \
+        | awk '/^Digest:/{print $2}')"
+    if [ -z "$ADMIN_HASH" ]; then
+        log_error "Failed to generate argon2 hash via $AUTHELIA_IMAGE"
+        exit 1
+    fi
+
+    TMP="$(mktemp)"
+    cat > "$TMP" <<EOF
 users:
   ${DEFAULT_USER}:
     displayname: "Administrator"
@@ -120,11 +127,9 @@ users:
     groups:
       - admins
 EOF
-            chmod 600 "$TMP"
-            mv "$TMP" "$USERS_DB"
-            log_success "Seeded Authelia admin user: ${DEFAULT_USER}"
-        fi
-    fi
+    chmod 600 "$TMP"
+    mv "$TMP" "$USERS_DB"
+    log_success "Seeded Authelia admin user: ${DEFAULT_USER}"
 fi
 
 # HUP Authelia if it's already running so the re-rendered config is picked up.
