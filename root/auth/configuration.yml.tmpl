@@ -48,14 +48,8 @@ notifier:
   filesystem:
     filename: /config/notifications.txt
 
-identity_providers:
-  oidc:
-    hmac_secret: '__OIDC_HMAC__'
-    jwks:
-      - key_id: 'yundera-pcs'
-        algorithm: 'RS256'
-        use: 'sig'
-        key: |
-__OIDC_JWKS_KEY__
-    clients:
-__OIDC_CLIENTS__
+# The `identity_providers:` (OIDC) block is appended here by
+# ensure-auth-secrets.sh ONLY when at least one client is registered in
+# clients.d/. Authelia 4.38+ rejects an empty `clients: []` list, so the
+# block must be absent until the first app registers itself via
+# register-oidc-client.sh.

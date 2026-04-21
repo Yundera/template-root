@@ -270,7 +270,6 @@ services:
     restart: unless-stopped
     cpu_shares: 80
     environment:
-      AUTHELIA_JWT_SECRET_FILE: /config/secrets/jwt
       AUTHELIA_SESSION_SECRET_FILE: /config/secrets/session
       AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE: /config/secrets/storage
       AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE: /config/secrets/reset
