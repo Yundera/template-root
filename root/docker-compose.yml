@@ -292,6 +292,39 @@ services:
       caddy_2: auth-${PUBLIC_IP_DASH}.sslip.io
       caddy_2.reverse_proxy: "{{upstreams 9091}}"
 
+
+  # =============================================================================
+  # AUTHELIA-REGISTRAR - OIDC client self-registration for PCS apps
+  # Sidecars (e.g. nginx-hash-lock) POST their redirect URIs to
+  #   http://authelia-registrar:9092/register
+  # on first login and get back {client_id, client_secret, issuer_url}. Caller
+  # identity is derived from the source IP via PTR lookup on the pcs network —
+  # client_id is never accepted as input. Intentionally NOT publicly routable.
+  # See: packages/mesh-router-root/mesh-router-auth/README.md
+  # =============================================================================
+  authelia-registrar:
+    image: ghcr.io/yundera/mesh-router-auth:latest
+    container_name: authelia-registrar
+    hostname: authelia-registrar
+    restart: unless-stopped
+    cpu_shares: 40
+    environment:
+      ISSUER_URL: https://auth-${DOMAIN}
+      REGISTER_SCRIPT_PATH: /DATA/AppData/casaos/apps/yundera/scripts/tools/register-oidc-client.sh
+    volumes:
+      # register-oidc-client.sh + scripts/library/log.sh + ensure-auth-secrets.sh
+      - /DATA/AppData/casaos/apps/yundera:/DATA/AppData/casaos/apps/yundera:ro
+      # where the script writes clients.d/<id>.{yml,secret} and the rendered config
+      - /DATA/AppData/yundera/auth:/DATA/AppData/yundera/auth
+      # register-oidc-client.sh invokes `docker run authelia/authelia crypto hash ...`
+      - /var/run/docker.sock:/var/run/docker.sock
+    expose:
+      - "9092"
+    networks:
+      pcs: null
+    depends_on:
+      - authelia
+
 networks:
   pcs:
     name: pcs
