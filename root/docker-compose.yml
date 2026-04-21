@@ -303,7 +303,7 @@ services:
   # See: packages/mesh-router-root/mesh-router-auth/README.md
   # =============================================================================
   authelia-registrar:
-    image: ghcr.io/yundera/mesh-router-auth:latest
+    image: ghcr.io/yundera/mesh-router-auth:1.0.0
     container_name: authelia-registrar
     hostname: authelia-registrar
     restart: unless-stopped
