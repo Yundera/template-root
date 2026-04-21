@@ -13,7 +13,7 @@ if [ ! -f "$COMPOSE_FILE" ]; then
 fi
 
 # Run docker compose and capture output to both console and log file
-if docker compose --project-directory "$COMPOSE_DIR" -f "$COMPOSE_FILE" up --quiet-pull -d 2>&1 | tee -a "$LOG_FILE"; then
+if docker compose --project-directory "$COMPOSE_DIR" -f "$COMPOSE_FILE" up --quiet-pull --remove-orphans -d 2>&1 | tee -a "$LOG_FILE"; then
     echo "User compose stack is up successfully"
 else
     echo "ERROR: Failed to start docker containers"

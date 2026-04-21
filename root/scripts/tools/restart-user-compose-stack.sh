@@ -11,7 +11,7 @@ sync
 docker compose --project-directory "$COMPOSE_DIR" -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
 
 # Start containers and capture output
-if docker compose --project-directory "$COMPOSE_DIR" -f "$COMPOSE_FILE" up --quiet-pull -d 2>&1 | tee -a "$LOG_FILE"; then
+if docker compose --project-directory "$COMPOSE_DIR" -f "$COMPOSE_FILE" up --quiet-pull --remove-orphans -d 2>&1 | tee -a "$LOG_FILE"; then
     echo "User compose stack is up"
 else
     echo "ERROR: Failed to start docker containers"

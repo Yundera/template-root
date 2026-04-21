@@ -303,7 +303,7 @@ services:
   # See: packages/mesh-router-root/mesh-router-auth/README.md
   # =============================================================================
   auth-registrar:
-    image: ghcr.io/yundera/mesh-router-auth:1.0.0
+    image: ghcr.io/yundera/mesh-auth:1.0.0
     container_name: auth-registrar
     hostname: auth-registrar
     restart: unless-stopped
