@@ -294,18 +294,18 @@ services:
 
 
   # =============================================================================
-  # AUTHELIA-REGISTRAR - OIDC client self-registration for PCS apps
+  # AUTH-REGISTRAR - OIDC client self-registration for PCS apps
   # Sidecars (e.g. nginx-hash-lock) POST their redirect URIs to
-  #   http://authelia-registrar:9092/register
+  #   http://auth-registrar:9092/register
   # on first login and get back {client_id, client_secret, issuer_url}. Caller
   # identity is derived from the source IP via PTR lookup on the pcs network —
   # client_id is never accepted as input. Intentionally NOT publicly routable.
   # See: packages/mesh-router-root/mesh-router-auth/README.md
   # =============================================================================
-  authelia-registrar:
+  auth-registrar:
     image: ghcr.io/yundera/mesh-router-auth:1.0.0
-    container_name: authelia-registrar
-    hostname: authelia-registrar
+    container_name: auth-registrar
+    hostname: auth-registrar
     restart: unless-stopped
     cpu_shares: 40
     environment:
