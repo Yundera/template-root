@@ -132,10 +132,14 @@ EOF
     log_success "Seeded Authelia admin user: ${DEFAULT_USER}"
 fi
 
-# HUP Authelia if it's already running so the re-rendered config is picked up.
+# Restart Authelia if it's already running so the re-rendered config is picked up.
+# SIGHUP is not safe here — Authelia 4.39 treats SIGHUP as "reopen log files"
+# and empirically exits on it (observed on holyhorse 2026-04-21, exit code 2
+# with no log line). docker restart sends SIGTERM for a graceful shutdown and
+# then starts again; ~3s downtime but the new config is loaded correctly.
 # Silent on cold boot when the container doesn't exist yet.
 if docker inspect authelia >/dev/null 2>&1; then
-    docker kill -s HUP authelia >/dev/null 2>&1 || true
+    docker restart authelia >/dev/null 2>&1 || true
 fi
 
 log_info "Authelia secrets and configuration ready at $AUTH_ROOT"
