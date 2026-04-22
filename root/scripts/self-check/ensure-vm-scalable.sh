@@ -4,10 +4,25 @@ set -e
 
 # Script to ensure VM is configured for vertical scaling (CPU and RAM hotplug)
 
+YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+
 UDEV_RULES_FILE="/lib/udev/rules.d/80-hotplug-cpu-mem.rules"
 
 if [ -f /.dockerenv ]; then
     echo "Inside Docker - dev environment detected. Skipping setup."
+    exit 0
+fi
+
+# Provider gate — CPU/RAM hotplug is a Proxmox feature; other providers
+# (Contabo monthly Storage VPS, etc.) have static resources and don't
+# benefit from the udev rules or the movable_node grub flag.
+_prov="${YND_PROVIDER:-}"
+if [ -z "$_prov" ] && [ -f "$YND_ROOT/.pcs.env" ]; then
+    _prov="$(grep -E '^YND_PROVIDER=' "$YND_ROOT/.pcs.env" 2>/dev/null | tail -1 | cut -d= -f2-)"
+fi
+_prov="${_prov:-proxmox}"
+if [ "$_prov" != "proxmox" ]; then
+    echo "[YND_PROVIDER=$_prov] static resources, skipping hotplug setup"
     exit 0
 fi
 

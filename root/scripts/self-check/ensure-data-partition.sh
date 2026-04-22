@@ -28,6 +28,23 @@ if [ -f /.dockerenv ]; then
     exit 0
 fi
 
+# Provider gate — this script is Proxmox-specific (LVM carving from free
+# space on /dev/sda). On other providers the VM disk is typically already
+# partitioned and mounted as root with no free space. Fall back to plain
+# directories on the root filesystem.
+_prov="${YND_PROVIDER:-}"
+if [ -z "$_prov" ] && [ -f "$YND_ROOT/.pcs.env" ]; then
+    _prov="$(grep -E '^YND_PROVIDER=' "$YND_ROOT/.pcs.env" 2>/dev/null | tail -1 | cut -d= -f2-)"
+fi
+_prov="${_prov:-proxmox}"
+if [ "$_prov" != "proxmox" ]; then
+    echo "[YND_PROVIDER=$_prov] using plain directories on root fs (no LVM)"
+    mkdir -p /DATA/AppData/casaos/apps/yundera /var/lib/docker
+    id -u pcs >/dev/null 2>&1 || useradd -m -s /bin/bash pcs
+    chown -R pcs:pcs /DATA 2>/dev/null || true
+    exit 0
+fi
+
 # Install required packages
 "$YND_ROOT/scripts/tools/ensure-packages.sh" rsync parted bc
 

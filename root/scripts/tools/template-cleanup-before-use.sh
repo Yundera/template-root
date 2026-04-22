@@ -2,10 +2,26 @@
 
 set -e  # Exit on any error
 
+YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+
 # Check if running as root
 if [ "$(id -u)" -ne 0 ]; then
     echo "This script must be run as root."
     exit 1
+fi
+
+# Provider gate — this script prepares a VM for Proxmox golden-template
+# cloning (wipes machine-id, SSH host keys, random seeds, /tmp). Running it
+# on a live cloud-provider instance would kill the active SSH session and
+# reset host identity mid-service. Only meaningful for Proxmox.
+_prov="${YND_PROVIDER:-}"
+if [ -z "$_prov" ] && [ -f "$YND_ROOT/.pcs.env" ]; then
+    _prov="$(grep -E '^YND_PROVIDER=' "$YND_ROOT/.pcs.env" 2>/dev/null | tail -1 | cut -d= -f2-)"
+fi
+_prov="${_prov:-proxmox}"
+if [ "$_prov" != "proxmox" ]; then
+    echo "[YND_PROVIDER=$_prov] not a template bake, skipping cleanup"
+    exit 0
 fi
 
 # Clean apt cache
