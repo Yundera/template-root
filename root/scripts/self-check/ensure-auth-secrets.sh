@@ -27,6 +27,15 @@ AUTHELIA_IMAGE="authelia/authelia:4.39"
 mkdir -p "$SECRETS_DIR" "$OIDC_DIR" "$CLIENTS_DIR"
 chmod 700 "$SECRETS_DIR"
 
+# Serialize concurrent invocations. register-oidc-client.sh calls this script
+# at the end of every registration, so N near-simultaneous app installs fan out
+# into N concurrent renders. Without a lock, two interleaved runs can either
+# (a) both append identity_providers to the same file, producing a duplicate
+# key that crashes Authelia, or (b) one run's stale read of clients.d/ wins
+# the final mv and silently drops a freshly-registered client.
+exec 9>"$AUTH_ROOT/.lock"
+flock 9
+
 # Secrets referenced by docker-compose via *_FILE env vars + the OIDC HMAC
 # (inlined into configuration.yml). Generate-once.
 for name in session storage reset oidc-hmac; do
@@ -51,11 +60,15 @@ if [ -z "$DOMAIN" ]; then
     exit 1
 fi
 
+# Build the full config (template + optional identity_providers block) into a
+# tempfile and mv it into place in a single atomic step. Earlier versions used
+# mv-then-append, which left a window where the file existed without its
+# identity_providers block — anything reading it during that window (Authelia
+# on restart, or a parallel render) would see an incomplete config.
 TMP="$(mktemp)"
+chmod 600 "$TMP"
 export DOMAIN
 envsubst '${DOMAIN}' < "$TEMPLATE" > "$TMP"
-chmod 600 "$TMP"
-mv "$TMP" "$CONFIG_OUT"
 
 # Append identity_providers (OIDC) block ONLY if at least one client is
 # registered. Authelia 4.38+ fails startup on an empty `clients: []` list,
@@ -66,7 +79,7 @@ if ls "$CLIENTS_DIR"/*.yml >/dev/null 2>&1; then
     HMAC="$(cat "$SECRETS_DIR/oidc-hmac")"
     JWKS_KEY="$(sed 's/^/          /' "$OIDC_DIR/private.pem")"
     CLIENTS_BLOCK="$(cat "$CLIENTS_DIR"/*.yml)"
-    cat >> "$CONFIG_OUT" <<EOF
+    cat >> "$TMP" <<EOF
 
 identity_providers:
   oidc:
@@ -84,6 +97,8 @@ EOF
 else
     log_info "No OIDC clients registered; Authelia config rendered without identity_providers block"
 fi
+
+mv "$TMP" "$CONFIG_OUT"
 
 # Seed admin user. Authelia 4.38+ requires users_database.yml to contain at
 # least one user (empty `users: {}` fails the startup schema check), so we
