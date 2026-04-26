@@ -157,7 +157,10 @@ services:
     cpu_shares: 90
     environment:
       - PROVIDER=${PROVIDER_STR}
-      - PUBLIC_IP=${PUBLIC_IPV6}
+      # Must stay in sync with Caddy's ${PUBLIC_IP_DASH}-based labels — registering
+      # any other family here causes the CF Worker to rewrite Host to a hostname
+      # Caddy doesn't know, and every subdomain falls into the catch-all.
+      - PUBLIC_IP=${PUBLIC_IP}
       # Dual-port support for transparent HTTP/HTTPS routing
       - TARGET_PORT_HTTPS=443
       - TARGET_PORT_HTTP=80
