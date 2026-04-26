@@ -161,6 +161,10 @@ get_unreachable_ips() {
         return
     fi
 
+    # Detect a broken backend probe (e.g. ping binary missing in the container)
+    # and refuse to act on its verdict — otherwise we'd happily strip every IP
+    # and leave the PCS unrouteable. A "real" unreachable answer has reasons
+    # like "no ICMP echo reply within timeout", not "ping binary not available".
     python3 - <<PY 2>/dev/null
 import json, sys
 try:
@@ -168,8 +172,16 @@ try:
 except Exception:
     sys.exit(0)
 results = data.get("results")
-if not isinstance(results, list):
+if not isinstance(results, list) or not results:
     sys.exit(0)
+PROBE_BROKEN_HINTS = ("ping binary not available", "probe unavailable")
+for r in results:
+    if not isinstance(r, dict):
+        continue
+    reason = (r.get("reason") or "")
+    if any(hint in reason for hint in PROBE_BROKEN_HINTS):
+        # Probe is misconfigured on the backend — treat as unverified, keep all IPs.
+        sys.exit(0)
 for r in results:
     if isinstance(r, dict) and r.get("reachable") is False and r.get("ip"):
         print(r["ip"])

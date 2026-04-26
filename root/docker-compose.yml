@@ -6,6 +6,13 @@ services:
     hostname: admin
     restart: unless-stopped
     cpu_shares: 90
+    # Inject every key from the unified .env (assembled by ensure-env-vars-valid.sh
+    # from .pcs.env + .pcs.secret.env + .ynd.user.env). The settings-center-app
+    # reads DOMAIN, PUBLIC_IP, UID, DEFAULT_PWD, etc. via process.env to display
+    # them on the System Configuration page; without this, every field renders
+    # blank. No new exposure — all three source files are already bind-mounted
+    # at /app/data/ below.
+    env_file: .env
     environment:
       AUTHORITY_ENDPOINT: "https://8080-casaos-${DOMAIN}/v1/users"
       COMPOSE_FOLDER_PATH: "/DATA/AppData/casaos/apps/yundera/"
