@@ -45,8 +45,18 @@ totp:
   skew: 1
 
 notifier:
-  filesystem:
-    filename: /config/notifications.txt
+  # Skip the boot-time test email — Authelia restarts on every self-check tick
+  # and the relay (yundera-smtp-handler → orchestrator → SendGrid) is rate
+  # limited to 100/hour per user. Real reset/2FA mails still send normally.
+  disable_startup_check: true
+  smtp:
+    # Internal relay container (plaintext, no auth, network-isolated on `pcs`).
+    address: 'smtp://smtp:587'
+    sender: 'Yundera <noreply@${DOMAIN}>'
+    subject: '[Yundera] {title}'
+    # Relay does not advertise STARTTLS or accept TLS — force plaintext.
+    disable_require_tls: true
+    disable_starttls: true
 
 # The `identity_providers:` (OIDC) block is appended here by
 # ensure-auth-secrets.sh ONLY when at least one client is registered in

@@ -109,15 +109,11 @@ mv "$TMP" "$CONFIG_OUT"
 if [ -f "$USERS_DB" ] && grep -q "^[[:space:]]*password:" "$USERS_DB"; then
     log_info "users_database.yml has existing users, skipping admin seed"
 else
-    DEFAULT_USER="$("$ENV_MGR" get DEFAULT_USER "$PCS_ENV")"
+    # Authelia's admin username is hard-coded to 'admin' regardless of
+    # DEFAULT_USER (which still drives CasaOS's initial user). Keeping a single
+    # well-known login here avoids confusing users when the two diverge.
+    AUTHELIA_ADMIN="admin"
     DEFAULT_PWD="$("$ENV_MGR" get DEFAULT_PWD "$SECRET_ENV")"
-
-    # DEFAULT_USER is documented as optional in .pcs.env.example. When unset,
-    # fall back to 'admin' so Authelia always has a seedable username.
-    if [ -z "$DEFAULT_USER" ]; then
-        DEFAULT_USER="admin"
-        log_info "DEFAULT_USER not set; using '${DEFAULT_USER}' as Authelia admin username"
-    fi
 
     if [ -z "$DEFAULT_PWD" ]; then
         log_error "DEFAULT_PWD not set in $SECRET_ENV; cannot seed Authelia admin. Run scripts/tools/generate-default-pwd.sh, then re-run this script."
@@ -135,7 +131,7 @@ else
     TMP="$(mktemp)"
     cat > "$TMP" <<EOF
 users:
-  ${DEFAULT_USER}:
+  ${AUTHELIA_ADMIN}:
     displayname: "Administrator"
     password: "${ADMIN_HASH}"
     email: "admin@${DOMAIN}"
@@ -144,7 +140,7 @@ users:
 EOF
     chmod 600 "$TMP"
     mv "$TMP" "$USERS_DB"
-    log_success "Seeded Authelia admin user: ${DEFAULT_USER}"
+    log_success "Seeded Authelia admin user: ${AUTHELIA_ADMIN}"
 fi
 
 # Restart Authelia if it's already running so the re-rendered config is picked up.
