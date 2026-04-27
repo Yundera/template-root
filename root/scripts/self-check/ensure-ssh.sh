@@ -14,9 +14,34 @@ fi
 # Install openssh-server
 "$YND_ROOT/scripts/tools/ensure-packages.sh" openssh-server
 
+# Disable password auth and root password login. Ubuntu's default
+# sshd_config sources /etc/ssh/sshd_config.d/*.conf, so dropping a
+# snippet here overrides the main file without fighting whatever
+# distro/cloud-init shipped. Idempotent: rewrite the file every run and
+# only reload sshd if the contents actually changed.
+HARDEN_FILE="/etc/ssh/sshd_config.d/99-yundera-harden.conf"
+HARDEN_CONTENT="# Managed by ensure-ssh.sh — do not edit.
+PasswordAuthentication no
+PermitRootLogin prohibit-password
+KbdInteractiveAuthentication no
+"
+mkdir -p /etc/ssh/sshd_config.d
+if [ ! -f "$HARDEN_FILE" ] || [ "$(cat "$HARDEN_FILE")" != "$HARDEN_CONTENT" ]; then
+    printf '%s' "$HARDEN_CONTENT" > "$HARDEN_FILE"
+    chmod 0644 "$HARDEN_FILE"
+    HARDEN_CHANGED=1
+else
+    HARDEN_CHANGED=0
+fi
+
 # Enable and start SSH service
 systemctl enable ssh.service
 systemctl start ssh.service
+
+if [ "$HARDEN_CHANGED" = "1" ]; then
+    echo "→ Applied SSH hardening (password auth disabled), reloading sshd..."
+    systemctl reload ssh.service || systemctl restart ssh.service
+fi
 
 # Function to check for SSH issues
 check_ssh_issues() {
