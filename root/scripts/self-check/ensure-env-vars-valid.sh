@@ -60,8 +60,17 @@ if ! "$ENV_MANAGER" exists DEFAULT_SERVICE_PORT "$PCS_ENV_FILE"; then
     echo "Set default DEFAULT_SERVICE_PORT=8080"
 fi
 
-# Re-read PCS env file to include any newly set defaults
+# JWT_SECRET: HMAC for the settings-center-app OIDC state cookie. The image
+# does not ship config/core.env.json (gitignored), so this must be provided via
+# .env. Generate-once and persist so state cookies survive container restarts.
+if ! "$ENV_MANAGER" exists JWT_SECRET "$SECRET_ENV_FILE"; then
+    "$ENV_MANAGER" set JWT_SECRET "$(openssl rand -hex 32)" "$SECRET_ENV_FILE"
+    echo "Generated JWT_SECRET in $SECRET_ENV_FILE"
+fi
+
+# Re-read env files to include any newly set defaults
 read_env_file "$PCS_ENV_FILE"
+read_env_file "$SECRET_ENV_FILE"
 
 # Check if all required variables are set and not empty
 missing_vars=()

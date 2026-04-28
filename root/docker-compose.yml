@@ -16,6 +16,11 @@ services:
     environment:
       AUTHORITY_ENDPOINT: "https://8080-casaos-${DOMAIN}/v1/users"
       COMPOSE_FOLDER_PATH: "/DATA/AppData/casaos/apps/yundera/"
+      # auth-registrar sidecar (defined below) hands out OIDC client_id/secret
+      # pairs. Set here because the image does not ship config/core.env.json
+      # (gitignored), so the dashboard would otherwise fail with
+      # "OIDC_REGISTRAR_URL not configured" on every login attempt.
+      OIDC_REGISTRAR_URL: "http://auth-registrar:9092/register"
     volumes:
       # This gives the admin app ssh root access (used to update the system)
       - type: bind
