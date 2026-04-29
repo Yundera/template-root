@@ -26,6 +26,10 @@ DEFAULT_PWD=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get DEFAULT_PWD "$YU
 DOMAIN=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get DOMAIN "$YUNDERA_ENV")
 PUBLIC_IPV4=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get PUBLIC_IPV4 "$YUNDERA_ENV")
 PUBLIC_IPV6=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get PUBLIC_IPV6 "$YUNDERA_ENV")
+EMAIL=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get EMAIL "$YUNDERA_ENV")
+# Apps expect a routable address for password resets, alerts, etc. Fall back to
+# admin@$DOMAIN only if the operator email wasn't provisioned into the env.
+[ -z "$EMAIL" ] && EMAIL="admin@$DOMAIN"
 
 # Detect timezone
 if [ -f /etc/timezone ]; then
@@ -79,14 +83,14 @@ for app_dir in "$APPS_DIR"/*/; do
     PCS_DATA_ROOT="/DATA" \
     PCS_PUBLIC_IP="$PUBLIC_IPV4" \
     PCS_PUBLIC_IPV6="$PUBLIC_IPV6" \
-    PCS_EMAIL="admin@$DOMAIN" \
+    PCS_EMAIL="$EMAIL" \
     APP_DEFAULT_PASSWORD="$DEFAULT_PWD" \
     APP_DOMAIN="$DOMAIN" \
     APP_DATA_ROOT="/DATA" \
     APP_PUBLIC_IP="$PUBLIC_IPV6" \
     APP_PUBLIC_IPV4="$PUBLIC_IPV4" \
     APP_PUBLIC_IPV6="$PUBLIC_IPV6" \
-    APP_EMAIL="admin@$DOMAIN" \
+    APP_EMAIL="$EMAIL" \
     APP_NET="pcs" \
     docker compose -f "$compose_file" up --quiet-pull -d
 
