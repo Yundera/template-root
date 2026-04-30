@@ -100,14 +100,44 @@ fi
 
 mv "$TMP" "$CONFIG_OUT"
 
+# Operator email from .ynd.user.env — this is the password-reset recovery
+# path, so it must stay in sync with Firebase even after the initial seed.
+# admin@$DOMAIN is just an unrouted vanity fallback.
+ADMIN_EMAIL="$("$ENV_MGR" get EMAIL "$USER_ENV")"
+if [ -z "$ADMIN_EMAIL" ]; then
+    ADMIN_EMAIL="admin@${DOMAIN}"
+    log_warn "EMAIL not set in $USER_ENV; falling back to ${ADMIN_EMAIL}"
+fi
+
 # Seed admin user. Authelia 4.38+ requires users_database.yml to contain at
 # least one user (empty `users: {}` fails the startup schema check), so we
 # only write the file after we can produce a valid entry.
 #
 # One-shot marker: presence of any `password:` field in an existing file
 # (either from our seed or from Authelia writing password changes back).
+# When the file is already seeded, refresh the email line in-place — never
+# touch password or other fields Authelia owns.
 if [ -f "$USERS_DB" ] && grep -q "^[[:space:]]*password:" "$USERS_DB"; then
-    log_info "users_database.yml has existing users, skipping admin seed"
+    # Refresh email in-place. There is only ever one user (admin) in this file,
+    # so a global match on `email:` is unambiguous; if/when multi-user support
+    # is added, scope this to the admin block.
+    TMP="$(mktemp)"
+    awk -v new="$ADMIN_EMAIL" '
+        /^[[:space:]]+email:/ {
+            match($0, /^[[:space:]]+/)
+            print substr($0, 1, RLENGTH) "email: \"" new "\""
+            next
+        }
+        { print }
+    ' "$USERS_DB" > "$TMP"
+    if cmp -s "$TMP" "$USERS_DB"; then
+        rm -f "$TMP"
+        log_info "users_database.yml has existing users; admin email already ${ADMIN_EMAIL}"
+    else
+        chmod 600 "$TMP"
+        mv "$TMP" "$USERS_DB"
+        log_info "users_database.yml has existing users; refreshed admin email to ${ADMIN_EMAIL}"
+    fi
 else
     # Authelia's admin username is hard-coded to 'admin' regardless of
     # DEFAULT_USER (which still drives CasaOS's initial user). Keeping a single
@@ -134,7 +164,7 @@ users:
   ${AUTHELIA_ADMIN}:
     displayname: "Administrator"
     password: "${ADMIN_HASH}"
-    email: "admin@${DOMAIN}"
+    email: "${ADMIN_EMAIL}"
     groups:
       - admins
 EOF
