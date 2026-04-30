@@ -8,8 +8,6 @@ set -e
 
 export DEBIAN_FRONTEND=noninteractive
 
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
-
 # Check if running as root
 if [ "$(id -u)" -ne 0 ]; then
     echo "This script must be run as root" >&2
@@ -22,13 +20,10 @@ if [ -f /.dockerenv ]; then
 fi
 
 # Provider gate — only Proxmox uses the LVM scheme this script resizes.
-_prov="${YND_PROVIDER:-}"
-if [ -z "$_prov" ] && [ -f "$YND_ROOT/.pcs.env" ]; then
-    _prov="$(grep -E '^YND_PROVIDER=' "$YND_ROOT/.pcs.env" 2>/dev/null | tail -1 | cut -d= -f2-)"
-fi
-_prov="${_prov:-proxmox}"
-if [ "$_prov" != "proxmox" ]; then
-    echo "[YND_PROVIDER=$_prov] no LVM to resize, skipping"
+# YND_PROVIDER is resolved and exported by self-check.sh; defaults to
+# "proxmox" for standalone invocations.
+if [ "${YND_PROVIDER:-proxmox}" != "proxmox" ]; then
+    echo "[YND_PROVIDER=${YND_PROVIDER}] no LVM to resize, skipping"
     exit 0
 fi
 

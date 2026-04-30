@@ -15,13 +15,10 @@ fi
 # Provider gate — the qemu-guest-agent service needs a virtio-serial host
 # channel that only Proxmox (and some bare-KVM setups) expose. Cloud
 # providers like Contabo do not, so starting the service hangs and fails.
-_prov="${YND_PROVIDER:-}"
-if [ -z "$_prov" ] && [ -f "$YND_ROOT/.pcs.env" ]; then
-    _prov="$(grep -E '^YND_PROVIDER=' "$YND_ROOT/.pcs.env" 2>/dev/null | tail -1 | cut -d= -f2-)"
-fi
-_prov="${_prov:-proxmox}"
-if [ "$_prov" != "proxmox" ]; then
-    echo "[YND_PROVIDER=$_prov] no virtio-serial host channel, skipping qemu-guest-agent"
+# YND_PROVIDER is resolved and exported by self-check.sh; defaults to
+# "proxmox" for standalone invocations.
+if [ "${YND_PROVIDER:-proxmox}" != "proxmox" ]; then
+    echo "[YND_PROVIDER=${YND_PROVIDER}] no virtio-serial host channel, skipping qemu-guest-agent"
     exit 0
 fi
 

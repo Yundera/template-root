@@ -33,7 +33,16 @@ fi
 SCRIPT_DIR="/DATA/AppData/casaos/apps/yundera/scripts"
 source "${SCRIPT_DIR}/library/common.sh"
 
-log "=== Self-check starting ==="
+# Resolve YND_PROVIDER once for the whole pass and export it so every
+# ensure-*.sh inherits the same value. Resolution order: env var → .pcs.env
+# → "proxmox" default. Single source of truth — the gated scripts just read
+# ${YND_PROVIDER:-proxmox} without re-grepping the env file.
+if [ -z "${YND_PROVIDER:-}" ] && [ -f "/DATA/AppData/casaos/apps/yundera/.pcs.env" ]; then
+    YND_PROVIDER="$(grep -E '^YND_PROVIDER=' /DATA/AppData/casaos/apps/yundera/.pcs.env 2>/dev/null | tail -1 | cut -d= -f2-)"
+fi
+export YND_PROVIDER="${YND_PROVIDER:-proxmox}"
+
+log "=== Self-check starting (YND_PROVIDER=$YND_PROVIDER) ==="
 
 SCRIPTS_CONFIG_FILE="$SCRIPT_DIR/self-check/scripts-config.txt"
 
