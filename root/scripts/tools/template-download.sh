@@ -37,8 +37,44 @@ case "$SOURCE" in
         ;;
 esac
 
-# Install dependencies
-apt-get install -y wget curl unzip
+# Install dependencies. Wait for cloud-init / unattended-upgrades to release
+# the apt lock first, and retry on transient lock contention. The helper
+# script wait-for-apt-lock.sh isn't on disk yet (it ships in the template
+# we're about to download), so this lock check is inlined.
+APT_LOCKS=(
+    /var/lib/apt/lists/lock
+    /var/lib/dpkg/lock
+    /var/lib/dpkg/lock-frontend
+    /var/cache/apt/archives/lock
+)
+wait_apt_lock() {
+    local max=${1:-300} waited=0 f
+    while [ "$waited" -lt "$max" ]; do
+        local locked=0
+        for f in "${APT_LOCKS[@]}"; do
+            if [ -f "$f" ] && fuser "$f" >/dev/null 2>&1; then
+                locked=1
+                break
+            fi
+        done
+        [ "$locked" -eq 0 ] && return 0
+        sleep 5
+        waited=$((waited + 5))
+    done
+    return 1
+}
+apt_run() {
+    local attempt
+    for attempt in 1 2 3; do
+        if "$@"; then return 0; fi
+        echo "apt attempt $attempt failed, waiting for lock and retrying..."
+        wait_apt_lock 300 || true
+    done
+    return 1
+}
+export DEBIAN_FRONTEND=noninteractive
+wait_apt_lock 300 || echo "apt lock still held after 5min, proceeding anyway"
+apt_run apt-get install -y wget curl unzip
 
 # Create target directory
 mkdir -p /DATA/AppData/casaos/apps/yundera

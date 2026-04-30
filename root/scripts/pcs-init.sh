@@ -34,20 +34,53 @@ UPDATE_URL=$(grep '^UPDATE_URL=' "$PCS_ENV" | cut -d= -f2- || true)
 [ -n "$UPDATE_URL" ] || die "UPDATE_URL missing from $PCS_ENV"
 
 # 2. Wait out cloud-init / unattended-upgrades on first boot of fresh VPS.
-#    Without this, set -e trips on a transient dpkg lock — the failure
-#    mode that motivated this script in the first place.
+#    Without this, set -e trips on a transient apt/dpkg lock — the failure
+#    mode that motivated this script in the first place. Check all four
+#    lock files: cloud-init's `apt-get update` holds lists/lock without
+#    necessarily holding dpkg/lock-frontend, so checking only the latter
+#    races (seen in prod 2026-04-30: lists/lock held by pid 1054).
+APT_LOCKS=(
+    /var/lib/apt/lists/lock
+    /var/lib/dpkg/lock
+    /var/lib/dpkg/lock-frontend
+    /var/cache/apt/archives/lock
+)
+wait_apt_lock() {
+    local max=${1:-300} waited=0 f
+    while [ "$waited" -lt "$max" ]; do
+        local locked=0
+        for f in "${APT_LOCKS[@]}"; do
+            if [ -f "$f" ] && fuser "$f" >/dev/null 2>&1; then
+                locked=1
+                break
+            fi
+        done
+        [ "$locked" -eq 0 ] && return 0
+        sleep 5
+        waited=$((waited + 5))
+    done
+    return 1
+}
 log "Waiting for apt lock (up to 5 min)..."
-for _ in $(seq 1 60); do
-    fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || break
-    sleep 5
-done
+wait_apt_lock 300 || log "apt lock still held after 5min, proceeding anyway"
 
 # 3. Install just enough to fetch the tree. Self-checks install everything
-#    else (docker, cron, etc.) via scripts-config.txt later.
+#    else (docker, cron, etc.) via scripts-config.txt later. Retry the
+#    apt-get calls because cloud-init can grab the lock between our check
+#    and the next command — one more wait+retry covers that race.
 log "Installing bootstrap prerequisites..."
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -y
-apt-get install -y curl unzip ca-certificates rsync
+apt_run() {
+    local attempt
+    for attempt in 1 2 3; do
+        if "$@"; then return 0; fi
+        log "apt attempt $attempt failed, waiting for lock and retrying..."
+        wait_apt_lock 300 || true
+    done
+    return 1
+}
+apt_run apt-get update -y
+apt_run apt-get install -y curl unzip ca-certificates rsync
 
 # 4. Ensure the pcs user (every self-check assumes it owns /DATA).
 id -u pcs >/dev/null 2>&1 || useradd -m -s /bin/bash pcs
