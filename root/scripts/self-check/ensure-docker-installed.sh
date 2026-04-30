@@ -6,8 +6,20 @@ set -e  # Exit on any error
 
 export DEBIAN_FRONTEND=noninteractive
 
-USER=pcs
+# Both pcs and admin need docker group membership. pcs is the operator
+# account; admin is the sudoer the settings-center-app SSHes in as for
+# `docker compose …` calls (DockerUpdate.ts, etc.) without per-command sudo.
+DOCKER_USERS=(pcs admin)
 YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+
+ensure_users_in_docker_group() {
+    for u in "${DOCKER_USERS[@]}"; do
+        if id "$u" >/dev/null 2>&1 && ! id -nG "$u" | tr ' ' '\n' | grep -qx docker; then
+            echo "→ Adding user $u to docker group"
+            usermod -aG docker "$u"
+        fi
+    done
+}
 
 # Function to check if Docker is installed and working
 check_docker() {
@@ -15,17 +27,9 @@ check_docker() {
 
         # Check if Docker daemon is running
         if docker info >/dev/null 2>&1; then
-
-            # Check if current user is in docker group
-            if groups $USER | grep -q docker; then
-                echo "✓ Docker is properly installed and configured : $(docker --version)"
-                return 0
-            else
-                echo "→ Adding user $USER to docker group"
-                usermod -aG docker $USER
-                echo "WARNING: Please log out and log back in for group changes to take effect"
-                return 0
-            fi
+            ensure_users_in_docker_group
+            echo "✓ Docker is properly installed and configured : $(docker --version)"
+            return 0
         else
             echo "→ Docker daemon not running, starting Docker service"
             systemctl start docker
@@ -68,8 +72,8 @@ install_docker() {
         exit 1
     fi
 
-    # Add current user to docker group
-    usermod -aG docker $USER
+    # Add operator + admin to docker group
+    ensure_users_in_docker_group
 
     # Start and enable Docker service
     if [ -f /.dockerenv ]; then

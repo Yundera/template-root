@@ -4,12 +4,13 @@ set -e
 
 # Maintenance/admin sudoer account.
 #
-# Created as the future replacement for root for human and dashboard
-# access to the host. The orchestrator (proxmox-middleware
-# vm_operations/update.py) and the admin container's bind-mount of
-# /root/.ssh still target root today; those will migrate to admin in a
-# follow-up. Once they do, ensure-ssh.sh's harden snippet can be
-# tightened with `PermitRootLogin no`.
+# Replaces root for human and dashboard access to the host. The
+# settings-center-app's bind-mount has moved to /home/admin/.ssh and
+# HostExecutor.ts SSHes as `admin` (privileged work elevates via
+# `sudo -n …` on the host). The orchestrator (proxmox-middleware
+# vm_operations/update.py) still targets root today; once it migrates,
+# ensure-ssh.sh's harden snippet can be tightened with `PermitRootLogin
+# no`.
 #
 # Properties:
 #   - Locked-but-key-usable password (`*` in shadow): pubkey auth works,

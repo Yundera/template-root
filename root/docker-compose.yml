@@ -22,9 +22,12 @@ services:
       # "OIDC_REGISTRAR_URL not configured" on every login attempt.
       OIDC_REGISTRAR_URL: "http://auth-registrar:9092/register"
     volumes:
-      # This gives the admin app ssh root access (used to update the system)
+      # The admin app SSHes back to the host as the `admin` sudoer (created by
+      # ensure-admin-user.sh). Privileged work goes through `sudo -n …` on the
+      # host. The container generates a fresh keypair on every start and writes
+      # the pubkey here, which is admin's authorized_keys.
       - type: bind
-        source: /root/.ssh/
+        source: /home/admin/.ssh/
         target: /host_ssh/
       # This gives the admin app access to its own data (used to update itself)
       - type: bind

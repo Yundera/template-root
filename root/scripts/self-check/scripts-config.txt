@@ -5,8 +5,8 @@
 
 # User and permissions setup
 ensure-pcs-user.sh
-ensure-admin-user.sh
 ensure-script-executable.sh
+ensure-admin-user.sh
 
 # Template and configuration sync
 ensure-template-sync.sh
