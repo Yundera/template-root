@@ -46,7 +46,9 @@ if [ "$SCHEDULE" = "disabled" ] || [ "$SCHEDULE" = "off" ]; then
     exit 0
 fi
 
-# Append the managed entry
+# Append the managed entry. Trailing newline is required: crontab refuses
+# input with "new crontab file is missing newline before EOF" otherwise, and
+# command substitution above strips the \n that printf wrote.
 NEW=$(printf '%s\n%s %s > /dev/null 2>&1 %s\n' "$FILTERED" "$SCHEDULE" "$SCRIPT_FILE" "$MARKER")
-printf '%s' "$NEW" | crontab -
+printf '%s\n' "$NEW" | crontab -
 echo "Nightly self-check cron set to: $SCHEDULE"

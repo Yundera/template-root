@@ -27,10 +27,16 @@ USER_NAME="admin"
 # Ensure sudo is installed
 "$YND_ROOT/scripts/tools/ensure-packages.sh" sudo
 
-# Create user if it doesn't exist
+# Create user if it doesn't exist. Cloud-init on some Ubuntu images pre-creates
+# an `admin` group; useradd's default tries to create a same-named group and
+# fails with exit 9. Reuse the existing group when present.
 if ! id "$USER_NAME" &>/dev/null; then
     echo "→ Creating user $USER_NAME"
-    useradd -m -s /bin/bash "$USER_NAME"
+    if getent group "$USER_NAME" >/dev/null; then
+        useradd -m -s /bin/bash -g "$USER_NAME" "$USER_NAME"
+    else
+        useradd -m -s /bin/bash "$USER_NAME"
+    fi
 fi
 
 # `*` = no valid password but NOT locked. Pubkey works, password attempts
