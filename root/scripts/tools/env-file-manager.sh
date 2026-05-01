@@ -34,6 +34,30 @@ ensure_file() {
     fi
 }
 
+# Capture mode + ownership of an existing file. mktemp creates files mode
+# 0600 owned by the calling user; on same-fs `mv` the destination inherits
+# these — silently chmod'ing the env file to 0600 and chowning to whoever
+# ran the script (root, when invoked from cron). Capture before mv, restore
+# after, so the file's pre-existing mode/owner survive every set/delete/sanitize.
+preserve_meta() {
+    local file="$1"
+    [ -e "$file" ] || { echo ""; return 0; }
+    stat -c '%a:%U:%G' "$file" 2>/dev/null || echo ""
+}
+
+restore_meta() {
+    local file="$1" meta="$2"
+    [ -z "$meta" ] && return 0
+    [ -e "$file" ] || return 0
+    local mode rest owner group
+    mode="${meta%%:*}"
+    rest="${meta#*:}"
+    owner="${rest%%:*}"
+    group="${rest#*:}"
+    chmod "$mode" "$file" 2>/dev/null || true
+    chown "$owner:$group" "$file" 2>/dev/null || true
+}
+
 # SET: Update or add a variable in the env file
 # Uses atomic write with temp file + mv for safety
 cmd_set() {
@@ -42,6 +66,8 @@ cmd_set() {
     local env_file="$3"
 
     ensure_file "$env_file"
+    local meta
+    meta=$(preserve_meta "$env_file")
 
     local tmp_file
     tmp_file=$(mktemp) || error "Failed to create temp file"
@@ -62,6 +88,7 @@ cmd_set() {
         rm -f "$tmp_file"
         error "Failed to write to $env_file"
     }
+    restore_meta "$env_file" "$meta"
 
     # Verify the write
     local written_value
@@ -100,6 +127,9 @@ cmd_delete() {
         return 0
     fi
 
+    local meta
+    meta=$(preserve_meta "$env_file")
+
     local tmp_file
     tmp_file=$(mktemp) || error "Failed to create temp file"
 
@@ -111,6 +141,7 @@ cmd_delete() {
         rm -f "$tmp_file"
         error "Failed to write to $env_file"
     }
+    restore_meta "$env_file" "$meta"
 }
 
 # EXISTS: Check if a variable exists in the env file
@@ -138,6 +169,9 @@ cmd_sanitize() {
         return 0
     fi
 
+    local meta
+    meta=$(preserve_meta "$env_file")
+
     local tmp_file
     tmp_file=$(mktemp) || error "Failed to create temp file"
 
@@ -154,6 +188,7 @@ cmd_sanitize() {
         rm -f "$tmp_file"
         error "Failed to write to $env_file"
     }
+    restore_meta "$env_file" "$meta"
 }
 
 # Main command dispatcher
