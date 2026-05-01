@@ -26,6 +26,7 @@ execute_script_with_logging "$SCRIPT_DIR/self-check-reboot.sh"
 
 # Then run os-init specific scripts only once in the VM lifecycle
 execute_script_with_logging "$SCRIPT_DIR/tools/lock-password-auth.sh"
+execute_script_with_logging "$SCRIPT_DIR/tools/clear-root-ssh-keys.sh"
 execute_script_with_logging "$SCRIPT_DIR/tools/os-cleanup-before-use.sh"
 
 log "=== Final user hand over completed successfully ==="
