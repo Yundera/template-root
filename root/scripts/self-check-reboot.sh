@@ -29,9 +29,18 @@ SCRIPT_DIR="/DATA/AppData/casaos/apps/yundera/scripts"
 source "${SCRIPT_DIR}/library/common.sh"
 
 # Run the core self-check with the lock-bypass flag so it doesn't try to
-# re-acquire the lock we already hold. Failures don't abort — we still want
-# to bring the user compose stack up.
-YUNDERA_SELF_CHECK_LOCK_HELD=1 "$SCRIPT_DIR/self-check.sh" || true
-
-log "Restarting user compose stack"
-execute_script_with_logging "$SCRIPT_DIR/tools/restart-user-compose-stack.sh" || true
+# re-acquire the lock we already hold. On the @reboot cron path, failures
+# don't abort — we still want to bring the user compose stack up on a
+# degraded host. During first-run provisioning (PCS_PROVISIONING=1, set
+# by os-init.sh), failures DO abort: the orchestrator's runHostBootstrap
+# needs a non-zero exit so it can route to onCreateFailure immediately
+# instead of waiting 90 min on waitForDomainReady.
+if [ "${PCS_PROVISIONING:-0}" = "1" ]; then
+    PCS_SELF_CHECK_LOCK_HELD=1 "$SCRIPT_DIR/self-check.sh"
+    log "Restarting user compose stack (provisioning: fail-fast on errors)"
+    execute_script_with_logging "$SCRIPT_DIR/tools/restart-user-compose-stack.sh"
+else
+    PCS_SELF_CHECK_LOCK_HELD=1 "$SCRIPT_DIR/self-check.sh" || true
+    log "Restarting user compose stack (reboot: best-effort, errors masked)"
+    execute_script_with_logging "$SCRIPT_DIR/tools/restart-user-compose-stack.sh" || true
+fi

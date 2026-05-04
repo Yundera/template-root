@@ -20,9 +20,13 @@ execute_script_with_logging "$SCRIPT_DIR/tools/generate-default-pwd.sh"
 rm -f /DATA/AppData/yundera/.provisioning-in-progress
 log "Removed provisioning-in-progress marker"
 
-# First run the full self-check process
+# First run the full self-check process. Export PCS_PROVISIONING so
+# self-check-reboot.sh fails loud on first-run instead of masking errors
+# with `|| true` (its default reboot-cron behavior, where limping is fine).
 chmod +x $SCRIPT_DIR/self-check-reboot.sh
+export PCS_PROVISIONING=1
 execute_script_with_logging "$SCRIPT_DIR/self-check-reboot.sh"
+unset PCS_PROVISIONING
 
 # Then run os-init specific scripts only once in the VM lifecycle
 execute_script_with_logging "$SCRIPT_DIR/tools/lock-password-auth.sh"

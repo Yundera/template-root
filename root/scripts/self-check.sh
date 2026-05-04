@@ -22,7 +22,7 @@ if [ -f "$MARKER_FILE" ]; then
 fi
 
 # Acquire the shared lock unless a parent (self-check-reboot.sh) already holds it.
-if [ "${YUNDERA_SELF_CHECK_LOCK_HELD:-0}" != "1" ]; then
+if [ "${PCS_SELF_CHECK_LOCK_HELD:-0}" != "1" ]; then
     exec 200>"$LOCK_FILE"
     if ! flock -n 200; then
         echo "Another self-check instance is running, exiting"
