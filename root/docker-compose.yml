@@ -80,7 +80,7 @@ services:
       PCS_DATA_ROOT: "/DATA"
       PCS_PUBLIC_IP: "${PUBLIC_IPV4}"
       PCS_PUBLIC_IPV6: "${PUBLIC_IPV6}"
-      PCS_EMAIL: "admin@${DOMAIN}"
+      PCS_EMAIL: "${EMAIL}"
 
       # V3 these envs are not used directly by casaos but are forwarded to the app at creation, injected in the docker compose up
       APP_DEFAULT_PASSWORD: "${DEFAULT_PWD}"
@@ -92,7 +92,8 @@ services:
       APP_PUBLIC_IPV4_DASH: "${PUBLIC_IPV4_DASH}"
       APP_PUBLIC_IPV6: "${PUBLIC_IPV6}"
       APP_PUBLIC_IPV6_DASH: "${PUBLIC_IPV6_DASH}"
-      APP_EMAIL: "admin@${DOMAIN}"
+      #APP_EMAIL: "admin@${DOMAIN}"
+      APP_EMAIL: "${EMAIL}"
       APP_NET: pcs
 
       # SMTP configuration for magic link and password reset emails
