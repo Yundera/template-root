@@ -250,17 +250,34 @@ else
 fi
 
 # =============================================================================
-# PUBLIC_IP — canonical (prefer IPv4 when both work, then IPv6, else localhost).
-# Every consumer (mesh-router-agent, Caddy labels, settings-center-app) must
-# read PUBLIC_IP/PUBLIC_IP_DASH only — never PUBLIC_IPV4/PUBLIC_IPV6 directly —
-# so the registered route and the routing labels can never disagree.
+# PUBLIC_IP — canonical address. Every consumer (mesh-router-agent, Caddy
+# labels, settings-center-app) must read PUBLIC_IP/PUBLIC_IP_DASH only — never
+# PUBLIC_IPV4/PUBLIC_IPV6 directly — so the registered route and the routing
+# labels can never disagree.
+#
+# Preference order is provider-dependent:
+#   proxmox (Scaleway-Proxmox): IPv6 first, IPv4 fallback. Scaleway IPv4 is a
+#     paid/scarce resource on this fleet, and our routing path is IPv6-native;
+#     IPv4 stays detected (PUBLIC_IPV4 still recorded) but is not canonical.
+#   anything else (e.g. contabo): IPv4 first, IPv6 fallback.
 # =============================================================================
-if [ -n "$PUBLIC_IPV4" ]; then
-    PUBLIC_IP="$PUBLIC_IPV4"
-    PUBLIC_IP_DASH="$PUBLIC_IPV4_DASH"
-elif [ -n "$PUBLIC_IPV6" ]; then
-    PUBLIC_IP="$PUBLIC_IPV6"
-    PUBLIC_IP_DASH="$PUBLIC_IPV6_DASH"
+case "${YND_PROVIDER:-proxmox}" in
+    proxmox)
+        PRIMARY_IP="$PUBLIC_IPV6";       PRIMARY_DASH="$PUBLIC_IPV6_DASH"
+        SECONDARY_IP="$PUBLIC_IPV4";     SECONDARY_DASH="$PUBLIC_IPV4_DASH"
+        ;;
+    *)
+        PRIMARY_IP="$PUBLIC_IPV4";       PRIMARY_DASH="$PUBLIC_IPV4_DASH"
+        SECONDARY_IP="$PUBLIC_IPV6";     SECONDARY_DASH="$PUBLIC_IPV6_DASH"
+        ;;
+esac
+
+if [ -n "$PRIMARY_IP" ]; then
+    PUBLIC_IP="$PRIMARY_IP"
+    PUBLIC_IP_DASH="$PRIMARY_DASH"
+elif [ -n "$SECONDARY_IP" ]; then
+    PUBLIC_IP="$SECONDARY_IP"
+    PUBLIC_IP_DASH="$SECONDARY_DASH"
 else
     # Custom CA certificates still work locally via 127.0.0.1 — sslip.io
     # (Let's Encrypt) will not, but route matching no longer silently breaks.

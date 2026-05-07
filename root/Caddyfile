@@ -13,6 +13,31 @@
 
     # Let's Encrypt email for certificate registration (used for sslip.io domains)
     email {$PCS_EMAIL}
+
+    # Pin ACME to Let's Encrypt only. ZeroSSL was the default fallback and was
+    # failing every attempt with "Invalid signature on JWS request", doubling
+    # the failed-obtain rate for no benefit. With one healthy issuer we still
+    # tolerate LE outages via the internal-CA fallback below.
+    acme_ca https://acme-v02.api.letsencrypt.org/directory
+
+    # Default issuer chain for any site without an explicit `tls` directive —
+    # in practice that's all *.sslip.io labels (including ones emitted by
+    # third-party app compose files we don't control). Caddy tries LE first;
+    # when it fails (rate limits, malformed hostnames from empty
+    # ${PUBLIC_IP_DASH} interpolation, etc.) it falls through to the internal
+    # CA and issues a self-signed cert. Browsers warn on self-signed, but
+    # nobody is hitting the malformed hostnames anyway — the point is to
+    # break the every-5-minutes ACME retry storm that pegs Caddy's CPU.
+    #
+    # 168h leaf lifetime → Caddy renews each host every ~4-5 days instead of
+    # retrying ACME every 5 minutes per host. Bounds CPU even at 100+
+    # services with broken labels: ~22 cert renewals/day total, vs. the
+    # previous ~28 800/day storm. Stays inside the 7-day default lifetime of
+    # the internal intermediate CA, so we don't need `sign_with_root`.
+    cert_issuer acme
+    cert_issuer internal {
+        lifetime 168h
+    }
 }
 
 # Custom CA TLS for gateway-routed and nip.io domains
@@ -35,7 +60,8 @@
 # Certificate strategy:
 #   - Gateway-routed domains (e.g., admin-${DOMAIN}): custom CA (gateway_tls)
 #   - nip.io domains (e.g., admin-${PUBLIC_IP_DASH}.nip.io): custom CA (gateway_tls)
-#   - sslip.io domains (e.g., admin-${PUBLIC_IP_DASH}.sslip.io): Let's Encrypt
+#   - sslip.io domains (e.g., admin-${PUBLIC_IP_DASH}.sslip.io): Let's Encrypt,
+#     with internal-CA fallback (see global cert_issuer chain above)
 #
 # Most routes are via container labels in docker-compose.yml
 # Root domains below use configurable DEFAULT_SERVICE_HOST/PORT (defaults to casaos:8080)
