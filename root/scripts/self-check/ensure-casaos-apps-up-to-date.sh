@@ -3,7 +3,15 @@ set -e
 
 # Ensure CasaOS apps are up-to-date
 # For each app with at least one running container, run docker compose up -d
-# with remixed environment variables matching CasaOS injection pattern
+# with remixed environment variables matching CasaOS injection pattern.
+#
+# FORCE_START=1 bypasses the "only if at least one container is running" gate.
+# Used by the migration pipeline's start_user_apps step (Migration.ts), where
+# the apps were just rsynced onto a fresh target and so are necessarily not
+# running yet — the normal gate would skip them all and leave the user with
+# data but no running services. Outside that one-shot post-migration call,
+# the gate must stay: it's the protection against bringing back up apps the
+# user has intentionally stopped from the CasaOS UI.
 
 APPS_DIR="/DATA/AppData/casaos/apps"
 YND_ROOT="$APPS_DIR/yundera"
@@ -60,11 +68,14 @@ for app_dir in "$APPS_DIR"/*/; do
         continue
     fi
 
-    # Check if at least one container is running
-    running_containers=$(docker compose -f "$compose_file" ps -q 2>/dev/null | wc -l)
-    if [ "$running_containers" -eq 0 ]; then
-        skipped_count=$((skipped_count + 1))
-        continue
+    # Check if at least one container is running — unless FORCE_START=1
+    # tells us the caller knows the apps need to come up fresh (post-migration).
+    if [ "${FORCE_START:-0}" != "1" ]; then
+        running_containers=$(docker compose -f "$compose_file" ps -q 2>/dev/null | wc -l)
+        if [ "$running_containers" -eq 0 ]; then
+            skipped_count=$((skipped_count + 1))
+            continue
+        fi
     fi
 
     echo "Updating app: $app_name"

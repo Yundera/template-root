@@ -4,33 +4,47 @@ This folder contains idempotent setup scripts that ensure various system compone
 
 ## Script Responsibilities
 
+Listed in execution order from `scripts-config.txt`. Five scripts marked **(proxmox-only)** early-exit when `YND_PROVIDER` is not `proxmox`.
+
 | Script | Purpose |
 |--------|---------|
-| `ensure-common-tools-installed.sh` | Installs essential system tools (htop, vim) |
-| `ensure-data-partition-size.sh` | Automatically extends DATA partition when additional disk space becomes available |
-| `ensure-data-partition.sh` | Creates and mounts 1GB resizable LVM partition with bind mounts for /DATA and /var/lib/docker |
-| `ensure-docker-installed.sh` | Installs and configures Docker CE with proper user permissions |
 | `ensure-pcs-user.sh` | Creates 'pcs' user with sudo privileges and required directory structure |
-| `ensure-qemu-agent.sh` | Installs and starts QEMU guest agent for VM integration |
-| `ensure-script-executable.sh` | Makes all scripts executable and sets proper ownership to pcs user |
-| `ensure-self-check-at-reboot.sh` | Configures cron job to run self-check script at system boot |
-| `ensure-ssh.sh` | Installs and configures OpenSSH server |
-| `ensure-public-ip.sh` | Detects and stores public IP addresses (IPv4/IPv6) in environment; currently supports IPv6 via SLAAC on ens19 |
-| `ensure-swap.sh` | Creates and configures 4GB swap file with optimized swappiness settings |
+| `ensure-script-executable.sh` | Makes all scripts executable and sets proper ownership to the pcs user |
+| `ensure-admin-user.sh` | Configures the admin user account inside the PCS |
+| `ensure-template-sync.sh` | Downloads `UPDATE_URL`, runs migrations from the new tree, then rsyncs over `/DATA/AppData/casaos/apps/yundera/` |
+| `ensure-yundera-user-data.sh` | Materialises user-specific state from `.ynd.user.env` |
 | `ensure-ubuntu-up-to-date.sh` | Updates package lists and displays available system upgrades |
-| `ensure-user-compose-pulled.sh` | Pulls latest images for user's Docker Compose services |
-| `ensure-user-compose-stack-up.sh` | Starts user's Docker Compose stack in detached mode |
-| `ensure-user-docker-compose-updated.sh` | Generates docker-compose.yml from template using environment variables |
-| `ensure-vm-scalable.sh` | Configures VM for CPU and RAM hotplug capabilities |
-| `ensure-logrotate.sh` | Configures daily log rotation for yundera.log (7-day retention) |
+| `ensure-common-tools-installed.sh` | Installs essential system tools (htop, vim, etc.) |
+| `ensure-ssh.sh` | Installs and configures OpenSSH server |
+| `ensure-vm-scalable.sh` | **(proxmox-only)** Configures VM for CPU and RAM hotplug capabilities |
+| `ensure-qemu-agent.sh` | **(proxmox-only)** Installs and starts QEMU guest agent for VM integration |
+| `ensure-public-ip.sh` | Detects and stores public IP addresses (IPv4/IPv6) in environment |
+| `ensure-data-partition.sh` | **(proxmox-only)** Creates and mounts resizable LVM partition with bind mounts for `/DATA` and `/var/lib/docker` |
+| `ensure-data-partition-size.sh` | **(proxmox-only)** Automatically extends the DATA partition when additional disk space becomes available |
+| `ensure-swap.sh` | Creates and configures swap file with optimised swappiness settings |
+| `ensure-self-check-at-reboot.sh` | Installs the `@reboot` cron entry that runs `self-check-reboot.sh` |
+| `ensure-nightly-self-check.sh` | Installs the nightly cron entry that runs `self-check.sh` directly |
+| `ensure-logrotate.sh` | Configures daily log rotation for `yundera.log` (7-day retention) |
+| `ensure-docker-installed.sh` | Installs and configures Docker CE with proper user permissions |
+| `ensure-env-vars-valid.sh` | Validates required env vars across `.pcs.env`, `.pcs.secret.env`, `.ynd.user.env` |
+| `ensure-yundera-support-key.sh` | Authorises the Yundera support SSH key (operator-controllable) |
+| `ensure-auth-secrets.sh` | Generates Authelia secrets (session/storage/reset/oidc-hmac, RSA-4096 JWKS) and re-renders `auth/configuration.yml` from `auth/configuration.yml.tmpl` |
+| `ensure-casaos-apps-up-to-date.sh` | Re-renders `docker-compose.yml` from the template and current env files |
+| `ensure-user-compose-pulled.sh` | Pulls latest images for the user's Docker Compose services |
+| `ensure-user-compose-stack-up.sh` | Starts the user's Docker Compose stack in detached mode |
+
+The list is authoritative — order is controlled by `scripts-config.txt`, not filename alphabetisation. When adding a new script, also add a line to `scripts-config.txt` in the right position.
 
 ## Integration Points
 
-When adding a new self-check script, ensure it's integrated into:
+When adding a new self-check script:
 
-1. `packages/settings-center-app/settings-dashboard/src/backend/server/SelfCheck.ts`
-2. `packages/settings-center-app/template-setup/root/scripts/self-check-reboot.sh`
-3. `packages/settings-center-app/template-setup/root/scripts/template-init.sh`
+1. Place the script in `root/scripts/self-check/`.
+2. Add a line to `root/scripts/self-check/scripts-config.txt` in the correct execution position.
+3. If it touches hypervisor-specific surface, gate it on `${YND_PROVIDER:-proxmox}` like the proxmox-only scripts above.
+4. Source `library/common.sh` to get `log`, `log_error`, and `execute_script_with_logging`.
+
+No edits are needed in the orchestrator or `settings-center-app` — the admin app calls `self-check.sh` and inherits whatever's in the config file.
 
 ## Notes
 
