@@ -52,7 +52,7 @@ services:
 
   
   casaos:
-    image: ghcr.io/yundera/casa-img:0.4.15-42
+    image: ghcr.io/yundera/casa-img:0.4.15-44
     container_name: casaos
     hostname: casaos
     restart: unless-stopped
@@ -359,5 +359,9 @@ x-casaos:
   port_map: ""
   scheme: https
   store_app_id: yundera
+  tips:
+    before_install:
+      en_us: |
+        When first launching, it will ask for a main password. Please hit "Reset password", and write in the box: "admin".
   title:
     custom: Settings
