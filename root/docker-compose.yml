@@ -362,6 +362,12 @@ x-casaos:
   tips:
     before_install:
       en_us: |
-        When first launching, it will ask for a main password. Please hit "Reset password", and write in the box: "admin".
+        **🔑 First launch:** you'll land on a login screen asking for an ID and password.
+
+        1. Click **"Reset password"**
+        2. In the username field, enter `admin` (the username is always `admin`)
+        3. Check your inbox for the password reset email and follow the link to set your password
+
+        From there, sign in with `admin` and your new password.
   title:
     custom: Settings
