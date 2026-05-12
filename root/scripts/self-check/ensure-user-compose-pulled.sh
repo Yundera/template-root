@@ -1,14 +1,15 @@
 #!/bin/bash
 # Script to ensure Docker Compose images are pulled.
 #
-# Retries on transient failures: Contabo↔GHCR connectivity over IPv6 resets
-# intermittently ("read: connection reset by peer" mid-pull), and a single
-# failure here blocks the whole bootstrap. Exponential backoff (capped) turns
-# multi-minute resets into a slowdown rather than a fatal create.
+# Primary defense against GHCR flakiness is ensure-outbound-ip-family.sh,
+# which forces IPv4 resolution so pulls hit Fastly instead of GHCR's
+# Azure-backed IPv6 edge. Retries here remain as defense-in-depth: a single
+# transient failure shouldn't block bootstrap, and exponential backoff turns
+# any residual reset into a slowdown rather than a fatal create.
 #
 # `pull` is idempotent: layers already on disk are skipped, so each retry only
-# re-fetches whatever failed last time. Serialise with --parallel=1 so a single
-# reset doesn't poison N concurrent streams at once.
+# re-fetches whatever failed last time. Serialise with COMPOSE_PARALLEL_LIMIT=1
+# so a single reset doesn't poison N concurrent streams at once.
 set -e
 
 COMPOSE_DIR="/DATA/AppData/casaos/apps/yundera"
@@ -26,7 +27,7 @@ fi
 backoff="$INITIAL_BACKOFF"
 attempt=1
 while [ "$attempt" -le "$MAX_ATTEMPTS" ]; do
-    if docker compose --project-directory "$COMPOSE_DIR" -f "$COMPOSE_FILE" pull --parallel=1; then
+    if COMPOSE_PARALLEL_LIMIT=1 docker compose --project-directory "$COMPOSE_DIR" -f "$COMPOSE_FILE" pull; then
         echo "User compose stack pulled successfully (attempt $attempt/$MAX_ATTEMPTS)"
         exit 0
     fi

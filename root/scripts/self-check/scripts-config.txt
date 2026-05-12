@@ -35,6 +35,7 @@ ensure-nightly-self-check.sh
 ensure-logrotate.sh
 
 # Docker and application setup
+ensure-outbound-ip-family.sh
 ensure-docker-installed.sh
 ensure-env-vars-valid.sh
 ensure-yundera-support-key.sh
