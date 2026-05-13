@@ -10,17 +10,13 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-# Provider gate — this script prepares a VM for Proxmox golden-template
+# Hypervisor gate — this script prepares a VM for Proxmox golden-template
 # cloning (wipes machine-id, SSH host keys, random seeds, /tmp). Running it
 # on a live cloud-provider instance would kill the active SSH session and
 # reset host identity mid-service. Only meaningful for Proxmox.
-_prov="${YND_PROVIDER:-}"
-if [ -z "$_prov" ] && [ -f "$YND_ROOT/.pcs.env" ]; then
-    _prov="$(grep -E '^YND_PROVIDER=' "$YND_ROOT/.pcs.env" 2>/dev/null | tail -1 | cut -d= -f2-)"
-fi
-_prov="${_prov:-proxmox}"
-if [ "$_prov" != "proxmox" ]; then
-    echo "[YND_PROVIDER=$_prov] not a template bake, skipping cleanup"
+source "$YND_ROOT/scripts/library/common.sh"
+if ! is_proxmox_host; then
+    echo "→ Non-Proxmox host detected — not a template bake, skipping cleanup"
     exit 0
 fi
 

@@ -28,13 +28,15 @@ if [ -f /.dockerenv ]; then
     exit 0
 fi
 
-# Provider gate — this script is Proxmox-specific (LVM carving from free
-# space on /dev/sda). On other providers the VM disk is typically already
-# partitioned and mounted as root with no free space. Fall back to plain
-# directories on the root filesystem. YND_PROVIDER is resolved and exported
-# by self-check.sh; defaults to "proxmox" for standalone invocations.
-if [ "${YND_PROVIDER:-proxmox}" != "proxmox" ]; then
-    echo "[YND_PROVIDER=${YND_PROVIDER}] using plain directories on root fs (no LVM)"
+# Hypervisor gate — this script is Proxmox-specific (LVM carving from free
+# space on /dev/sda). On commodity VPS providers the disk is fully
+# partitioned at provision time with no room to carve; fall back to plain
+# directories on the root filesystem. `is_proxmox_host` inspects the actual
+# disk layout (data_vg presence / unallocated /dev/sda space) rather than
+# trusting an env var that gets rsynced verbatim during migration.
+source "$YND_ROOT/scripts/library/common.sh"
+if ! is_proxmox_host; then
+    echo "→ Non-Proxmox host detected — using plain directories on root fs (no LVM)"
     mkdir -p /DATA/AppData/casaos/apps/yundera /var/lib/docker
     id -u pcs >/dev/null 2>&1 || useradd -m -s /bin/bash pcs
     chown -R pcs:pcs /DATA 2>/dev/null || true

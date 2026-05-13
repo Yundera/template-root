@@ -12,13 +12,14 @@ if [ -f /.dockerenv ]; then
     exit 0
 fi
 
-# Provider gate — the qemu-guest-agent service needs a virtio-serial host
+# Hypervisor gate — the qemu-guest-agent service needs a virtio-serial host
 # channel that only Proxmox (and some bare-KVM setups) expose. Cloud
 # providers like Contabo do not, so starting the service hangs and fails.
-# YND_PROVIDER is resolved and exported by self-check.sh; defaults to
-# "proxmox" for standalone invocations.
-if [ "${YND_PROVIDER:-proxmox}" != "proxmox" ]; then
-    echo "[YND_PROVIDER=${YND_PROVIDER}] no virtio-serial host channel, skipping qemu-guest-agent"
+# Detection is disk-layout-based (see is_proxmox_host) — a Yundera Proxmox
+# template always pairs LVM-on-/dev/sda with virtio-serial.
+source "$YND_ROOT/scripts/library/common.sh"
+if ! is_proxmox_host; then
+    echo "→ Non-Proxmox host detected — no virtio-serial host channel, skipping qemu-guest-agent"
     exit 0
 fi
 

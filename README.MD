@@ -1,6 +1,6 @@
 # Template System
 
-This folder contains the template system for Yundera Personal Cloud Server (PCS) provisioning, including first-install bootstrap, periodic self-checks, and continuous template/app updates. It supports multiple hypervisor providers (`proxmox`, `contabo`) via the `YND_PROVIDER` tag in `.pcs.env`.
+This folder contains the template system for Yundera Personal Cloud Server (PCS) provisioning, including first-install bootstrap, periodic self-checks, and continuous template/app updates. Hypervisor-specific behaviour (LVM partition carving, qemu-guest-agent, CPU/RAM hotplug) is gated at runtime by `is_proxmox_host` in `library/common.sh`, which inspects the actual disk layout — no `.pcs.env`-style provider tag is needed.
 
 ## Folder Structure
 
@@ -44,7 +44,7 @@ Utility scripts invoked by other parts of the system or operators: `os-init.sh`,
 
 ## Configuration Files
 
-- **`.pcs.env`**: PCS configuration variables (system settings, `UPDATE_URL`, `YND_PROVIDER`, default service host/port)
+- **`.pcs.env`**: PCS configuration variables (system settings, `UPDATE_URL`, default service host/port)
 - **`.pcs.secret.env`**: Secret environment variables (JWT tokens, passwords, signatures)
 - **`.ynd.user.env`**: User-specific data (UID, domain, email, username, public IP)
 
@@ -66,7 +66,6 @@ The environment files support the following configuration options:
 | `USER_JWT` | Yundera JWT token | `.pcs.secret.env` | Required |
 | `DEFAULT_PWD` | Default password | `.pcs.secret.env` | Required |
 | `PROVIDER_STR` | Provider configuration string | `.pcs.secret.env` | Required |
-| `YND_PROVIDER` | Hypervisor tag — gates Proxmox-only ensure-scripts | `.pcs.env` | `proxmox` (also `contabo`) |
 | `UPDATE_URL` | Template zip URL for updates (or literal `local` for dev) | `.pcs.env` | `https://github.com/Yundera/template-root/archive/refs/heads/stable.zip` |
 | `DEFAULT_SERVICE_HOST` | Catch-all target for custom domains (see Caddyfile docs) | `.pcs.env` | `casaos` |
 | `DEFAULT_SERVICE_PORT` | Catch-all target port | `.pcs.env` | `8080` |

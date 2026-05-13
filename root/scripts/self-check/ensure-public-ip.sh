@@ -91,21 +91,48 @@ EOF
     fi
 }
 
-get_ipv6_from_interface() {
-    ip link show "$IPV6_INTERFACE" >/dev/null 2>&1 || return
-    ip -6 addr show "$IPV6_INTERFACE" 2>/dev/null | \
-        grep "inet6.*scope global" | \
-        awk '{print $2}' | \
-        cut -d'/' -f1 | \
-        head -n 1
+# Returns the first globally-routable IPv4 bound to any local interface.
+# Filters loopback (127/8), RFC1918 private (10/8, 172.16/12, 192.168/16),
+# link-local (169.254/16), and RFC6598/CGNAT (100.64/10).
+#
+# Crucially this only returns addresses the kernel reports on *this* VM's
+# interfaces. `curl ident.me` (the previous approach) returns whatever IP
+# the world sees us connect from — which on NAT'd setups (Scaleway IPv4
+# SNAT) is the upstream gateway's address, not ours. Returning that address
+# would make us register a route the gateway answers, breaking everything
+# downstream. The "is this on my interface?" check is the canonical answer
+# to "is this MY public IP."
+get_ipv4_from_local_interface() {
+    local ip
+    while read -r ip; do
+        case "$ip" in
+            127.*|169.254.*) continue ;;
+            10.*) continue ;;
+            172.1[6-9].*|172.2[0-9].*|172.3[0-1].*) continue ;;
+            192.168.*) continue ;;
+            100.6[4-9].*|100.[7-9][0-9].*|100.1[0-1][0-9].*|100.12[0-7].*) continue ;;
+        esac
+        echo "$ip"
+        return 0
+    done < <(ip -4 addr show 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1)
 }
 
-get_ipv6_from_external() {
-    timeout 5 curl -6 -s ident.me 2>/dev/null || echo ""
-}
-
-get_ipv4_from_external() {
-    timeout 5 curl -4 -s ident.me 2>/dev/null || echo ""
+# Returns the first globally-routable IPv6 bound to any local interface.
+# `scope global` already excludes loopback (::1) and link-local (fe80::/10);
+# the explicit case filter additionally drops ULA (fc00::/7) which kernels
+# sometimes still tag as global. Same "must be on a local interface" rule
+# as IPv4 — IPv6 NAT is rare but `curl ident.me` can also report a routed
+# upstream address rather than ours, which is not what we want here.
+get_ipv6_from_local_interface() {
+    local ip
+    while read -r ip; do
+        case "${ip,,}" in
+            ::1|fe80:*) continue ;;
+            fc[0-9a-f][0-9a-f]:*|fd[0-9a-f][0-9a-f]:*) continue ;;
+        esac
+        echo "$ip"
+        return 0
+    done < <(ip -6 addr show 2>/dev/null | awk '/inet6.*scope global/ {print $2}' | cut -d/ -f1)
 }
 
 # Derive the mesh-router-backend probe URL from the user's DOMAIN.
@@ -189,16 +216,15 @@ PY
 }
 
 # =============================================================================
-# IPv6 detection
+# IP detection — local interfaces only, no `curl ident.me` external lookup.
+# A host's public IP is, by definition, an address bound to one of its own
+# interfaces. The "outbound" view that ident.me returns can be the upstream
+# NAT gateway's IP, which we must not claim as ours (it breaks routing
+# silently — see get_ipv4_from_local_interface header).
 # =============================================================================
 configure_ipv6_interface
-PUBLIC_IPV6=$(get_ipv6_from_interface)
-[ -n "$PUBLIC_IPV6" ] || PUBLIC_IPV6=$(get_ipv6_from_external)
-
-# =============================================================================
-# IPv4 detection — always runs, regardless of IPv6 state
-# =============================================================================
-PUBLIC_IPV4=$(get_ipv4_from_external)
+PUBLIC_IPV6=$(get_ipv6_from_local_interface)
+PUBLIC_IPV4=$(get_ipv4_from_local_interface)
 
 # =============================================================================
 # Reachability probe — ask mesh-router-backend to verify each detected IP
@@ -255,29 +281,20 @@ fi
 # PUBLIC_IPV4/PUBLIC_IPV6 directly — so the registered route and the routing
 # labels can never disagree.
 #
-# Preference order is provider-dependent:
-#   proxmox (Scaleway-Proxmox): IPv6 first, IPv4 fallback. Scaleway IPv4 is a
-#     paid/scarce resource on this fleet, and our routing path is IPv6-native;
-#     IPv4 stays detected (PUBLIC_IPV4 still recorded) but is not canonical.
-#   anything else (e.g. contabo): IPv4 first, IPv6 fallback.
+# IPv4 first when present, IPv6 fallback otherwise. This used to branch on
+# YND_PROVIDER (Proxmox preferred IPv6 because Scaleway has no per-VM
+# public IPv4, others preferred IPv4 for broader compatibility). After
+# tightening detection to local-interface-only, PUBLIC_IPV4 is automatically
+# empty on Scaleway (its only IPv4 is private SDN, filtered out) and
+# populated on Contabo — so a single "prefer IPv4 if available" rule yields
+# the same canonical answer for both, without provider awareness.
 # =============================================================================
-case "${YND_PROVIDER:-proxmox}" in
-    proxmox)
-        PRIMARY_IP="$PUBLIC_IPV6";       PRIMARY_DASH="$PUBLIC_IPV6_DASH"
-        SECONDARY_IP="$PUBLIC_IPV4";     SECONDARY_DASH="$PUBLIC_IPV4_DASH"
-        ;;
-    *)
-        PRIMARY_IP="$PUBLIC_IPV4";       PRIMARY_DASH="$PUBLIC_IPV4_DASH"
-        SECONDARY_IP="$PUBLIC_IPV6";     SECONDARY_DASH="$PUBLIC_IPV6_DASH"
-        ;;
-esac
-
-if [ -n "$PRIMARY_IP" ]; then
-    PUBLIC_IP="$PRIMARY_IP"
-    PUBLIC_IP_DASH="$PRIMARY_DASH"
-elif [ -n "$SECONDARY_IP" ]; then
-    PUBLIC_IP="$SECONDARY_IP"
-    PUBLIC_IP_DASH="$SECONDARY_DASH"
+if [ -n "$PUBLIC_IPV4" ]; then
+    PUBLIC_IP="$PUBLIC_IPV4"
+    PUBLIC_IP_DASH="$PUBLIC_IPV4_DASH"
+elif [ -n "$PUBLIC_IPV6" ]; then
+    PUBLIC_IP="$PUBLIC_IPV6"
+    PUBLIC_IP_DASH="$PUBLIC_IPV6_DASH"
 else
     # Custom CA certificates still work locally via 127.0.0.1 — sslip.io
     # (Let's Encrypt) will not, but route matching no longer silently breaks.

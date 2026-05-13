@@ -19,11 +19,11 @@ if [ -f /.dockerenv ]; then
     exit 0
 fi
 
-# Provider gate — only Proxmox uses the LVM scheme this script resizes.
-# YND_PROVIDER is resolved and exported by self-check.sh; defaults to
-# "proxmox" for standalone invocations.
-if [ "${YND_PROVIDER:-proxmox}" != "proxmox" ]; then
-    echo "[YND_PROVIDER=${YND_PROVIDER}] no LVM to resize, skipping"
+# Hypervisor gate — only Proxmox uses the LVM scheme this script resizes.
+# Detection is disk-layout-based (see is_proxmox_host); commodity VPS skip.
+source /DATA/AppData/casaos/apps/yundera/scripts/library/common.sh
+if ! is_proxmox_host; then
+    echo "→ Non-Proxmox host detected — no LVM to resize, skipping"
     exit 0
 fi
 

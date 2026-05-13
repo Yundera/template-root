@@ -11,13 +11,13 @@ if [ -f /.dockerenv ]; then
     exit 0
 fi
 
-# Provider gate — CPU/RAM hotplug is a Proxmox feature; other providers
-# (Contabo monthly Storage VPS, etc.) have static resources and don't
-# benefit from the udev rules or the movable_node grub flag. YND_PROVIDER
-# is resolved and exported by self-check.sh; defaults to "proxmox" for
-# standalone invocations.
-if [ "${YND_PROVIDER:-proxmox}" != "proxmox" ]; then
-    echo "[YND_PROVIDER=${YND_PROVIDER}] static resources, skipping hotplug setup"
+# Hypervisor gate — CPU/RAM hotplug is a Proxmox feature; commodity VPS
+# providers (Contabo monthly Storage VPS, etc.) have static resources and
+# don't benefit from the udev rules or the movable_node grub flag.
+# Detection is disk-layout-based (see is_proxmox_host).
+source /DATA/AppData/casaos/apps/yundera/scripts/library/common.sh
+if ! is_proxmox_host; then
+    echo "→ Non-Proxmox host detected — static resources, skipping hotplug setup"
     exit 0
 fi
 

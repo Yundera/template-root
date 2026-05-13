@@ -4,7 +4,7 @@ This folder contains idempotent setup scripts that ensure various system compone
 
 ## Script Responsibilities
 
-Listed in execution order from `scripts-config.txt`. Five scripts marked **(proxmox-only)** early-exit when `YND_PROVIDER` is not `proxmox`.
+Listed in execution order from `scripts-config.txt`. Four scripts marked **(proxmox-only)** early-exit on non-Proxmox hosts (detected via `is_proxmox_host` in `library/common.sh`, which checks for the data_vg LVM volume or ≥1.1GB of unallocated `/dev/sda` space).
 
 | Script | Purpose |
 |--------|---------|
@@ -41,8 +41,8 @@ When adding a new self-check script:
 
 1. Place the script in `root/scripts/self-check/`.
 2. Add a line to `root/scripts/self-check/scripts-config.txt` in the correct execution position.
-3. If it touches hypervisor-specific surface, gate it on `${YND_PROVIDER:-proxmox}` like the proxmox-only scripts above.
-4. Source `library/common.sh` to get `log`, `log_error`, and `execute_script_with_logging`.
+3. If it touches hypervisor-specific surface, source `library/common.sh` and gate with `if ! is_proxmox_host; then ... exit 0; fi` like the proxmox-only scripts above.
+4. Source `library/common.sh` to get `log`, `log_error`, `execute_script_with_logging`, and `is_proxmox_host`.
 
 No edits are needed in the orchestrator or `settings-center-app` — the admin app calls `self-check.sh` and inherits whatever's in the config file.
 
