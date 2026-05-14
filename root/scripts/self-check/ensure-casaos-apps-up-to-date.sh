@@ -33,9 +33,13 @@ fi
 DEFAULT_PWD=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get DEFAULT_PWD "$YUNDERA_ENV")
 DOMAIN=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get DOMAIN "$YUNDERA_ENV")
 PUBLIC_IPV4=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get PUBLIC_IPV4 "$YUNDERA_ENV")
-PUBLIC_IPV4_DASH=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get PUBLIC_IPV4_DASH "$YUNDERA_ENV")
-[ -z "$PUBLIC_IPV4_DASH" ] && PUBLIC_IPV4_DASH="${PUBLIC_IPV4//./-}"
 PUBLIC_IPV6=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get PUBLIC_IPV6 "$YUNDERA_ENV")
+# Canonical dash form (IPv4-preferred, IPv6 fallback) chosen by
+# ensure-public-ip.sh and used everywhere caddy labels and the agent's
+# registered route need to agree. Read PUBLIC_IP_DASH here — never
+# PUBLIC_IPV4_DASH / PUBLIC_IPV6_DASH directly — per the invariant
+# documented at the bottom of ensure-public-ip.sh.
+PUBLIC_IP_DASH=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get PUBLIC_IP_DASH "$YUNDERA_ENV")
 EMAIL=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get EMAIL "$YUNDERA_ENV")
 # Apps expect a routable address for password resets, alerts, etc. Fall back to
 # admin@$DOMAIN only if the operator email wasn't provisioned into the env.
@@ -72,7 +76,7 @@ for app_dir in "$APPS_DIR"/*/; do
 
     # Rewrite stale IP-encoded subdomain labels to the current PCS IP.
     #
-    # CasaOS bakes the resolved value of `${PUBLIC_IPV4_DASH}` into caddy
+    # CasaOS bakes the resolved value of `${PUBLIC_IP_DASH}` into caddy
     # labels at app-install time (instead of leaving the placeholder in the
     # saved compose file), so any later IP change — a migration to a new
     # provider, an IP reassignment by the host — leaves
@@ -81,23 +85,34 @@ for app_dir in "$APPS_DIR"/*/; do
     # nobody is hitting, and the actual IP-based subdomain falls through to
     # the catch-all (CasaOS). This is a CasaOS-side bug; rewriting here is
     # the short-term mitigation until install-time stops resolving the
-    # placeholders. Match shape `\d+-\d+-\d+-\d+\.(nip|sslip)\.io` so we
-    # only touch the IP-encoded subdomains, never the `${user}.${domain}`
-    # ones. Skipped when every IP-DASH in the file already matches the
-    # current PUBLIC_IPV4_DASH (idempotent re-runs don't dirty the file).
-    if [ -n "$PUBLIC_IPV4_DASH" ] && \
-       grep -qE "[0-9]+-[0-9]+-[0-9]+-[0-9]+\.(nip|sslip)\.io" "$compose_file"; then
-        stale=$(grep -oE "[0-9]+-[0-9]+-[0-9]+-[0-9]+\.(nip|sslip)\.io" "$compose_file" \
+    # placeholders.
+    #
+    # The match accepts BOTH IPv4 and IPv6 dash forms — hex segments
+    # (`[0-9a-fA-F]+`) separated by one-or-more dashes (`-+` tolerates the
+    # `::` → `--` compressed-IPv6 form), ending in `.nip.io` or `.sslip.io`:
+    #   79-143-185-154.nip.io                       (IPv4)
+    #   2001-bc8-3021-101-be24-11ff-fe8c-fd49.nip.io (IPv6 uncompressed)
+    #   2a02-c207-2326-2853--1.nip.io               (IPv6 with `::` → `--`)
+    # The previous IPv4-only regex failed silently on Scaleway → Contabo
+    # migrations: the source baked the v6 dash form, the rewrite regex
+    # didn't match it, no rewrite happened, the new PCS served catch-all.
+    # Anchored to hex chars so we never touch the user-facing
+    # `${user}.${domain}` labels. Idempotent — skipped when the only dash
+    # form in the file already matches PUBLIC_IP_DASH.
+    if [ -n "$PUBLIC_IP_DASH" ] && \
+       grep -qE "[0-9a-fA-F]+(-+[0-9a-fA-F]*)+\.(nip|sslip)\.io" "$compose_file"; then
+        stale=$(grep -oE "[0-9a-fA-F]+(-+[0-9a-fA-F]*)+\.(nip|sslip)\.io" "$compose_file" \
             | awk -F. '{print $1}' \
             | sort -u \
-            | grep -v "^${PUBLIC_IPV4_DASH}\$" \
+            | grep -v "^${PUBLIC_IP_DASH}\$" \
             | head -1)
         if [ -n "$stale" ]; then
-            echo "Rewriting stale IP-DASH labels in $app_name ($stale → $PUBLIC_IPV4_DASH)"
+            echo "Rewriting stale IP-DASH labels in $app_name ($stale → $PUBLIC_IP_DASH)"
             # Use `#` as the sed delimiter — `|` would be consumed by the
             # `(nip|sslip)` alternation in the regex and sed would parse
-            # things wrong.
-            sed -i -E "s#[0-9]+-[0-9]+-[0-9]+-[0-9]+\.(nip|sslip)\.io#${PUBLIC_IPV4_DASH}.\1.io#g" \
+            # things wrong. `\2` is the (nip|sslip) capture (group 1 is the
+            # inner repeated dash-segment).
+            sed -i -E "s#[0-9a-fA-F]+(-+[0-9a-fA-F]*)+\.(nip|sslip)\.io#${PUBLIC_IP_DASH}.\2.io#g" \
                 "$compose_file"
         fi
     fi
