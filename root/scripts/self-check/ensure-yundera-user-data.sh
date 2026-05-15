@@ -5,9 +5,9 @@
 # and updates the .env file with the complete user data
 #
 # API Configuration:
-# - Reads YUNDERA_USER_API from .pcs.env file
-# - If not configured, uses default: https://app.yundera.com/service/pcs/user
-# - Makes GET request to fetch user data using configured or default endpoint
+# - Reads YUNDERA_API from .pcs.env file (bare orchestrator base, no /user)
+# - If not configured, uses default: https://app.yundera.com/service/pcs
+# - Makes GET request to ${YUNDERA_API}/user/info to fetch user data
 
 set -euo pipefail
 
@@ -16,15 +16,14 @@ SECRET_ENV_FILE="$YND_ROOT/.pcs.secret.env"
 USER_ENV_FILE="$YND_ROOT/.ynd.user.env"
 PCS_ENV_FILE="$YND_ROOT/.pcs.env"
 
-# Read Yundera user API URL from PCS env file or use default
-YUNDERA_USER_API=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get YUNDERA_USER_API "$PCS_ENV_FILE")
+# Read Yundera API base from PCS env file or use default
+YUNDERA_API=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get YUNDERA_API "$PCS_ENV_FILE")
 
-# Use default URL if YUNDERA_USER_API is not configured or empty
-if [ -z "$YUNDERA_USER_API" ]; then
-    YUNDERA_USER_API="https://app.yundera.com/service/pcs/user"
-    echo "Using default YUNDERA_USER_API: $YUNDERA_USER_API"
+if [ -z "$YUNDERA_API" ]; then
+    YUNDERA_API="https://app.yundera.com/service/pcs"
+    echo "Using default YUNDERA_API: $YUNDERA_API"
 else
-    echo "Using configured YUNDERA_USER_API: $YUNDERA_USER_API"
+    echo "Using configured YUNDERA_API: $YUNDERA_API"
 fi
 
 # Create user env file if it doesn't exist
@@ -48,14 +47,14 @@ if [ -z "$USER_JWT" ]; then
     exit 1
 fi
 
-echo "Found USER_JWT (${#USER_JWT} chars), fetching user data from ${YUNDERA_USER_API}/info"
+echo "Found USER_JWT (${#USER_JWT} chars), fetching user data from ${YUNDERA_API}/user/info"
 
 # Make API call to fetch user info from configured API endpoint
 HTTP_RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" \
     -H "Authorization: Bearer $USER_JWT" \
     -H "Content-Type: application/json" \
     -X GET \
-    "${YUNDERA_USER_API}/info" || echo "HTTPSTATUS:000")
+    "${YUNDERA_API}/user/info" || echo "HTTPSTATUS:000")
 
 HTTP_CODE=$(echo "$HTTP_RESPONSE" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)
 HTTP_BODY=$(echo "$HTTP_RESPONSE" | sed -E 's/HTTPSTATUS:[0-9]*$//')

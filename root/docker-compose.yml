@@ -1,7 +1,7 @@
 name: yundera
 services:
   admin:
-    image: ghcr.io/yundera/settings-center-app:1.1.49
+    image: ghcr.io/yundera/settings-center-app:1.1.50
     container_name: admin
     hostname: admin
     restart: unless-stopped
@@ -268,7 +268,7 @@ services:
     cpu_shares: 70
     environment:
       USER_JWT: "${USER_JWT}"
-      ORCHESTRATOR_URL: "${YUNDERA_USER_API}"
+      ORCHESTRATOR_URL: "${YUNDERA_API}"
       SMTP_PORT: "587"
     expose:
       - "587"

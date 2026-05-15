@@ -14,7 +14,7 @@
 # POST {ensure: false}); this script never removes — it only adds.
 #
 # Source of truth for the public key is the orchestrator
-# (${YUNDERA_USER_API}/support/ssh-key). Network failures are logged
+# (${YUNDERA_API}/support/ssh-key). Network failures are logged
 # and we exit 0 — a one-cycle gap in the safety net is strictly better
 # than blocking the rest of self-check.
 
@@ -33,14 +33,14 @@ case "${ENSURE,,}" in
         ;;
 esac
 
-YUNDERA_USER_API=$("$ENV_MANAGER" get YUNDERA_USER_API "$PCS_ENV_FILE" 2>/dev/null || echo "")
-if [ -z "$YUNDERA_USER_API" ]; then
-    YUNDERA_USER_API="https://app.yundera.com/service/pcs/user"
+YUNDERA_API=$("$ENV_MANAGER" get YUNDERA_API "$PCS_ENV_FILE" 2>/dev/null || echo "")
+if [ -z "$YUNDERA_API" ]; then
+    YUNDERA_API="https://app.yundera.com/service/pcs"
 fi
 # URL construction mirrors SupportKey.ts in settings-center-app — keep
 # them identical so the safety net and the dashboard hit the same
 # endpoint and rotate together.
-SUPPORT_URL="${YUNDERA_USER_API%/}/support/ssh-key"
+SUPPORT_URL="${YUNDERA_API%/}/support/ssh-key"
 
 if ! id "$ADMIN_USER" >/dev/null 2>&1; then
     echo "User '$ADMIN_USER' not found — run ensure-admin-user.sh first; skipping"
