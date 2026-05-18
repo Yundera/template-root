@@ -55,6 +55,25 @@ if [ ! -f "$SUDOERS_FILE" ] || [ "$(cat "$SUDOERS_FILE")" != "$SUDOERS_CONTENT" 
     echo "→ Installed NOPASSWD sudoers entry for $USER_NAME"
 fi
 
+# Ensure /home/admin itself is admin-owned. Two paths produce a root-owned
+# home dir even though sshd-as-admin still works (sshd only needs the .ssh
+# subdir to be admin-readable):
+#   1. Some cloud-init images pre-create the admin user WITHOUT a home dir.
+#      The `if ! id …; then useradd -m` block above is then a no-op, and
+#      the first mkdir under /home/admin (next line, run as root) creates
+#      both /home/admin and /home/admin/.ssh owned by root:root mode 755.
+#   2. The settings-center-app container declares `/home/admin/.ssh/` as a
+#      bind-mount source (root/docker-compose.yml). If Docker brings up
+#      that stack before this script has run, the daemon auto-creates the
+#      path as root:root.
+# Either way admin can `cd` into its home but not create new files there,
+# which silently breaks anything that wants to write under /home/admin —
+# notably the migration pushKey step before it was moved off /home/admin.
+# Idempotent: mkdir -p + chown is a no-op when state is already correct.
+ADMIN_HOME="/home/$USER_NAME"
+mkdir -p "$ADMIN_HOME"
+chown "$USER_NAME:$USER_NAME" "$ADMIN_HOME"
+
 # SSH directory + first-run key seed.
 ADMIN_SSH="/home/$USER_NAME/.ssh"
 mkdir -p "$ADMIN_SSH"
