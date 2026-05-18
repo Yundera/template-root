@@ -12,6 +12,16 @@ set -e
 # data but no running services. Outside that one-shot post-migration call,
 # the gate must stay: it's the protection against bringing back up apps the
 # user has intentionally stopped from the CasaOS UI.
+#
+# Failure model: the per-app `docker compose up` is fault-tolerant — if one
+# app's image is missing (e.g. a third-party ghcr.io tag that vanished
+# upstream), we record it and move on instead of halting the whole loop.
+# Each failure is emitted as a `FAILED_APP: <name>: <reason>` line so the
+# migration step on the TypeScript side can parse and surface them to the
+# user. Exit code: 0 under FORCE_START=1 (migration parses markers itself —
+# per-app failures must not roll the migration back); non-zero otherwise
+# (periodic self-check needs the failure signal so self-check.sh's
+# OVERALL_FAILED flips and the public health endpoint reflects it).
 
 APPS_DIR="/DATA/AppData/casaos/apps"
 YND_ROOT="$APPS_DIR/yundera"
@@ -57,6 +67,7 @@ fi
 # Track stats
 updated_count=0
 skipped_count=0
+failed_apps=()  # entries: "app_name|short reason"
 
 for app_dir in "$APPS_DIR"/*/; do
     [ -d "$app_dir" ] || continue
@@ -129,36 +140,63 @@ for app_dir in "$APPS_DIR"/*/; do
 
     echo "Updating app: $app_name"
 
-    # Run docker compose up -d with remixed environment variables
-    # Variables are exported inline to avoid temp files
-    AppID="$app_name" \
-    PUID=1000 \
-    PGID=1000 \
-    TZ="$TZ" \
-    default_pwd="$DEFAULT_PWD" \
-    public_ip="$PUBLIC_IPV4" \
-    domain="$DOMAIN" \
-    PCS_DEFAULT_PASSWORD="$DEFAULT_PWD" \
-    PCS_DOMAIN="$DOMAIN" \
-    PCS_DATA_ROOT="/DATA" \
-    PCS_PUBLIC_IP="$PUBLIC_IPV4" \
-    PCS_PUBLIC_IPV6="$PUBLIC_IPV6" \
-    PCS_EMAIL="$EMAIL" \
-    APP_DEFAULT_PASSWORD="$DEFAULT_PWD" \
-    APP_DOMAIN="$DOMAIN" \
-    APP_DATA_ROOT="/DATA" \
-    APP_PUBLIC_IP="$PUBLIC_IPV6" \
-    APP_PUBLIC_IPV4="$PUBLIC_IPV4" \
-    APP_PUBLIC_IPV6="$PUBLIC_IPV6" \
-    APP_EMAIL="$EMAIL" \
-    APP_NET="pcs" \
-    docker compose -f "$compose_file" up --quiet-pull -d
-
-    updated_count=$((updated_count + 1))
+    # Run docker compose up -d with remixed environment variables.
+    # Capture combined output to a temp file so we can re-emit it on success
+    # (matches previous logging shape) AND extract a one-line failure reason
+    # if the compose-up fails. `if cmd; then` makes `set -e` skip this call,
+    # letting the loop continue on a single broken app — see the failure-
+    # model note at the top of this script.
+    compose_out=$(mktemp /tmp/compose-up.XXXXXX)
+    if AppID="$app_name" \
+       PUID=1000 \
+       PGID=1000 \
+       TZ="$TZ" \
+       default_pwd="$DEFAULT_PWD" \
+       public_ip="$PUBLIC_IPV4" \
+       domain="$DOMAIN" \
+       PCS_DEFAULT_PASSWORD="$DEFAULT_PWD" \
+       PCS_DOMAIN="$DOMAIN" \
+       PCS_DATA_ROOT="/DATA" \
+       PCS_PUBLIC_IP="$PUBLIC_IPV4" \
+       PCS_PUBLIC_IPV6="$PUBLIC_IPV6" \
+       PCS_EMAIL="$EMAIL" \
+       APP_DEFAULT_PASSWORD="$DEFAULT_PWD" \
+       APP_DOMAIN="$DOMAIN" \
+       APP_DATA_ROOT="/DATA" \
+       APP_PUBLIC_IP="$PUBLIC_IPV6" \
+       APP_PUBLIC_IPV4="$PUBLIC_IPV4" \
+       APP_PUBLIC_IPV6="$PUBLIC_IPV6" \
+       APP_EMAIL="$EMAIL" \
+       APP_NET="pcs" \
+       docker compose -f "$compose_file" up --quiet-pull -d >"$compose_out" 2>&1; then
+        cat "$compose_out"
+        updated_count=$((updated_count + 1))
+    else
+        rc=$?
+        cat "$compose_out"
+        # First matching error line, capped, newlines flattened so the marker
+        # stays one line. `|| true` keeps the pipeline non-fatal under set -e.
+        reason=$(grep -m1 -iE "(error|failed|not found)" "$compose_out" \
+                 | head -c 200 | tr '\n' ' ' || true)
+        [ -z "$reason" ] && reason="docker compose exited $rc"
+        failed_apps+=("${app_name}|${reason}")
+    fi
+    rm -f "$compose_out"
 done
 
-if [ "$updated_count" -gt 0 ] || [ "$skipped_count" -gt 0 ]; then
-    echo "Apps: $updated_count updated, $skipped_count skipped (not running)"
+echo "Apps: $updated_count updated, $skipped_count skipped (not running), ${#failed_apps[@]} failed"
+
+if [ "${#failed_apps[@]}" -gt 0 ]; then
+    # Stable, parser-friendly marker — `startUserApps.ts` reads this off
+    # stdout to build the per-app failure list shown on the migration step.
+    for entry in "${failed_apps[@]}"; do
+        echo "FAILED_APP: ${entry%%|*}: ${entry#*|}"
+    done
+    # Migration caller (FORCE_START=1) handles partial failure itself via
+    # the markers above — exit 0 so the migration step doesn't roll back.
+    # Periodic self-check needs the signal — exit non-zero so self-check.sh
+    # records OVERALL_FAILED.
+    [ "${FORCE_START:-0}" = "1" ] || exit 1
 fi
 
 exit 0
