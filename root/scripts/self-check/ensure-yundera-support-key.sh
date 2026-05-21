@@ -14,9 +14,13 @@
 # POST {ensure: false}); this script never removes — it only adds.
 #
 # Source of truth for the public key is the orchestrator
-# (${YUNDERA_API}/support/ssh-key). Network failures are logged
-# and we exit 0 — a one-cycle gap in the safety net is strictly better
-# than blocking the rest of self-check.
+# (${YUNDERA_API}/support/ssh-key). During steady-state self-checks a
+# fetch failure is logged and we exit 0 — a one-cycle gap in the safety
+# net beats blocking the rest of self-check. During first-boot
+# provisioning (PCS_PROVISIONING=1) the same failures abort instead: the
+# support key is then the ONLY key that lets the orchestrator back into
+# the PCS after handover, so a missing one must fail the build loudly
+# rather than ship an unreachable PCS. See fail() below.
 
 set -euo pipefail
 
@@ -24,6 +28,22 @@ YND_ROOT="/DATA/AppData/casaos/apps/yundera"
 PCS_ENV_FILE="$YND_ROOT/.pcs.env"
 ENV_MANAGER="$YND_ROOT/scripts/tools/env-file-manager.sh"
 ADMIN_USER="admin"
+
+# Failure handler. Outside provisioning, a transient miss is harmless —
+# the next self-check tick retries — so keep the historical exit-0
+# safety-net behaviour. During first-boot provisioning os-init.sh exports
+# PCS_PROVISIONING=1; ensure-admin-user.sh no longer seeds admin's
+# authorized_keys from root's bootstrap key, so the support key fetched
+# here is the only thing that will give the orchestrator a way back in.
+# A failure to install it must therefore abort provisioning.
+fail() {
+    echo "$1; skipping"
+    if [ "${PCS_PROVISIONING:-0}" = "1" ]; then
+        echo "PCS_PROVISIONING=1 — the support key is mandatory during provisioning. Aborting."
+        exit 1
+    fi
+    exit 0
+}
 
 ENSURE=$("$ENV_MANAGER" get ENSURE_SUPPORT_KEY "$PCS_ENV_FILE" 2>/dev/null || echo "")
 case "${ENSURE,,}" in
@@ -43,14 +63,12 @@ fi
 SUPPORT_URL="${YUNDERA_API%/}/support/ssh-key"
 
 if ! id "$ADMIN_USER" >/dev/null 2>&1; then
-    echo "User '$ADMIN_USER' not found — run ensure-admin-user.sh first; skipping"
-    exit 0
+    fail "User '$ADMIN_USER' not found — run ensure-admin-user.sh first"
 fi
 
 ADMIN_HOME=$(getent passwd "$ADMIN_USER" | cut -d: -f6)
 if [ -z "$ADMIN_HOME" ] || [ ! -d "$ADMIN_HOME" ]; then
-    echo "Admin home dir missing; skipping"
-    exit 0
+    fail "Admin home dir missing"
 fi
 ADMIN_AK="$ADMIN_HOME/.ssh/authorized_keys"
 
@@ -63,8 +81,7 @@ HTTP_CODE=$(echo "$HTTP_RESPONSE" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)
 HTTP_BODY=$(echo "$HTTP_RESPONSE" | sed -E 's/HTTPSTATUS:[0-9]*$//')
 
 if [ "$HTTP_CODE" != "200" ]; then
-    echo "Could not fetch support key from $SUPPORT_URL (HTTP $HTTP_CODE); skipping"
-    exit 0
+    fail "Could not fetch support key from $SUPPORT_URL (HTTP $HTTP_CODE)"
 fi
 
 # Pull publicKey + fingerprint out of the JSON without a jq dep — same
@@ -73,8 +90,7 @@ SUPPORT_PUBKEY=$(echo "$HTTP_BODY" | grep -o '"publicKey":"[^"]*"' | head -n1 | 
 SUPPORT_FP=$(echo "$HTTP_BODY" | grep -o '"fingerprint":"[^"]*"' | head -n1 | sed 's/"fingerprint":"\(.*\)"/\1/')
 
 if [ -z "$SUPPORT_PUBKEY" ] || [ -z "$SUPPORT_FP" ]; then
-    echo "Malformed response from $SUPPORT_URL; skipping"
-    exit 0
+    fail "Malformed response from $SUPPORT_URL"
 fi
 
 mkdir -p "$ADMIN_HOME/.ssh"

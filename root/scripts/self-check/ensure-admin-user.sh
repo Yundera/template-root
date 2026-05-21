@@ -16,10 +16,11 @@ set -e
 #   - Locked-but-key-usable password (`*` in shadow): pubkey auth works,
 #     password auth impossible. Same posture we want on root.
 #   - NOPASSWD sudo: orchestrator/dashboard run unattended.
-#   - First-run only: seeds /home/admin/.ssh/authorized_keys from
-#     /root/.ssh/authorized_keys (provisioned by the orchestrator).
-#     After that, admin manages its own keys independently — this
-#     script will not overwrite an existing authorized_keys.
+#   - Does NOT seed authorized_keys. admin's authorized_keys is populated
+#     solely by ensure-yundera-support-key.sh with the API-sourced support
+#     key. The orchestrator's create-time bootstrap ("perso") key is seeded
+#     into /root only and never copied here, so it cannot persist on the
+#     handed-over PCS. clear-root-ssh-keys.sh drops it from /root at handover.
 
 YND_ROOT="/DATA/AppData/casaos/apps/yundera"
 USER_NAME="admin"
@@ -74,17 +75,17 @@ ADMIN_HOME="/home/$USER_NAME"
 mkdir -p "$ADMIN_HOME"
 chown "$USER_NAME:$USER_NAME" "$ADMIN_HOME"
 
-# SSH directory + first-run key seed.
+# SSH directory only — deliberately NO key seed.
+#
+# admin's authorized_keys is owned end-to-end by ensure-yundera-support-key.sh
+# (the API-sourced support key). Copying /root/.ssh/authorized_keys here —
+# as this script used to — would persist the orchestrator's create-time
+# bootstrap ("perso") key on the handed-over PCS, which is exactly what the
+# key-separation work removes. root's key is cleared by clear-root-ssh-keys.sh
+# at handover; admin only ever gets the support key.
 ADMIN_SSH="/home/$USER_NAME/.ssh"
 mkdir -p "$ADMIN_SSH"
 chmod 700 "$ADMIN_SSH"
-
-if [ ! -s "$ADMIN_SSH/authorized_keys" ] && [ -s /root/.ssh/authorized_keys ]; then
-    install -m 600 -o "$USER_NAME" -g "$USER_NAME" \
-        /root/.ssh/authorized_keys "$ADMIN_SSH/authorized_keys"
-    echo "→ Seeded $ADMIN_SSH/authorized_keys from /root/.ssh/authorized_keys"
-fi
-
 chown "$USER_NAME:$USER_NAME" "$ADMIN_SSH"
 
 echo "✓ User '$USER_NAME' ready (key-only login, NOPASSWD sudo)."
