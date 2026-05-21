@@ -91,39 +91,47 @@ for app_dir in "$APPS_DIR"/*/; do
     # labels at app-install time (instead of leaving the placeholder in the
     # saved compose file), so any later IP change — a migration to a new
     # provider, an IP reassignment by the host — leaves
-    # `caddy_N: app-<old-ip-dash>.nip.io` / `.sslip.io` labels pointing at
+    # `caddy_N: <app>-<old-ip-dash>.nip.io` / `.sslip.io` labels pointing at
     # the previous IP. caddy-docker-proxy then registers a route for a vhost
     # nobody is hitting, and the actual IP-based subdomain falls through to
     # the catch-all (CasaOS). This is a CasaOS-side bug; rewriting here is
     # the short-term mitigation until install-time stops resolving the
     # placeholders.
     #
-    # The match accepts BOTH IPv4 and IPv6 dash forms — hex segments
-    # (`[0-9a-fA-F]+`) separated by one-or-more dashes (`-+` tolerates the
-    # `::` → `--` compressed-IPv6 form), ending in `.nip.io` or `.sslip.io`:
-    #   79-143-185-154.nip.io                       (IPv4)
+    # The IP-dash form is `<hex>(-<hex>)+`, accepting BOTH IPv4 and IPv6
+    # (hex segments, `-+` tolerating the `::` → `--` compressed form):
+    #   79-143-185-154.nip.io                        (IPv4)
     #   2001-bc8-3021-101-be24-11ff-fe8c-fd49.nip.io (IPv6 uncompressed)
-    #   2a02-c207-2326-2853--1.nip.io               (IPv6 with `::` → `--`)
-    # The previous IPv4-only regex failed silently on Scaleway → Contabo
-    # migrations: the source baked the v6 dash form, the rewrite regex
-    # didn't match it, no rewrite happened, the new PCS served catch-all.
-    # Anchored to hex chars so we never touch the user-facing
-    # `${user}.${domain}` labels. Idempotent — skipped when the only dash
-    # form in the file already matches PUBLIC_IP_DASH.
-    if [ -n "$PUBLIC_IP_DASH" ] && \
-       grep -qE "[0-9a-fA-F]+(-+[0-9a-fA-F]*)+\.(nip|sslip)\.io" "$compose_file"; then
-        stale=$(grep -oE "[0-9a-fA-F]+(-+[0-9a-fA-F]*)+\.(nip|sslip)\.io" "$compose_file" \
-            | awk -F. '{print $1}' \
+    #   2a02-c207-2326-2853--1.nip.io                (IPv6 with `::` → `--`)
+    #
+    # CRITICAL: the match is anchored to the literal `<app_name>-` prefix.
+    # Without that anchor, an unanchored `[0-9a-fA-F]+…` slides left into the
+    # app name — app names ending in a hex digit (nextclou`d`, stirlingpd`f`)
+    # have that trailing hex *plus the separating dash* eaten by the match,
+    # so the rewrite truncates the label (`nextcloud-` → `nextclou`) and the
+    # app silently drops to the catch-all. An IPv4-only `[0-9]` regex hid the
+    # flaw (letters aren't digits); widening the match to IPv6 hex exposed
+    # it. Anchoring to `<app_name>-` keeps the app name out of the match.
+    if [ -n "$PUBLIC_IP_DASH" ]; then
+        # Escape every non-alphanumeric char so the app name is a purely
+        # literal anchor in the EREs below — no smuggled regex metacharacters
+        # and no clash with the `#` sed delimiter.
+        app_re=$(printf '%s' "$app_name" | sed 's/[^a-zA-Z0-9]/\\&/g')
+
+        # IP-dash currently baked into this app's labels, with the
+        # `<app_name>-` prefix and `.(nip|sslip).io` suffix stripped. Empty
+        # when the app has no such label, or it already matches PUBLIC_IP_DASH.
+        stale=$(grep -oE "${app_re}-[0-9a-fA-F]+(-+[0-9a-fA-F]*)+\.(nip|sslip)\.io" "$compose_file" \
+            | sed -E "s#^${app_re}-##; s#\.(nip|sslip)\.io\$##" \
             | sort -u \
             | grep -v "^${PUBLIC_IP_DASH}\$" \
             | head -1)
         if [ -n "$stale" ]; then
             echo "Rewriting stale IP-DASH labels in $app_name ($stale → $PUBLIC_IP_DASH)"
-            # Use `#` as the sed delimiter — `|` would be consumed by the
-            # `(nip|sslip)` alternation in the regex and sed would parse
-            # things wrong. `\2` is the (nip|sslip) capture (group 1 is the
-            # inner repeated dash-segment).
-            sed -i -E "s#[0-9a-fA-F]+(-+[0-9a-fA-F]*)+\.(nip|sslip)\.io#${PUBLIC_IP_DASH}.\2.io#g" \
+            # `#` sed delimiter — `|` would clash with the `(nip|sslip)`
+            # alternation. Group 1 is the literal `<app_name>-` prefix (kept
+            # verbatim); group 3 is the `(nip|sslip)` suffix.
+            sed -i -E "s#(${app_re}-)[0-9a-fA-F]+(-+[0-9a-fA-F]*)+\.(nip|sslip)\.io#\1${PUBLIC_IP_DASH}.\3.io#g" \
                 "$compose_file"
         fi
     fi
