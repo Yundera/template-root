@@ -6,6 +6,10 @@ services:
     hostname: admin
     restart: unless-stopped
     cpu_shares: 90
+    # Safety net, not a tight cap. The Next.js + tsx server steady-states a few
+    # hundred MB; 1G leaves room for esbuild workers and a transient spike
+    # without an OOM kill, but bounds a runaway leak.
+    mem_limit: 1g
     # Inject every key from the unified .env (assembled by ensure-env-vars-valid.sh
     # from .pcs.env + .pcs.secret.env + .ynd.user.env). The settings-center-app
     # reads DOMAIN, PUBLIC_IP, UID, DEFAULT_PWD, etc. via process.env to display
