@@ -36,10 +36,13 @@ fi
 # trusting an env var that gets rsynced verbatim during migration.
 source "$YND_ROOT/scripts/library/common.sh"
 if ! is_proxmox_host; then
-    echo "→ Non-Proxmox host detected — using plain directories on root fs (no LVM)"
-    mkdir -p /DATA/AppData/casaos/apps/yundera /var/lib/docker
-    id -u pcs >/dev/null 2>&1 || useradd -m -s /bin/bash pcs
-    chown -R pcs:pcs /DATA 2>/dev/null || true
+    # Clean early-exit on commodity VPS — same shape as ensure-qemu-agent.sh /
+    # ensure-vm-scalable.sh / ensure-data-partition-size.sh. The pcs user,
+    # /DATA ownership and required dirs are all handled by ensure-pcs-user.sh
+    # (every tick) and pcs-init.sh (first install); doing them again here
+    # only added a recursive `chown -R /DATA` that pinned disk I/O for
+    # minutes on every self-check tick.
+    echo "→ Not a Proxmox-style host (no LVM on /dev/sda) — skipping data partition setup"
     exit 0
 fi
 
@@ -160,8 +163,14 @@ if vgdisplay data_vg >/dev/null 2>&1; then
                 echo "/mnt/data/docker /var/lib/docker none bind 0 0" >> /etc/fstab
             fi
 
-            # Ensure ownership and logging directory
-            chown -R pcs:pcs /DATA 2>/dev/null || true
+            # Ownership: shallow at /DATA and /DATA/AppData (the bind-mount may
+            # have just exposed root-owned mount roots), plus one level into
+            # /DATA/AppData/* so per-app dirs are pcs-owned. Subtrees stay
+            # untouched — containers manage their own internal ownership
+            # (Postgres → 999, MariaDB → 999, etc.) and a recursive sweep
+            # would fight that and pin disk I/O for minutes on large /DATA.
+            chown pcs:pcs /DATA /DATA/AppData 2>/dev/null || true
+            find /DATA/AppData -mindepth 1 -maxdepth 1 -exec chown pcs:pcs {} + 2>/dev/null || true
             mkdir -p /DATA/AppData/casaos/apps/yundera
             chown -R pcs:pcs /DATA/AppData/casaos/apps/yundera 2>/dev/null || true
 
