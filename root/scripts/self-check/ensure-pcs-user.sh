@@ -21,9 +21,9 @@ USER_NAME="pcs"
 # free UID >= UID_MIN). On a *migration target* the orchestrator pre-creates
 # a `migration` sudoer (see MigrationTargetBootstrap.ts, pinned at UID 1099);
 # without the explicit `-u 1000` here, `useradd` would pick 1100 (max-existing
-# + 1, not smallest-free) and the chown-`pcs`-/DATA in ensure-data-partition
-# leaves all app data at UID 1100 — postgres/filebrowser then fail with
-# "Permission denied" because their container processes still run as PUID=1000.
+# + 1, not smallest-free) and the chown of /DATA below leaves all app data
+# at UID 1100 — postgres/filebrowser then fail with "Permission denied"
+# because their container processes still run as PUID=1000.
 # Falling back to default useradd if UID 1000 is taken keeps this safe on
 # images that have a pre-existing user there (e.g. some cloud-init defaults).
 PCS_TARGET_UID=1000

@@ -33,10 +33,7 @@ fi
 SCRIPT_DIR="/DATA/AppData/casaos/apps/yundera/scripts"
 source "${SCRIPT_DIR}/library/common.sh"
 
-# Provider awareness is per-script now — the four hypervisor-aware
-# ensure-*.sh files call `is_proxmox_host` (from library/common.sh) to gate
-# their setup. No top-level env var to resolve here.
-log "=== Self-check starting (proxmox=$(is_proxmox_host && echo yes || echo no)) ==="
+log "=== Self-check starting ==="
 
 SCRIPTS_CONFIG_FILE="$SCRIPT_DIR/self-check/scripts-config.txt"
 

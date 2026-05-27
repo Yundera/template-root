@@ -19,15 +19,11 @@ ensure-common-tools-installed.sh
 
 # System configuration
 ensure-ssh.sh
-ensure-vm-scalable.sh
-ensure-qemu-agent.sh
 
 # Network configuration
 ensure-public-ip.sh
 
 # Storage setup
-ensure-data-partition.sh
-ensure-data-partition-size.sh
 ensure-swap.sh
 
 # Self-check system

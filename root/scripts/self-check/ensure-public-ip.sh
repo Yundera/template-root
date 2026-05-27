@@ -281,13 +281,11 @@ fi
 # PUBLIC_IPV4/PUBLIC_IPV6 directly — so the registered route and the routing
 # labels can never disagree.
 #
-# IPv4 first when present, IPv6 fallback otherwise. This used to branch on
-# YND_PROVIDER (Proxmox preferred IPv6 because Scaleway has no per-VM
-# public IPv4, others preferred IPv4 for broader compatibility). After
-# tightening detection to local-interface-only, PUBLIC_IPV4 is automatically
-# empty on Scaleway (its only IPv4 is private SDN, filtered out) and
-# populated on Contabo — so a single "prefer IPv4 if available" rule yields
-# the same canonical answer for both, without provider awareness.
+# IPv4 first when present, IPv6 fallback otherwise. Detection is restricted
+# to local-interface IPs, so PUBLIC_IPV4 is automatically empty when the
+# host only has a private (SDN/NAT) v4 and populated when the host has a
+# real per-VM v4 — the single rule yields the right canonical answer
+# without any provider-awareness branch.
 # =============================================================================
 if [ -n "$PUBLIC_IPV4" ]; then
     PUBLIC_IP="$PUBLIC_IPV4"
