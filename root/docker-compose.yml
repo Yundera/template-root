@@ -1,7 +1,7 @@
 name: yundera
 services:
   admin:
-    image: ghcr.io/yundera/settings-center-app:1.1.65
+    image: ghcr.io/yundera/settings-center-app:1.1.66
     container_name: admin
     hostname: admin
     restart: unless-stopped
@@ -223,47 +223,6 @@ services:
     depends_on:
       - mesh-router-agent
 
-  
-  # =============================================================================
-  # MESH ROUTER PERF - Performance Testing Service
-  # =============================================================================
-  # Test endpoints:
-  #   - https://perf-<domain> → Performance service (gateway-routed)
-  #   - https://perf-<IP-DASH>.nip.io → Performance service (direct)
-  # Endpoints: /health, /echo, /download/:size, /upload, /ws, /delay/:ms
-  # =============================================================================
-  mesh-router-perf:
-    image: ghcr.io/yundera/mesh-router-perf:1.1.2
-    container_name: mesh-router-perf
-    hostname: mesh-router-perf
-    restart: unless-stopped
-    cpu_shares: 90
-    environment:
-      - NODE_ENV=production
-      - PORT=3000
-      - HOST=0.0.0.0
-      - LOG_LEVEL=info
-      - DATA_DIR=/app/data
-    volumes:
-      - /DATA/AppData/yundera/perf/data:/app/data
-    expose:
-      - "3000"
-    networks:
-      pcs: null
-    labels:
-      # Standard domain with custom CA (gateway-routed)
-      caddy_0: perf-${DOMAIN}
-      caddy_0.import: gateway_tls
-      caddy_0.reverse_proxy: "{{upstreams 3000}}"
-      # nip.io domain for direct access (custom CA)
-      caddy_1: perf-${PUBLIC_IP_DASH}.nip.io
-      caddy_1.import: gateway_tls
-      caddy_1.reverse_proxy: "{{upstreams 3000}}"
-      # sslip.io domain for direct access (Let's Encrypt)
-      caddy_2: perf-${PUBLIC_IP_DASH}.sslip.io
-      caddy_2.reverse_proxy: "{{upstreams 3000}}"
-  
-  
   smtp:
     image: ghcr.io/yundera/yundera-smtp-handler:1.0.2
     container_name: smtp
