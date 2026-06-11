@@ -224,14 +224,14 @@ services:
       - mesh-router-agent
 
   smtp:
-    image: ghcr.io/yundera/yundera-smtp-handler:1.0.2
+    image: ghcr.io/yundera/mail-gateway:1.0.3
     container_name: smtp
     hostname: smtp
     restart: unless-stopped
     cpu_shares: 70
     environment:
-      USER_JWT: "${USER_JWT}"
-      ORCHESTRATOR_URL: "${YUNDERA_API}"
+      RELAY_CREDENTIAL: "${USER_JWT}"
+      RELAY_ENDPOINT_URL: "${YUNDERA_API}"
       SMTP_PORT: "587"
     expose:
       - "587"
