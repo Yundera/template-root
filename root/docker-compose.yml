@@ -224,14 +224,16 @@ services:
       - mesh-router-agent
 
   smtp:
-    image: ghcr.io/yundera/mail-gateway:1.0.3
+    image: ghcr.io/yundera/mail-gateway:1.0.4
     container_name: smtp
     hostname: smtp
     restart: unless-stopped
     cpu_shares: 70
     environment:
-      RELAY_CREDENTIAL: "${USER_JWT}"
-      RELAY_ENDPOINT_URL: "${YUNDERA_API}"
+      # Provider mode: route mail through the mesh-router-backend that owns this PCS's domain
+      # (same as the nsl path), sending from <app>.<user-domain>@<server-domain>. The gateway
+      # derives the endpoint + credential from PROVIDER_STR — no orchestrator email API.
+      RELAY_CREDENTIAL: "${PROVIDER_STR}"
       SMTP_PORT: "587"
     expose:
       - "587"
