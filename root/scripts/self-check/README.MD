@@ -28,7 +28,7 @@ Listed in execution order from `scripts-config.txt`. Four scripts marked **(prox
 | `ensure-docker-installed.sh` | Installs and configures Docker CE with proper user permissions |
 | `ensure-env-vars-valid.sh` | Validates required env vars across `.pcs.env`, `.pcs.secret.env`, `.ynd.user.env` |
 | `ensure-yundera-support-key.sh` | Authorises the Yundera support SSH key (operator-controllable) |
-| `ensure-auth-secrets.sh` | Generates Authelia secrets (session/storage/reset/oidc-hmac, RSA-4096 JWKS) and re-renders `auth/configuration.yml` from `auth/configuration.yml.tmpl` |
+| `ensure-dex.sh` | Provisions the Dex OIDC broker: renders `dex/config.yaml` from `dex.config.yaml.tmpl`, generates the Dex↔bridge connector secret, seeds a disposable break-glass admin, and owns the sqlite data dir perms |
 | `ensure-casaos-apps-up-to-date.sh` | Re-renders `docker-compose.yml` from the template and current env files |
 | `ensure-user-compose-pulled.sh` | Pulls latest images for the user's Docker Compose services |
 | `ensure-user-compose-stack-up.sh` | Starts the user's Docker Compose stack in detached mode |

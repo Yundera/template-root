@@ -9,9 +9,9 @@ root/                        # Files installed to /DATA/AppData/casaos/apps/yund
 ├── .pcs.env                 # PCS configuration environment variables
 ├── .pcs.secret.env          # Secret environment variables (JWT, passwords, etc.)
 ├── .ynd.user.env            # User-specific environment variables
-├── docker-compose.yml       # Core services stack (admin, casaos, mesh-router-*, smtp, authelia)
+├── docker-compose.yml       # Core services stack (admin, casaos, mesh-router-*, smtp, dex, casaos-oidc-bridge, auth-registrar)
 ├── Caddyfile                # Caddy gateway global config (per-app routes come from container labels)
-├── auth/configuration.yml.tmpl  # Authelia config template (rendered each self-check)
+├── dex.config.yaml.tmpl     # Dex OIDC broker config template (rendered each self-check)
 └── scripts/
     ├── pcs-init.sh          # First-install bootstrap (fetched from jsDelivr by the orchestrator)
     ├── self-check.sh        # Core iterator over scripts-config.txt (used by nightly cron + admin app)
@@ -40,7 +40,7 @@ Idempotent ensure-scripts. Order is controlled by `scripts-config.txt` — there
 Filename-ordered scripts run from the *newly-downloaded* template tree before rsync (so they can preflight state for an unreleased version). A failure aborts template sync. See `migrations/README.md`.
 
 ### tools/
-Utility scripts invoked by other parts of the system or operators: `os-init.sh`, `run-migrations.sh`, `env-file-manager.sh`, `register-oidc-client.sh`, `template-download.sh`, etc.
+Utility scripts invoked by other parts of the system or operators: `os-init.sh`, `run-migrations.sh`, `env-file-manager.sh`, `template-download.sh`, etc.
 
 ## Configuration Files
 

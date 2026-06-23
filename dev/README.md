@@ -12,7 +12,7 @@ docker compose up -d --build
 docker exec -it template-root-test bash
 
 # Run an individual self-check or migration
-bash /DATA/AppData/casaos/apps/yundera/scripts/self-check/ensure-auth-secrets.sh
+bash /DATA/AppData/casaos/apps/yundera/scripts/self-check/ensure-dex.sh
 bash /DATA/AppData/casaos/apps/yundera/scripts/migrations/YYYY-MM-DD-HH-name.sh
 
 # Force the container to skip download/rsync and run migrations against the in-place tree

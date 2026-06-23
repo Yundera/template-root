@@ -35,7 +35,7 @@ ensure-logrotate.sh
 ensure-docker-installed.sh
 ensure-env-vars-valid.sh
 ensure-yundera-support-key.sh
-ensure-auth-secrets.sh
+ensure-dex.sh
 ensure-casaos-apps-up-to-date.sh
 ensure-user-compose-pulled.sh
 ensure-user-compose-stack-up.sh
