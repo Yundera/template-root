@@ -304,7 +304,7 @@ services:
   # Signing key persisted at /DATA/AppData/yundera/casaos-oidc-bridge/.
   # =============================================================================
   casaos-oidc-bridge:
-    image: ghcr.io/yundera/casaos-oidc-bridge:1.0.0
+    image: ghcr.io/yundera/casaos-oidc-bridge:1.0.3
     container_name: casaos-oidc-bridge
     hostname: casaos-oidc-bridge
     restart: unless-stopped
@@ -322,6 +322,7 @@ services:
       - /DATA/AppData/yundera/casaos-oidc-bridge:/data
     expose:
       - "8089"
+      - "8090"   # internal-only /validate (no Caddy label below → never gateway-routed)
     networks:
       pcs: null
     depends_on:
@@ -404,15 +405,5 @@ x-casaos:
   port_map: ""
   scheme: https
   store_app_id: yundera
-  tips:
-    before_install:
-      en_us: |
-        **🔑 First launch:** you'll land on a login screen asking for an ID and password.
-
-        1. Click **"Reset password"**
-        2. In the username field, enter `admin` (the username is always `admin`)
-        3. Check your inbox for the password reset email and follow the link to set your password
-
-        From there, sign in with `admin` and your new password.
   title:
     custom: Settings
