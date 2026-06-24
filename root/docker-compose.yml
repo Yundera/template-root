@@ -359,7 +359,7 @@ services:
   # this is invisible. See: packages/mesh-router-root/mesh-router-auth/README.md
   # =============================================================================
   auth-registrar:
-    image: ghcr.io/yundera/mesh-auth:1.1.1
+    image: ghcr.io/yundera/mesh-auth:1.1.3
     container_name: auth-registrar
     hostname: auth-registrar
     restart: unless-stopped
@@ -371,6 +371,11 @@ services:
       DEX_GRPC_ADDR: 172.31.7.2:5557
       # ephemeral in-container cache (NOT persisted) — see note above
       DEX_CLIENTS_DIR: /tmp/dex-clients
+      # Allowed redirect-URI host suffixes (comma-separated). An app's permitted
+      # hosts are <app>-<suffix> for each; the registrar verifies every requested
+      # callback against this exact set. Must list the SAME suffixes the apps'
+      # caddy_* labels use — the user domain plus the IP-based fallbacks.
+      REDIRECT_HOST_SUFFIXES: "${DOMAIN},${PUBLIC_IP_DASH}.nip.io,${PUBLIC_IP_DASH}.sslip.io"
     expose:
       - "9092"
     networks:
