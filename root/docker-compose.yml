@@ -1,7 +1,7 @@
 name: yundera
 services:
   admin:
-    image: ghcr.io/yundera/settings-center-app:1.1.72
+    image: ghcr.io/yundera/settings-center-app:1.2.0
     container_name: admin
     hostname: admin
     restart: unless-stopped
@@ -18,7 +18,6 @@ services:
     # at /app/data/ below.
     env_file: .env
     environment:
-      AUTHORITY_ENDPOINT: "https://8080-casaos-${DOMAIN}/v1/users"
       COMPOSE_FOLDER_PATH: "/DATA/AppData/casaos/apps/yundera/"
       # auth-registrar sidecar (defined below) hands out OIDC client_id/secret
       # pairs. Set here because the image does not ship config/core.env.json
