@@ -303,7 +303,7 @@ services:
   # Signing key persisted at /DATA/AppData/yundera/casaos-oidc-bridge/.
   # =============================================================================
   casaos-oidc-bridge:
-    image: ghcr.io/yundera/casaos-oidc-bridge:1.0.3
+    image: ghcr.io/yundera/casaos-oidc-bridge:1.0.5
     container_name: casaos-oidc-bridge
     hostname: casaos-oidc-bridge
     restart: unless-stopped
