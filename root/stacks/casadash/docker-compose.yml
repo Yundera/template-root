@@ -1,0 +1,135 @@
+# =============================================================================
+# CASADASH STACK — the CasaOS replacement dashboard, running alongside CasaOS
+# (phase 1 of the CasaDash migration; see doc/casadash-migration.md).
+#
+# Deployed to /DATA/AppData/.casadash/ by scripts/self-check/ensure-casadash-stack.sh,
+# which also generates the .env alongside it from the yundera unified .env.
+# DO NOT edit the deployed copy — it is overwritten on every self-check.
+#
+# The leading dot in `.casadash` keeps this directory out of CasaDash's own
+# managed-app scan of /DATA/AppData (it skips any name containing a dot), and the
+# deliberate absence of an `x-casaos` / `x-compose-app` block keeps it out of its
+# unmanaged (Docker-label) discovery too — the dashboard does not tile itself.
+#
+# SECURITY: CasaDash has NO authentication of any kind (upstream non-goal) and it
+# mounts the Docker socket, so an exposed port is root on the host. It is never
+# published: the container only `expose`s 8080 on the internal `pcs` network, and
+# the ONLY route in is the AppShield gate below, which owns the caddy_* labels.
+# Never add a `ports:` mapping to the casadash service.
+# =============================================================================
+name: casadash
+
+services:
+  # ===========================================================================
+  # APPSHIELD GATE — the only public entrypoint to CasaDash.
+  #   - humans: interactive SSO. The gate self-registers an OIDC client with the
+  #     PCS auth-registrar on first login (no client id/secret to inject), which
+  #     federates through Dex to the CasaOS bridge.
+  #   - machines: CasaOS credentials (Basic user:pass, or a CasaOS JWT as Bearer)
+  #     forwarded to the bridge's internal-only validator on port 8090.
+  # AUTH_HASH is deliberately NOT set: it is a per-app secret CasaOS injects at
+  # install time, and this stack is not a CasaOS app. Machine access therefore
+  # goes through real CasaOS identity rather than a shared hash.
+  # ===========================================================================
+  # NAMING IS LOAD-BEARING: this container MUST be named `casadash`, and the
+  # dashboard behind it `casadash-app`. The auth-registrar derives an app's
+  # client_id from a PTR lookup of the *caller's container name* on the pcs network
+  # ("clientId is the PTR-attested container name — NOT anything the caller sent",
+  # mesh-router-auth/src/validation.ts), and then only ever issues redirect URIs
+  # under `<client_id>-<suffix>`. Name this container `casadash-gate` and it
+  # registers callbacks for casadash-gate-${DOMAIN} — a hostname the caddy_* labels
+  # below do not publish, so the OIDC callback lands on an unrouted host and login
+  # dead-ends. The gate therefore takes the app's public name; the backend gets the
+  # suffix. Same shape as AppStoreLab's AppShieldSecurityDemo (gate `appshield-demo`,
+  # backend `appshield-demo-whoami`).
+  casadash:
+    image: ghcr.io/yundera/appshield:2.0.5
+    container_name: casadash
+    hostname: casadash
+    restart: unless-stopped
+    user: "0:0"
+    cpu_shares: 40
+    mem_limit: 128m
+    expose:
+      - "80"
+    environment:
+      OIDC_REGISTRAR_URL: "http://auth-registrar:9092"
+      # Must list the SAME host suffixes as the caddy_* labels below — the
+      # registrar validates every requested callback against exactly this set.
+      REDIRECT_HOST_SUFFIXES: "${DOMAIN},${PUBLIC_IP_DASH}.nip.io,${PUBLIC_IP_DASH}.sslip.io"
+      CREDENTIAL_VALIDATE_URL: "http://casaos-oidc-bridge:8090/validate"
+      BACKEND_HOST: "casadash-app"
+      BACKEND_PORT: "8080"
+      LISTEN_PORT: "80"
+    depends_on:
+      - casadash-app
+    networks:
+      pcs: null
+    labels:
+      # Standard domain with custom CA (gateway-routed)
+      caddy_0: casadash-${DOMAIN}
+      caddy_0.import: gateway_tls
+      caddy_0.reverse_proxy: "{{upstreams 80}}"
+      # nip.io variant for direct access (custom CA)
+      caddy_1: casadash-${PUBLIC_IP_DASH}.nip.io
+      caddy_1.import: gateway_tls
+      caddy_1.reverse_proxy: "{{upstreams 80}}"
+      # sslip.io variant for direct access (Let's Encrypt)
+      caddy_2: casadash-${PUBLIC_IP_DASH}.sslip.io
+      caddy_2.reverse_proxy: "{{upstreams 80}}"
+
+  # The dashboard itself. Named `casadash-app` so the gate above can own the public
+  # name `casadash` — see the naming note there.
+  casadash-app:
+    image: ghcr.io/worph/casadash:1.0.1
+    container_name: casadash-app
+    hostname: casadash-app
+    restart: unless-stopped
+    cpu_shares: 90
+    mem_limit: 512m
+    environment:
+      CASADASH_ADDR: ":8080"
+
+      # DATA_HOST_PATH MUST equal DATA_ROOT. CasaDash reads the raw
+      # `com.docker.compose.project.working_dir` label — a HOST path — and opens it
+      # directly, with no container-path remapping. If the two differ, every
+      # CasaOS app's compose lookup opens a path that does not exist inside this
+      # container and NO CasaOS app gets a tile. See doc/casadash-migration.md §1.5.
+      DATA_ROOT: "/DATA"
+      DATA_HOST_PATH: "/DATA"
+
+      PUID: "1000"
+      PGID: "1000"
+      TZ: "${TZ}"
+
+      # Reverse-proxy reference values used to render app routes. REF_NET must be
+      # `pcs` (CasaDash's own default is `mesh`, which does not exist here).
+      REF_NET: "pcs"
+      REF_PORT: "443"
+      REF_SCHEME: "https"
+      REF_DOMAIN: "${DOMAIN}"
+
+      APPSTORE_URL: "https://github.com/Yundera/AppStore/archive/refs/heads/main.zip"
+    # Docker socket group — resolved from the host by ensure-casadash-stack.sh.
+    group_add:
+      - "${DOCKER_GID}"
+    expose:
+      - "8080"   # NEVER `ports:` — see the security note at the top of this file
+    networks:
+      pcs: null
+    volumes:
+      - type: bind
+        source: /DATA
+        target: /DATA
+        bind:
+          propagation: rshared
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+
+networks:
+  # Created and owned by the `yundera` stack — this project only attaches to it.
+  # ensure-casadash-stack.sh therefore runs after ensure-user-compose-stack-up.sh.
+  pcs:
+    name: pcs
+    external: true

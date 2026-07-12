@@ -53,91 +53,18 @@ services:
       caddy_2: admin-${PUBLIC_IP_DASH}.sslip.io
       caddy_2.reverse_proxy: "{{upstreams 80}}"
 
-  
-  casaos:
-    image: ghcr.io/yundera/casa-img:0.4.15-47
-    container_name: casaos
-    hostname: casaos
-    restart: unless-stopped
-    cpu_shares: 90
-    environment:
-      PUID: 1000 # user ID used by casaos to read and write files
-      PGID: 1000 # group ID used by casaos to read and write files
-      USER: "${DEFAULT_USER}" # casaos default initial user (optional)
-      DATA_ROOT: "/DATA" # where casaos apps data are stored
 
-      # Environment variables used by casaos to configure reverse proxy in the app settings (not used by casaos system)
-      REF_DOMAIN: "${DOMAIN}"
-      REF_NET: "pcs"
-      REF_PORT: "443"
-      REF_SCHEME: "https"
-
-      # (deprecated) V1 these envs are not used directly by casaos but are forwarded to the app at creation, injected in the docker compose up
-      default_pwd: "${DEFAULT_PWD}"
-      public_ip: "${PUBLIC_IPV4}"
-      domain: "${DOMAIN}"
-
-      # (deprecated) V2 these envs are not used directly by casaos but are forwarded to the app at creation, injected in the docker compose up
-      PCS_DEFAULT_PASSWORD: "${DEFAULT_PWD}"
-      PCS_DOMAIN: "${DOMAIN}" # without https://
-      PCS_DATA_ROOT: "/DATA"
-      PCS_PUBLIC_IP: "${PUBLIC_IPV4}"
-      PCS_PUBLIC_IPV6: "${PUBLIC_IPV6}"
-      PCS_EMAIL: "${EMAIL}"
-
-      # V3 these envs are not used directly by casaos but are forwarded to the app at creation, injected in the docker compose up
-      APP_DEFAULT_PASSWORD: "${DEFAULT_PWD}"
-      APP_DOMAIN: "${DOMAIN}" # without https://
-      APP_DATA_ROOT: "/DATA"
-      APP_PUBLIC_IP: "${PUBLIC_IPV6}" #can be either v4 or v6 public ip but is regarded as the main IP
-      APP_PUBLIC_IP_DASH: "${PUBLIC_IP_DASH}"
-      APP_PUBLIC_IPV4: "${PUBLIC_IPV4}"
-      APP_PUBLIC_IPV4_DASH: "${PUBLIC_IPV4_DASH}"
-      APP_PUBLIC_IPV6: "${PUBLIC_IPV6}"
-      APP_PUBLIC_IPV6_DASH: "${PUBLIC_IPV6_DASH}"
-      #APP_EMAIL: "admin@${DOMAIN}"
-      APP_EMAIL: "${EMAIL}"
-      APP_NET: pcs
-
-      # Passwordless email sign-in: casaos enables the magic-link login option
-      # only when USER_EMAIL + SMTP_HOST + SMTP_PORT are all set.
-      USER_EMAIL: "${EMAIL}"
-      SMTP_HOST: "smtp"
-      SMTP_PORT: "587"
-
-    networks:
-      pcs: null
-    labels:
-      # Standard domains with custom CA (gateway-routed)
-      caddy_0: 8080-casaos-${DOMAIN}, casaos-${DOMAIN}
-      caddy_0.import: gateway_tls
-      caddy_0.reverse_proxy: "{{upstreams 8080}}"
-      # nip.io variants for direct access (custom CA)
-      caddy_1: 8080-casaos-${PUBLIC_IP_DASH}.nip.io, casaos-${PUBLIC_IP_DASH}.nip.io
-      caddy_1.import: gateway_tls
-      caddy_1.reverse_proxy: "{{upstreams 8080}}"
-      # sslip.io variants for direct access (Let's Encrypt)
-      caddy_2: 8080-casaos-${PUBLIC_IP_DASH}.sslip.io, casaos-${PUBLIC_IP_DASH}.sslip.io
-      caddy_2.reverse_proxy: "{{upstreams 8080}}"
-      # NOTE: Root domains (${DOMAIN}, ${PUBLIC_IP_DASH}.nip.io, ${PUBLIC_IP_DASH}.sslip.io)
-      # are handled in Caddyfile with configurable DEFAULT_SERVICE_HOST/PORT
-    volumes:
-      - type: bind
-        source: /DATA
-        target: /DATA
-        # Add bind propagation for FUSE mounts
-        bind:
-          propagation: rshared
-      - type: bind
-        source: /var/run/docker.sock
-        target: /var/run/docker.sock
-      - type: bind
-        source: /dev
-        target: /dev
+  # NOTE: `casaos` and `casaos-oidc-bridge` no longer live in this stack. They were
+  # split out into their own compose project at /DATA/AppData/.casaos (deployed by
+  # scripts/self-check/ensure-casaos-stack.sh) so that retiring CasaOS in favour of
+  # CasaDash becomes a stack deletion rather than surgery on this file. Container
+  # names are unchanged, and both stacks share the `pcs` network, so
+  # DEFAULT_SERVICE_HOST=casaos and http://casaos-oidc-bridge:8090 still resolve.
+  # See doc/casadash-migration.md.
 
 
-  
-  
+
+
   # =============================================================================
   # MESH ROUTER TUNNEL (v2)
   # Establishes WireGuard VPN tunnel to the provider for NAT traversal
@@ -277,8 +204,11 @@ services:
       # reachable ONLY by containers on dex-internal (just auth-registrar).
       dex-internal:
         ipv4_address: 172.31.7.2
-    depends_on:
-      - casaos-oidc-bridge
+    # No `depends_on: casaos-oidc-bridge` — the bridge now lives in the separate
+    # `casaos` stack (/DATA/AppData/.casaos) and Compose cannot express a
+    # cross-project dependency. Both containers are `restart: unless-stopped` on the
+    # shared `pcs` network, and Dex retries its connector, so cold-boot ordering
+    # resolves itself.
     labels:
       # Standard domain with custom CA (gateway-routed)
       caddy_0: auth-${DOMAIN}
@@ -291,53 +221,6 @@ services:
       # sslip.io variant for direct access (Let's Encrypt)
       caddy_2: auth-${PUBLIC_IP_DASH}.sslip.io
       caddy_2.reverse_proxy: "{{upstreams 5556}}"
-
-
-  # =============================================================================
-  # CASAOS-OIDC-BRIDGE - tiny OIDC provider fronting CasaOS's login API
-  # Dex's `casaos` connector federates here; the bridge authenticates the user
-  # against CasaOS (POST /v1/users/login) and verifies CasaOS's ES256 JWT via its
-  # JWKS. It MUST be reachable at a publicly-trusted host (casaos-oidc-${DOMAIN})
-  # so Dex's back-channel TLS validates. The nip.io label is REQUIRED — the CF
-  # worker rewrites Host to nip.io, so that is the route CF traffic matches.
-  # Signing key persisted at /DATA/AppData/yundera/casaos-oidc-bridge/.
-  # =============================================================================
-  casaos-oidc-bridge:
-    image: ghcr.io/yundera/casaos-oidc-bridge:1.0.5
-    container_name: casaos-oidc-bridge
-    hostname: casaos-oidc-bridge
-    restart: unless-stopped
-    cpu_shares: 40
-    environment:
-      BRIDGE_ISSUER: "https://casaos-oidc-${DOMAIN}"
-      BRIDGE_ADDR: ":8089"
-      BRIDGE_KEY_PATH: /data/signing-key.json
-      CASAOS_LOGIN_URL: "http://casaos:8080/v1/users/login"
-      CASAOS_JWKS_URL: "http://casaos:8080/.well-known/jwks.json"
-      CLIENT_ID: dex
-      CLIENT_SECRET: "${BRIDGE_SECRET}"
-      REDIRECT_URIS: "https://auth-${DOMAIN}/callback"
-    volumes:
-      - /DATA/AppData/yundera/casaos-oidc-bridge:/data
-    expose:
-      - "8089"
-      - "8090"   # internal-only /validate (no Caddy label below → never gateway-routed)
-    networks:
-      pcs: null
-    depends_on:
-      - casaos
-    labels:
-      # Standard domain with custom CA (gateway-routed)
-      caddy_0: casaos-oidc-${DOMAIN}
-      caddy_0.import: gateway_tls
-      caddy_0.reverse_proxy: "{{upstreams 8089}}"
-      # nip.io variant — REQUIRED (CF worker rewrites Host to nip.io)
-      caddy_1: casaos-oidc-${PUBLIC_IP_DASH}.nip.io
-      caddy_1.import: gateway_tls
-      caddy_1.reverse_proxy: "{{upstreams 8089}}"
-      # sslip.io variant for direct access (Let's Encrypt)
-      caddy_2: casaos-oidc-${PUBLIC_IP_DASH}.sslip.io
-      caddy_2.reverse_proxy: "{{upstreams 8089}}"
 
 
   # =============================================================================
