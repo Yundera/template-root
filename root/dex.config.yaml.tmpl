@@ -2,8 +2,8 @@
 # Rendered by scripts/self-check/ensure-dex.sh to
 #   /DATA/AppData/yundera/dex/config.yaml
 # on every self-check. DO NOT edit the rendered file — edit this template and
-# let the self-check re-render it. Substituted tokens: ${DOMAIN}, ${ADMIN_EMAIL},
-# ${BRIDGE_SECRET}, and __ADMIN_HASH__ (bcrypt, injected out-of-band).
+# let the self-check re-render it. Substituted tokens: ${DOMAIN}, ${BRIDGE_SECRET}
+# (CasaOS connector), and ${AUTHELIA_DEX_SECRET} (Local Account connector).
 
 issuer: https://auth-${DOMAIN}
 
@@ -32,19 +32,10 @@ oauth2:
   # Every PCS app is first-party; skip the per-app consent screen.
   skipApprovalScreen: true
 
-# Enables the local password connector backing the break-glass admin below.
-enablePasswordDB: true
-
-# Break-glass admin — DISPOSABLE. The real login path is the CasaOS connector
-# below; this account only exists for recovery when CasaOS is unreachable. The
-# password is random (ensure-dex.sh writes the plaintext to
-# /DATA/AppData/yundera/dex/admin-password, chmod 600). To rotate: delete that
-# file and re-run the self-check.
-staticPasswords:
-  - email: "${ADMIN_EMAIL}"
-    hash: "__ADMIN_HASH__"
-    username: admin
-    userID: "00000000-0000-0000-0000-000000000001"
+# No local password DB. Dex is a pure broker — the local account lives in
+# Authelia (the "Local Account" connector below). The old enablePasswordDB
+# break-glass admin was removed once Authelia became the self-contained local
+# login (it has its own reset + rate limiting and does not depend on CasaOS).
 
 # Application clients are NOT defined statically — auth-registrar registers them
 # dynamically over Dex's gRPC API. The registrar is stateless (it persists no

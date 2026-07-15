@@ -3,16 +3,22 @@
 #
 # Responsibilities (all idempotent):
 #   - render Dex config.yaml from the template every run (tracks DOMAIN changes
-#     and re-emits the connector secret / break-glass hash),
+#     and re-emits the connector secrets),
 #   - generate the Dex<->bridge connector shared secret once (BRIDGE_SECRET),
-#   - seed a disposable break-glass admin (random password, bcrypt-hashed),
+#   - read the Dex<->Authelia connector secret (AUTHELIA_DEX_SECRET, minted by
+#     ensure-authelia.sh) so the Local Account connector renders,
 #   - own the sqlite data dir so the dex container (uid 1001) can write dex.db,
 #   - restart dex so a re-rendered config is picked up.
+#
+# Dex is a pure BROKER: it holds no local credential of its own. The local
+# account lives in Authelia (the "Local Account" connector, see
+# ensure-authelia.sh); the old enablePasswordDB break-glass admin has been
+# removed. Interactive login is therefore always federated to a connector
+# (Authelia or CasaOS).
 #
 # Storage layout (host /DATA/AppData/yundera/):
 #   dex/config.yaml          rendered Dex config (re-rendered each run)
 #   dex/dex.db               Dex sqlite store (clients, codes, refresh tokens, keys)
-#   dex/admin-password       plaintext break-glass admin password (chmod 600)
 #   casaos-oidc-bridge/signing-key.json  bridge token-signing key (bridge-owned)
 #
 # RECOVERY / BACKUP: none of this needs backing up — it is all CACHE.
@@ -24,8 +30,7 @@
 #     login (the AppShield/hash-lock sidecars hold no persisted creds), and users
 #     simply log in again (Dex regenerates its signing keys, invalidating old
 #     tokens). Deleting /DATA/AppData/yundera/dex is therefore safe — this script
-#     reconstructs config.yaml and the break-glass admin, and the rest self-heals
-#     through normal logins.
+#     reconstructs config.yaml and the rest self-heals through normal logins.
 #
 # NETWORK: Dex's gRPC client-management API is UNAUTHENTICATED, so the rendered
 # config binds it to a static IP (172.31.7.2) on the isolated `dex-internal`
@@ -42,7 +47,6 @@ DEX_ROOT="/DATA/AppData/yundera/dex"
 BRIDGE_ROOT="/DATA/AppData/yundera/casaos-oidc-bridge"
 TEMPLATE="$YND_ROOT/dex.config.yaml.tmpl"
 CONFIG_OUT="$DEX_ROOT/config.yaml"
-ADMIN_PWD_FILE="$DEX_ROOT/admin-password"
 
 SECRET_ENV="$YND_ROOT/.pcs.secret.env"
 USER_ENV="$YND_ROOT/.ynd.user.env"
@@ -58,14 +62,6 @@ DOMAIN="$("$ENV_MGR" get DOMAIN "$USER_ENV")"
 if [ -z "$DOMAIN" ]; then
     log_error "DOMAIN not set in $USER_ENV; cannot render Dex config"
     exit 1
-fi
-
-# Operator email for the break-glass admin (recovery path). Falls back to an
-# unrouted vanity address when EMAIL is not set yet.
-ADMIN_EMAIL="$("$ENV_MGR" get EMAIL "$USER_ENV")"
-if [ -z "$ADMIN_EMAIL" ]; then
-    ADMIN_EMAIL="admin@${DOMAIN}"
-    log_warn "EMAIL not set in $USER_ENV; using ${ADMIN_EMAIL} for the Dex admin"
 fi
 
 # Dex<->bridge connector shared secret. Generated once and persisted in
@@ -92,37 +88,13 @@ if [ -z "$AUTHELIA_DEX_SECRET" ]; then
     log_warn "AUTHELIA_DEX_SECRET not set yet; Local Account connector will render without a secret until ensure-authelia.sh has run"
 fi
 
-# Disposable break-glass admin password (random). Generate-once: presence of the
-# file is the marker. Rotate by deleting it and re-running this script.
-if [ ! -f "$ADMIN_PWD_FILE" ]; then
-    openssl rand -hex 12 > "$ADMIN_PWD_FILE"
-    chmod 600 "$ADMIN_PWD_FILE"
-    log_info "Generated disposable Dex break-glass admin password ($ADMIN_PWD_FILE)"
-fi
-ADMIN_PWD="$(cat "$ADMIN_PWD_FILE")"
-
-# bcrypt the admin password. htpasswd emits a $2y$ identifier; Go's bcrypt (used
-# by Dex) only accepts $2a$/$2b$, so swap the identifier — the algorithm is
-# identical, only the version byte differs.
-"$YND_ROOT/scripts/tools/ensure-packages.sh" apache2-utils >/dev/null 2>&1 || true
-if ! command -v htpasswd >/dev/null 2>&1; then
-    log_error "htpasswd (apache2-utils) unavailable; cannot bcrypt the Dex admin password"
-    exit 1
-fi
-ADMIN_HASH="$(htpasswd -bnBC 10 "" "$ADMIN_PWD" | tr -d ':\n')"
-ADMIN_HASH="${ADMIN_HASH/\$2y\$/\$2a\$}"
-
-# Render config.yaml. envsubst handles the simple tokens; the bcrypt hash holds
-# '$' sequences that envsubst would mangle, so it is injected separately via awk
-# (literal replacement — bcrypt contains no awk-special chars).
+# Render config.yaml. All tokens are envsubst-safe (no '$'-bearing values), so a
+# single envsubst pass suffices.
 TMP="$(mktemp)"
-TMP2="$(mktemp)"
-chmod 600 "$TMP" "$TMP2"
-export DOMAIN ADMIN_EMAIL BRIDGE_SECRET AUTHELIA_DEX_SECRET
-envsubst '${DOMAIN} ${ADMIN_EMAIL} ${BRIDGE_SECRET} ${AUTHELIA_DEX_SECRET}' < "$TEMPLATE" > "$TMP"
-awk -v h="$ADMIN_HASH" '{ gsub(/__ADMIN_HASH__/, h); print }' "$TMP" > "$TMP2"
-rm -f "$TMP"
-mv "$TMP2" "$CONFIG_OUT"
+chmod 600 "$TMP"
+export DOMAIN BRIDGE_SECRET AUTHELIA_DEX_SECRET
+envsubst '${DOMAIN} ${BRIDGE_SECRET} ${AUTHELIA_DEX_SECRET}' < "$TEMPLATE" > "$TMP"
+mv "$TMP" "$CONFIG_OUT"
 chmod 600 "$CONFIG_OUT"
 log_info "Rendered Dex config at $CONFIG_OUT"
 
