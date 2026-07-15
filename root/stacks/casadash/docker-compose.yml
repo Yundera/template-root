@@ -2,14 +2,19 @@
 # CASADASH STACK — the CasaOS replacement dashboard, running alongside CasaOS
 # (phase 1 of the CasaDash migration; see doc/casadash-migration.md).
 #
-# Deployed to /DATA/AppData/.casadash/ by scripts/self-check/ensure-casadash-stack.sh,
-# which also generates the .env alongside it from the yundera unified .env.
-# DO NOT edit the deployed copy — it is overwritten on every self-check.
+# Deployed to /DATA/AppData/casadash/ by scripts/self-check/ensure-casadash-stack.sh,
+# which also generates the .env alongside it from the yundera unified .env, and the
+# .env.app beside that. DO NOT edit the deployed copies — they are overwritten on every
+# self-check.
 #
-# The leading dot in `.casadash` keeps this directory out of CasaDash's own
-# managed-app scan of /DATA/AppData (it skips any name containing a dot), and the
-# deliberate absence of an `x-casaos` / `x-compose-app` block keeps it out of its
-# unmanaged (Docker-label) discovery too — the dashboard does not tile itself.
+# The directory name is dotless on purpose: CasaDash's managed-app scan of
+# /DATA/AppData skips any name containing a dot, so `casadash` (unlike the old
+# `.casadash`) is picked up and the dashboard tiles itself. It is not hidden.
+#
+# That same folder is ALSO CasaDash's state directory (it is DATA_ROOT/AppData/casadash,
+# its StateDir): its settings.json and store cache live here, alongside the stack files
+# and .env.app. One folder holds everything CasaDash — deploy-stack.sh only ever writes
+# docker-compose.yml and .env, so it never disturbs that state.
 #
 # SECURITY: CasaDash has NO authentication of any kind (upstream non-goal) and it
 # mounts the Docker socket, so an exposed port is root on the host. It is never
@@ -81,7 +86,7 @@ services:
   # The dashboard itself. Named `casadash-app` so the gate above can own the public
   # name `casadash` — see the naming note there.
   casadash-app:
-    image: ghcr.io/worph/casadash:1.0.1
+    image: ghcr.io/worph/casadash:1.0.2
     container_name: casadash-app
     hostname: casadash-app
     restart: unless-stopped
@@ -102,14 +107,30 @@ services:
       PGID: "1000"
       TZ: "${TZ}"
 
-      # Reverse-proxy reference values used to render app routes. REF_NET must be
-      # `pcs` (CasaDash's own default is `mesh`, which does not exist here).
-      REF_NET: "pcs"
-      REF_PORT: "443"
-      REF_SCHEME: "https"
-      REF_DOMAIN: "${DOMAIN}"
-
+      # NOTE: what CasaDash *forwards to the apps it installs* — the app network, the
+      # domain, the public IP, the default password — is deliberately NOT here. It
+      # lives in /DATA/AppData/casadash/.env.app, written by ensure-casadash-stack.sh
+      # from the unified .env. That file is the deployment's statement of what an app
+      # receives; this block is only what CasaDash needs to run itself. Keeping the two
+      # apart is the point — see CasaDash's docs/app-env.md.
+      #
+      # The old REF_NET / REF_PORT / REF_SCHEME / REF_DOMAIN are gone. REF_PORT,
+      # REF_SCHEME and REF_SEPARATOR drove CasaOS's web-UI-URL synthesis, which CasaDash
+      # replaced with x-compose-app's webui-* fields; REF_NET and REF_DOMAIN were
+      # duplicates of the APP_NET / APP_DOMAIN a PCS already sets. They now live in
+      # .env.app under those APP_* names.
+      #
+      # VERSION-COUPLED: this requires a CasaDash image that reads .env.app. An older
+      # image still expects REF_NET and will attach apps to no network at all.
       APPSTORE_URL: "https://github.com/Yundera/AppStore/archive/refs/heads/main.zip"
+
+      # The PCS infrastructure must not be uninstallable from the dashboard. The
+      # tiles still render; only the Uninstall action is withheld, and the API
+      # refuses it too. This matters most for `casaos`: its AppData directory is
+      # ALSO CasaOS's apps root (/DATA/AppData/casaos/apps/...), holding every app
+      # definition on the box including the yundera stack itself — so an uninstall
+      # there would take the whole PCS with it.
+      PROTECTED_APPS: "casadash,casaos,yundera"
     # Docker socket group — resolved from the host by ensure-casadash-stack.sh.
     group_add:
       - "${DOCKER_GID}"
@@ -133,3 +154,27 @@ networks:
   pcs:
     name: pcs
     external: true
+
+# The dashboard tiles itself. Now that the stack lives in a dotless directory,
+# CasaDash's managed scan picks it up; without this block it would render as a
+# nameless, iconless tile whose "open" button goes nowhere (it publishes no host
+# port, so there is nothing to derive a URL from).
+#
+# `webui-host` is the ONLY metadata field CasaDash substitutes ${DOMAIN} in — it is
+# resolved against APP_DOMAIN, which the deployment states in .env.app. Never use
+# x-casaos's `hostname` for a templated host: CasaDash parses compose with a plain
+# yaml.Unmarshal and would link to the literal `https://casadash-${DOMAIN}/`. The value
+# must match the caddy_0 label on the gate above, which is what actually routes.
+#
+# It points at the GATE (`casadash-${DOMAIN}`), not the dashboard container — that is
+# the only authenticated way in.
+x-compose-app:
+  schema_version: 2
+  id: casadash
+  title: CasaDash
+  category: pcs
+  developer: Yundera Team
+  icon: https://cdn.jsdelivr.net/gh/Yundera/AppStore@main/Apps/CasaDash/icon.png
+  webui-host: casadash-${DOMAIN}
+  webui-scheme: https
+  webui-path: /

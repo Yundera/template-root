@@ -2,14 +2,16 @@
 # CASAOS STACK — split out of the main `yundera` stack (phase 1 of the CasaDash
 # migration; see doc/casadash-migration.md).
 #
-# Deployed to /DATA/AppData/.casaos/ by scripts/self-check/ensure-casaos-stack.sh,
+# Deployed to /DATA/AppData/casaos/ by scripts/self-check/ensure-casaos-stack.sh,
 # which also generates the .env alongside it from the yundera unified .env.
 # DO NOT edit the deployed copy — it is overwritten on every self-check.
 #
-# The leading dot in `.casaos` keeps this directory out of CasaDash's managed-app
-# scan of /DATA/AppData (it skips any name containing a dot), and the deliberate
-# absence of an `x-casaos` / `x-compose-app` block keeps it out of CasaDash's
-# unmanaged (Docker-label) discovery too. This is infrastructure, not an app.
+# The directory name is dotless on purpose: CasaDash's managed-app scan of
+# /DATA/AppData skips any name containing a dot, so `casaos` (unlike the old
+# `.casaos`) is picked up and tiled. This directory is also CasaOS's own AppData
+# root — `apps/` (including the `yundera` stack itself) lives underneath it — so
+# never delete the `casaos` tile from CasaDash: it would take every app definition
+# on the PCS with it.
 #
 # Container names are unchanged from when these services lived in the `yundera`
 # stack, and the `pcs` network is shared, so DEFAULT_SERVICE_HOST=casaos and every
@@ -154,3 +156,26 @@ networks:
   pcs:
     name: pcs
     external: true
+
+# Now that the stack lives in a dotless directory, CasaDash's managed scan picks it
+# up; without this block it would render as a nameless, iconless tile whose "open"
+# button goes nowhere (the casaos service publishes no host port, so there is nothing
+# to derive a URL from).
+#
+# `webui-host` is the ONLY metadata field CasaDash substitutes ${DOMAIN} in — it is
+# resolved against the container's own REF_DOMAIN. Never use x-casaos's `hostname`
+# for a templated host: CasaDash parses compose with a plain yaml.Unmarshal and would
+# link to the literal `https://casaos-${DOMAIN}/`. The value must match the caddy_0
+# label on the casaos service above, which is what actually routes.
+#
+# Deliberately NOT an `x-casaos` block: CasaOS must not tile itself inside itself.
+x-compose-app:
+  schema_version: 2
+  id: casaos
+  title: CasaOS
+  category: pcs
+  developer: IceWhale
+  icon: https://cdn.jsdelivr.net/gh/Yundera/AppStore@main/Apps/CasaOS/icon.png
+  webui-host: casaos-${DOMAIN}
+  webui-scheme: https
+  webui-path: /

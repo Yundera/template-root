@@ -144,7 +144,7 @@ for app_dir in "$APPS_DIR"/*/; do
     [ -f "$src_compose" ] || continue
 
     # CasaDash ignores any directory whose name contains a dot (that is how its own
-    # .casadash state dir and <app>.<date>.archive folders stay off the grid), so a
+    # dot-prefixed state dirs and <app>.<date>.archive folders stay off the grid), so a
     # mirror of such an app could never be seen. Don't create a misleading folder.
     if [[ "$app_name" == *.* ]]; then
         log_warn "Skipping '$app_name': CasaDash ignores directory names containing a dot"

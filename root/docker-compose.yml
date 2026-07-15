@@ -55,7 +55,7 @@ services:
 
 
   # NOTE: `casaos` and `casaos-oidc-bridge` no longer live in this stack. They were
-  # split out into their own compose project at /DATA/AppData/.casaos (deployed by
+  # split out into their own compose project at /DATA/AppData/casaos (deployed by
   # scripts/self-check/ensure-casaos-stack.sh) so that retiring CasaOS in favour of
   # CasaDash becomes a stack deletion rather than surgery on this file. Container
   # names are unchanged, and both stacks share the `pcs` network, so
@@ -205,7 +205,7 @@ services:
       dex-internal:
         ipv4_address: 172.31.7.2
     # No `depends_on: casaos-oidc-bridge` — the bridge now lives in the separate
-    # `casaos` stack (/DATA/AppData/.casaos) and Compose cannot express a
+    # `casaos` stack (/DATA/AppData/casaos) and Compose cannot express a
     # cross-project dependency. Both containers are `restart: unless-stopped` on the
     # shared `pcs` network, and Dex retries its connector, so cold-boot ordering
     # resolves itself.
@@ -294,3 +294,25 @@ x-casaos:
   store_app_id: yundera
   title:
     custom: Settings
+
+# CasaDash reads this in preference to x-casaos, field by field.
+#
+# IT EXISTS BECAUSE OF THE ${DOMAIN} ABOVE. CasaDash parses compose files with a
+# plain yaml.Unmarshal — it never interpolates, and never reads the sibling .env —
+# so it copies `x-casaos.hostname` verbatim and the Settings tile links to the
+# literal https://admin-${DOMAIN}/. Every CasaOS *store* app escapes this because
+# CasaOS's installer bakes the resolved hostname into the app's compose file at
+# install time; this stack is the template itself, never installed, so its
+# placeholder survives on disk. x-compose-app's `webui-host` is the one field
+# CasaDash substitutes (${DOMAIN}/${domain} -> its REF_DOMAIN), which is exactly
+# the value the caddy_0 label on the admin service publishes.
+x-compose-app:
+  schema_version: 2
+  id: yundera
+  title: Settings
+  icon: https://cdn.jsdelivr.net/gh/Yundera/settings-center-app@main/public/YunderaPCS-setting_iconV2.svg
+  category: pcs
+  developer: Yundera Team
+  webui-host: admin-${DOMAIN}
+  webui-scheme: https
+  webui-path: /

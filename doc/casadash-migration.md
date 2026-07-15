@@ -61,16 +61,25 @@ is a deletion rather than surgery:
 | Stack | Path | Compose project | Contents |
 |---|---|---|---|
 | `yundera` | `/DATA/AppData/casaos/apps/yundera` | `yundera` | admin, mesh-router-{tunnel,agent,caddy}, smtp, dex, auth-registrar |
-| `casaos` | `/DATA/AppData/.casaos` | `casaos` | casaos, casaos-oidc-bridge |
-| `casadash` | `/DATA/AppData/.casadash` | `casadash` | casadash, casadash-gate (AppShield) |
+| `casaos` | `/DATA/AppData/casaos` | `casaos` | casaos, casaos-oidc-bridge |
+| `casadash` | `/DATA/AppData/casadash` | `casadash` | casadash, casadash-gate (AppShield) |
 
 Both new stacks join the **existing `pcs` network as `external: true`** — the `yundera`
 stack still owns and creates it, so the ensure scripts must run after
 `ensure-user-compose-stack-up.sh`.
 
-The leading dot on `.casaos` / `.casadash` is load-bearing: it keeps both directories out of
-CasaDash's managed scan. Neither stack carries an `x-casaos` / `x-compose-app` block either,
-so neither appears as an unmanaged tile. They are infrastructure, not apps.
+Both directory names are **dotless on purpose**. CasaDash's managed-app scan skips any name
+in `/DATA/AppData` containing a dot, so the earlier `.casaos` / `.casadash` paths kept the two
+stacks off the grid entirely. We want them visible — the dashboard tiles itself and the CasaOS
+stack alongside it — so the dot is gone. `ensure-casa{os,dash}-stack.sh` each `rm -rf` their
+legacy dot-directory before deploying; the compose project name is pinned by `name:` inside
+the compose file, not by the directory, so the move re-adopts the existing project and
+containers rather than creating a second one.
+
+One consequence to keep in mind: `/DATA/AppData/casaos` is *also* CasaOS's own AppData root
+(`apps/`, including the `yundera` stack itself, lives underneath it). Deleting the `casaos`
+tile from CasaDash would delete every app definition on the PCS. The `casadash` directory has
+no such overlap.
 
 **This is the one genuinely mutating step in phase 1.** `ensure-user-compose-stack-up.sh`
 runs `docker compose up --remove-orphans` on the `yundera` project; once `casaos` and
@@ -174,9 +183,39 @@ Two CasaDash settings must be right or discovery breaks:
   `working_dir` label, which holds a *host* path, with no container-path remapping. If the two
   differ, every unmanaged lookup opens a path that does not exist inside the container and
   **no CasaOS app gets a tile**.
-- **`REF_NET` must be `pcs`**, not CasaDash's default `mesh`.
+- **`APP_NET` must be `pcs`**, not CasaDash's default `mesh` — set in `.env.app` (below), not
+  in the stack's `environment:`.
 
 `DOCKER_GID` is computed from `stat -c %g /var/run/docker.sock` at ensure time.
+
+### 1.5b `.env.app` — what an app receives
+
+CasaDash separates the variables it needs to *run* from the variables it *forwards* to the apps
+it manages. The first stay in the stack's `environment:` block; the second live in
+
+```
+/DATA/AppData/casadash/.env.app
+```
+
+which `ensure-casadash-stack.sh` regenerates from the unified `.env` on every self-check, and
+writes **before** `deploy-stack.sh` runs — a first-ever install must find it already there.
+CasaDash reads it on install and on **every start**, ensuring each key in the app's own `.env` —
+so a box that changes domain or public IP carries its apps with it, instead of stranding them on
+the deployment they were installed against. See CasaDash's `docs/app-env.md`.
+
+The `REF_*` variables are gone. `REF_PORT` / `REF_SCHEME` / `REF_SEPARATOR` drove CasaOS's
+web-UI-URL synthesis, which CasaDash replaced with `x-compose-app`'s `webui-*` fields; `REF_NET`
+and `REF_DOMAIN` were duplicates of the `APP_NET` / `APP_DOMAIN` a PCS already sets.
+
+> **One folder for everything CasaDash.** `/DATA/AppData/casadash` holds the deployed stack
+> (`docker-compose.yml`, `.env`), the deployment's `.env.app`, *and* CasaDash's own state —
+> its `settings.json` and store cache, since `DATA_ROOT/AppData/casadash` is CasaDash's
+> `StateDir()`. The old hidden `/DATA/AppData/.casadash` never left staging and is simply
+> removed.
+
+> **Version-coupled.** Dropping `REF_*` from the stack requires a CasaDash image that reads
+> `.env.app` and keeps its state in the dotless folder. An older image still expects `REF_NET`,
+> and would attach apps to no network at all.
 
 ### 1.6 Ordering
 
@@ -211,7 +250,7 @@ The mirror runs last so it always copies the post-`sed` compose files.
 
 ## Phase 3 — remove CasaOS (outline)
 
-- Delete the `.casaos` stack (`casaos` + `casaos-oidc-bridge`) and its ensure script.
+- Delete the `casaos` stack (`casaos` + `casaos-oidc-bridge`) and its ensure script.
 - Delete `ensure-casaos-apps-up-to-date.sh` and `ensure-casadash-app-mirror.sh`.
 - Drop the `/DATA/AppData/casaos/apps` tree (keeping `yundera/`, which is where the template
   itself lives — it stays put to avoid rewriting every path in the fleet).
