@@ -98,6 +98,63 @@ mv "$TMP" "$CONFIG_OUT"
 chmod 600 "$CONFIG_OUT"
 log_info "Rendered Dex config at $CONFIG_OUT"
 
+# ---------------------------------------------------------------------------
+# Yundera Login connector — federates to the orchestrator's OIDC IdP so users
+# can sign in with their Yundera (cloud) account. Unlike the CasaOS/Authelia
+# connectors whose secrets are local, this connector's client is registered
+# DYNAMICALLY with the IdP: POST the PCS's USER_JWT to
+# ${YUNDERA_API}/auth/pcs-client, which returns a client_id/secret scoped to
+# this PCS's own auth-${DOMAIN} callback (idempotent — stable across runs).
+#
+# On ANY failure (IdP unreachable, no USER_JWT, malformed response) we log and
+# skip: the connector is simply absent and interactive login continues via
+# Authelia/CasaOS. Login must NEVER hard-depend on the Yundera cloud.
+#
+# Appended to the already-rendered config.yaml (which the render above rewrites
+# from scratch each run, so this never accumulates duplicates), NOT to the
+# template — keeping the skip path a clean no-op and the template stock.
+# ---------------------------------------------------------------------------
+PCS_ENV="$YND_ROOT/.pcs.env"
+YUNDERA_API="$("$ENV_MGR" get YUNDERA_API "$PCS_ENV")"
+YND_USER_JWT="$("$ENV_MGR" get USER_JWT "$SECRET_ENV")"
+
+if [ -n "$YUNDERA_API" ] && [ -n "$YND_USER_JWT" ]; then
+    YND_REDIRECT_URI="https://auth-${DOMAIN}/callback"
+    YND_REG="$(curl -fsS --max-time 20 \
+        -H "Authorization: Bearer $YND_USER_JWT" \
+        -H "Content-Type: application/json" \
+        -X POST "${YUNDERA_API}/auth/pcs-client" \
+        -d "{\"redirect_uris\":[\"${YND_REDIRECT_URI}\"]}" 2>/dev/null || true)"
+
+    YND_CLIENT_ID="$(printf '%s' "$YND_REG" | grep -o '"client_id":"[^"]*"' | sed 's/.*:"\([^"]*\)"/\1/' || true)"
+    YND_CLIENT_SECRET="$(printf '%s' "$YND_REG" | grep -o '"client_secret":"[^"]*"' | sed 's/.*:"\([^"]*\)"/\1/' || true)"
+
+    if [ -n "$YND_CLIENT_ID" ] && [ -n "$YND_CLIENT_SECRET" ]; then
+        cat >> "$CONFIG_OUT" <<YAML
+
+  - type: oidc
+    id: yundera
+    name: Yundera Login
+    config:
+      issuer: ${YUNDERA_API}/auth
+      clientID: ${YND_CLIENT_ID}
+      clientSecret: "${YND_CLIENT_SECRET}"
+      redirectURI: ${YND_REDIRECT_URI}
+      userNameKey: email
+      getUserInfo: true
+      scopes:
+        - openid
+        - profile
+        - email
+YAML
+        log_info "Added Yundera Login connector (client ${YND_CLIENT_ID})"
+    else
+        log_warn "Yundera client registration returned no client_id/secret; skipping Yundera Login connector"
+    fi
+else
+    log_warn "YUNDERA_API or USER_JWT unset; skipping Yundera Login connector"
+fi
+
 # Perms: dex (uid 1001) owns its tree so it can create dex.db.
 chown -R "$DEX_UID:$DEX_UID" "$DEX_ROOT" 2>/dev/null || true
 chmod 755 "$DEX_ROOT" 2>/dev/null || true
