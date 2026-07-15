@@ -1,0 +1,87 @@
+# =============================================================================
+# Authelia configuration for Yundera PCS — LOCAL-ACCOUNT identity provider.
+#
+# Authelia is NOT the top-level IdP here. Dex (auth-${DOMAIN}) is the broker;
+# Authelia is one OIDC connector behind it, owning the *local* PCS account
+# (the credential that used to live in CasaOS). It therefore has exactly ONE
+# OIDC client — Dex — registered statically below. There is no dynamic
+# per-app client registration (that stays on Dex's gRPC path via
+# auth-registrar), so none of the old clients.d/ + concurrency-lock machinery
+# exists anymore.
+#
+# Rendered by scripts/self-check/ensure-authelia.sh to
+#   /DATA/AppData/yundera/auth/configuration.yml
+# on every self-check. The identity_providers block (hmac + jwks + the Dex
+# client, whose secret hash contains '$' sequences envsubst would mangle) is
+# APPENDED by that script — this template holds everything above it. Only
+# ${DOMAIN} is substituted here.
+#
+# Authelia serves its own login UI at local-auth-${DOMAIN} — that page carries
+# the built-in "Reset password?" link and drives the email reset flow through
+# the local smtp relay. When a user picks "Local Account" on the Dex connector
+# screen, Dex redirects here; on success Authelia redirects back to
+# https://auth-${DOMAIN}/callback.
+# =============================================================================
+
+server:
+  address: 'tcp://0.0.0.0:9091'
+  buffers:
+    read: 16384
+    write: 16384
+
+log:
+  level: info
+
+authentication_backend:
+  file:
+    path: /config/users_database.yml
+
+session:
+  cookies:
+    - domain: 'local-auth-${DOMAIN}'
+      authelia_url: 'https://local-auth-${DOMAIN}'
+      name: 'authelia_session'
+      same_site: 'lax'
+      inactivity: '5m'
+      expiration: '1h'
+      remember_me: '1M'
+
+storage:
+  local:
+    path: /config/db.sqlite
+
+access_control:
+  default_policy: one_factor
+
+# Brute-force protection. Dex itself has NONE (dexidp/dex#1671, open since
+# 2020), and the interactive password check now happens here, so this block is
+# the PCS's only account-level rate limit: after max_retries failures within
+# find_time, the account is banned for ban_time.
+regulation:
+  max_retries: 5
+  find_time: '2m'
+  ban_time: '10m'
+
+totp:
+  issuer: 'Yundera'
+  period: 30
+  skew: 1
+
+notifier:
+  # Skip the boot-time test email — Authelia restarts on every self-check tick
+  # and the relay (smtp → mesh-router-backend) is rate limited. Real reset/2FA
+  # mails still send normally.
+  disable_startup_check: true
+  smtp:
+    # Internal relay container (plaintext, no auth, network-isolated on `pcs`).
+    address: 'smtp://smtp:587'
+    sender: 'Yundera <noreply@${DOMAIN}>'
+    subject: '[Yundera] {title}'
+    # Relay does not advertise STARTTLS or accept TLS — force plaintext.
+    disable_require_tls: true
+    disable_starttls: true
+
+# identity_providers.oidc (hmac_secret + jwks + the single 'dex' client) is
+# appended below this line by ensure-authelia.sh. Unlike the old top-level
+# deployment there is always exactly one client, so the block is ALWAYS
+# present (no "omit until first app registers" dance).

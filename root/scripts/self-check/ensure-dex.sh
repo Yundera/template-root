@@ -81,6 +81,17 @@ if [ -z "$BRIDGE_SECRET" ]; then
 fi
 "$ENV_MGR" set BRIDGE_SECRET "$BRIDGE_SECRET" "$UNIFIED_ENV"
 
+# Dex<->Authelia connector secret for the "Local Account" connector. Generated
+# and hashed by ensure-authelia.sh (which runs just before this script) and
+# persisted in .pcs.secret.env; read it back here so the connector's plaintext
+# clientSecret renders into config.yaml. Empty is tolerated (the connector then
+# renders with an empty secret and simply fails its back-channel until Authelia
+# has provisioned) so a partial cycle never aborts Dex.
+AUTHELIA_DEX_SECRET="$("$ENV_MGR" get AUTHELIA_DEX_SECRET "$SECRET_ENV")"
+if [ -z "$AUTHELIA_DEX_SECRET" ]; then
+    log_warn "AUTHELIA_DEX_SECRET not set yet; Local Account connector will render without a secret until ensure-authelia.sh has run"
+fi
+
 # Disposable break-glass admin password (random). Generate-once: presence of the
 # file is the marker. Rotate by deleting it and re-running this script.
 if [ ! -f "$ADMIN_PWD_FILE" ]; then
@@ -107,8 +118,8 @@ ADMIN_HASH="${ADMIN_HASH/\$2y\$/\$2a\$}"
 TMP="$(mktemp)"
 TMP2="$(mktemp)"
 chmod 600 "$TMP" "$TMP2"
-export DOMAIN ADMIN_EMAIL BRIDGE_SECRET
-envsubst '${DOMAIN} ${ADMIN_EMAIL} ${BRIDGE_SECRET}' < "$TEMPLATE" > "$TMP"
+export DOMAIN ADMIN_EMAIL BRIDGE_SECRET AUTHELIA_DEX_SECRET
+envsubst '${DOMAIN} ${ADMIN_EMAIL} ${BRIDGE_SECRET} ${AUTHELIA_DEX_SECRET}' < "$TEMPLATE" > "$TMP"
 awk -v h="$ADMIN_HASH" '{ gsub(/__ADMIN_HASH__/, h); print }' "$TMP" > "$TMP2"
 rm -f "$TMP"
 mv "$TMP2" "$CONFIG_OUT"

@@ -52,6 +52,27 @@ staticPasswords:
 # disposable cache that rebuilds itself.
 
 connectors:
+  # Local Account — Authelia, the PCS-local credential store (replaces reliance
+  # on CasaOS). Publicly-trusted host so Dex's back-channel TLS validates against
+  # system roots. Authelia's own login page carries the password-reset link.
+  - type: oidc
+    id: authelia
+    name: Local Account
+    config:
+      issuer: https://local-auth-${DOMAIN}
+      clientID: dex
+      clientSecret: "${AUTHELIA_DEX_SECRET}"
+      # Dex's own connector callback.
+      redirectURI: https://auth-${DOMAIN}/callback
+      # Authelia 4.39 returns scope claims (preferred_username, email, name) from
+      # its userinfo endpoint rather than in the ID token, so Dex must fetch it.
+      getUserInfo: true
+      userNameKey: preferred_username
+      scopes:
+        - openid
+        - profile
+        - email
+
   - type: oidc
     id: casaos
     name: CasaOS

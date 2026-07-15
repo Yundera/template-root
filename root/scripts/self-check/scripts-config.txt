@@ -35,6 +35,10 @@ ensure-logrotate.sh
 ensure-docker-installed.sh
 ensure-env-vars-valid.sh
 ensure-yundera-support-key.sh
+# ensure-authelia.sh MUST run before ensure-dex.sh: it mints AUTHELIA_DEX_SECRET
+# into .pcs.secret.env / .env, which ensure-dex.sh interpolates into the Dex
+# "Local Account" connector's clientSecret.
+ensure-authelia.sh
 ensure-dex.sh
 ensure-casaos-apps-up-to-date.sh
 ensure-user-compose-pulled.sh

@@ -224,6 +224,48 @@ services:
 
 
   # =============================================================================
+  # AUTHELIA - local-account IdP, federated by Dex as the "Local Account" connector
+  # Owns the credential that used to live in CasaOS. Exactly ONE OIDC client
+  # (Dex); no dynamic app-client registration (that stays on Dex's gRPC path).
+  # Serves its own login UI at local-auth-${DOMAIN} — which carries the built-in
+  # "Reset password?" link and drives the email reset flow through the local
+  # smtp relay. Config + secrets + users_database.yml are provisioned by
+  # scripts/self-check/ensure-authelia.sh into /DATA/AppData/yundera/auth/.
+  # =============================================================================
+  authelia:
+    image: authelia/authelia:4.39
+    container_name: authelia
+    hostname: authelia
+    restart: unless-stopped
+    cpu_shares: 80
+    environment:
+      AUTHELIA_SESSION_SECRET_FILE: /config/secrets/session
+      AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE: /config/secrets/storage
+      AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE: /config/secrets/reset
+    volumes:
+      # configuration.yml (rendered) + db.sqlite + users_database.yml + secrets.
+      # Unlike the dex dir this holds the local account — back it up.
+      - /DATA/AppData/yundera/auth:/config
+    expose:
+      - "9091"
+    networks:
+      pcs: null
+    labels:
+      # Standard domain with custom CA (gateway-routed). Distinct host from Dex's
+      # auth-${DOMAIN}: Dex is the broker, Authelia is the connector behind it.
+      caddy_0: local-auth-${DOMAIN}
+      caddy_0.import: gateway_tls
+      caddy_0.reverse_proxy: "{{upstreams 9091}}"
+      # nip.io variant for direct access (custom CA)
+      caddy_1: local-auth-${PUBLIC_IP_DASH}.nip.io
+      caddy_1.import: gateway_tls
+      caddy_1.reverse_proxy: "{{upstreams 9091}}"
+      # sslip.io variant for direct access (Let's Encrypt)
+      caddy_2: local-auth-${PUBLIC_IP_DASH}.sslip.io
+      caddy_2.reverse_proxy: "{{upstreams 9091}}"
+
+
+  # =============================================================================
   # AUTH-REGISTRAR - OIDC client self-registration for PCS apps
   # Sidecars (e.g. nginx-hash-lock) POST their redirect URIs to
   #   http://auth-registrar:9092/register
