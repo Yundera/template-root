@@ -140,6 +140,50 @@ mirrored folders are stamped with a `.casaos-mirror` marker, and a compose file 
 *without* that marker is treated as a CasaDash-native app and skipped. A pre-existing `.env`
 is backed up to `.env.pre-casadash.bak` once before first overwrite.
 
+### 1.2b Mirroring the `yundera` stack itself
+
+`ensure-casadash-app-mirror.sh` skips `yundera`, so the Settings tile rendered as
+**unmanaged** — logs and stats only, no Env / Compose / Override / WebUI tabs. The stack was
+always *visible* (its containers carry `working_dir=/DATA/AppData/casaos/apps/yundera` and its
+compose carries `x-compose-app`, which is discovery path 2), but that path is two levels below
+CasaDash's `AppsDir`, and `isManaged()` is literally
+`stat(/DATA/AppData/<project>/docker-compose.yml)`.
+
+`ensure-casadash-yundera-mirror.sh` closes that gap: it copies the stack's compose to
+`/DATA/AppData/yundera/docker-compose.yml` and the **unified `.env`** beside it, with the same
+`.casaos-mirror` marker and the same copy-not-hardlink rule.
+
+It is a separate script rather than a case inside the app-mirror loop because the two mirrors
+have different sources of environment truth. A CasaOS app's `.env` materialises the cocktail
+the *casaos container* injects at up-time; this stack is interpolated from the unified `.env`
+that `ensure-env-vars-valid.sh` assembles (`DOMAIN`, `PROVIDER_STR`, `DEFAULT_SERVICE_HOST`,
+`PUBLIC_IP_DASH`, …). Copying that file wholesale — as `deploy-stack.sh` does — means a
+variable added to any source file reaches the mirror with no change to the script.
+
+**No tile is duplicated.** `Registry.List` runs the managed pass first and marks the project
+`seen`; the Docker-discovered pass then skips it. The tile only changes character. The folder
+name must stay `yundera` — it is joined to the Docker project name by an unvalidated
+`projects[name]` lookup, so a divergent name would yield a greyed "stopped" managed tile *plus*
+a live unmanaged one.
+
+**The mirror is asserted, not assumed.** The script renders both directories with
+`docker compose config` (hermetically, `env -i`, both sides reading only their own `.env`) and
+fails on any difference. This matters more here than for an app: a managed tile is one CasaDash
+may bring up itself, so a drifting mirror would hand the PCS a different infrastructure spec
+than `ensure-user-compose-stack-up.sh` does. Verified byte-identical.
+
+**Accepted, and larger than for an app**: promoting a tile to managed means CasaDash may run
+`compose up` on the *PCS infrastructure* — a user pressing Start/Restart, or `Republish()` after
+a domain change, brings the stack up from `/DATA/AppData/yundera`, recreating `mesh-router-caddy`
+and `dex` among others. `name: yundera` is pinned inside the compose file, so this reconciles
+the same project rather than creating a second one, and the render is identical — what it costs
+is the working_dir label flipping until the next `ensure-user-compose-stack-up.sh` flips it back.
+Container churn, not data loss: the same trade-off §1.3 accepts for every mirrored app, applied
+to a more important stack. Note that CasaDash's `Normalize()` rewrites a managed app's compose
+before every up; here that only ever touches the mirror copy, which the next self-check
+re-derives. Uninstall is not a risk — `yundera` is already in the casadash stack's
+`PROTECTED_APPS`.
+
 ### 1.3 Deliberate non-goals and accepted risks
 
 - **Nothing is brought up from the mirror.** The mirror scripts write files only. No
@@ -228,9 +272,12 @@ ensure-user-compose-stack-up.sh    # existing — yundera stack; removes casaos 
 ensure-casaos-stack.sh             # NEW — recreates casaos + bridge as their own stack
 ensure-casadash-stack.sh           # NEW — casadash + AppShield gate
 ensure-casadash-app-mirror.sh      # NEW — mirror compose + .env, verify render equality
+ensure-casadash-yundera-mirror.sh  # NEW — same, for the yundera stack (unified .env source)
 ```
 
-The mirror runs last so it always copies the post-`sed` compose files.
+The mirrors run last so they always copy the post-`sed` compose files. The yundera mirror needs
+only `ensure-env-vars-valid.sh` (for the unified `.env`) to have run; it sits here to keep the
+two mirrors together.
 
 ---
 

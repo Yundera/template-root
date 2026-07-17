@@ -54,3 +54,7 @@ ensure-casadash-stack.sh
 # Must stay after ensure-casaos-apps-up-to-date.sh so the copies reflect its
 # post-`sed` label rewrites rather than the stale ones.
 ensure-casadash-app-mirror.sh
+# The yundera stack's own mirror. Separate from the app mirror above because its
+# .env comes from the unified .env, not from CasaOS's injected cocktail. Must stay
+# after ensure-env-vars-valid.sh (it copies that .env).
+ensure-casadash-yundera-mirror.sh

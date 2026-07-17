@@ -155,6 +155,22 @@ else
     log_warn "YUNDERA_API or USER_JWT unset; skipping Yundera Login connector"
 fi
 
+# Provision the custom Dex frontend (theme + overlaid templates) into the dir the
+# compose file bind-mounts over the stock image. Copied every run so template
+# updates propagate. Source ships in the template at dex-theme/; a missing source
+# just leaves Dex on its stock UI.
+THEME_SRC="$YND_ROOT/dex-theme"
+DEX_FRONTEND="/DATA/AppData/yundera/dex-frontend"
+if [ -d "$THEME_SRC" ]; then
+    mkdir -p "$DEX_FRONTEND/templates" "$DEX_FRONTEND/themes"
+    cp -f "$THEME_SRC/templates/"*.html "$DEX_FRONTEND/templates/" 2>/dev/null || true
+    rm -rf "$DEX_FRONTEND/themes/yundera"
+    cp -rf "$THEME_SRC/themes/yundera" "$DEX_FRONTEND/themes/" 2>/dev/null || true
+    log_info "Provisioned custom Dex frontend at $DEX_FRONTEND"
+else
+    log_warn "dex-theme/ not found in template; Dex will use its stock login UI"
+fi
+
 # Perms: dex (uid 1001) owns its tree so it can create dex.db.
 chown -R "$DEX_UID:$DEX_UID" "$DEX_ROOT" 2>/dev/null || true
 chmod 755 "$DEX_ROOT" 2>/dev/null || true

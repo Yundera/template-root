@@ -28,6 +28,23 @@ web:
 grpc:
   addr: 172.31.7.2:5557
 
+# Custom login UI. `dir` MUST be set to the on-disk web dir — without it Dex
+# serves its embedded (in-binary) assets and ignores files on disk, so the
+# bind-mounts have no effect. /srv/dex/web is the image's complete stock web
+# tree (templates + static + themes/{light,dark}); docker-compose.yml overlays
+# our login.html/header.html and themes/yundera onto it, and ensure-dex.sh
+# provisions those from the template's dex-theme/.
+#
+# `issuer` is the display name in the "Log in to <issuer>" heading and <title>
+# — deliberately the PCS's own domain, not a Yundera product name. The PCS
+# belongs to its owner, and this template is shared with the nsl.sh FOSS
+# branch, so the login page stays vendor-neutral. It doubles as the anti-
+# phishing cue: it tells you which PCS you are handing credentials to.
+frontend:
+  dir: /srv/dex/web
+  theme: yundera
+  issuer: ${DOMAIN}
+
 oauth2:
   # Every PCS app is first-party; skip the per-app consent screen.
   skipApprovalScreen: true

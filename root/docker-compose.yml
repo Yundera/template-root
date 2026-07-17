@@ -195,6 +195,12 @@ services:
       # config.yaml (rendered) + dex.db (sqlite). This is CACHE, not precious
       # data — see the recovery note in scripts/self-check/ensure-dex.sh.
       - /DATA/AppData/yundera/dex:/data
+      # Custom "yundera" frontend, overlaid onto the stock image (no frontend.dir,
+      # so all other stock templates/static stay intact). ensure-dex.sh renders
+      # these from the template's dex-theme/ before the stack comes up.
+      - /DATA/AppData/yundera/dex-frontend/templates/login.html:/srv/dex/web/templates/login.html:ro
+      - /DATA/AppData/yundera/dex-frontend/templates/header.html:/srv/dex/web/templates/header.html:ro
+      - /DATA/AppData/yundera/dex-frontend/themes/yundera:/srv/dex/web/themes/yundera:ro
     expose:
       - "5556"   # OIDC web endpoints (Caddy terminates TLS), bound on pcs
       - "5557"   # gRPC client-mgmt API — UNAUTHENTICATED, bound to dex-internal IP only
