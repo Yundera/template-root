@@ -130,6 +130,12 @@ if [ -n "$YUNDERA_API" ] && [ -n "$YND_USER_JWT" ]; then
     YND_CLIENT_SECRET="$(printf '%s' "$YND_REG" | grep -o '"client_secret":"[^"]*"' | sed 's/.*:"\([^"]*\)"/\1/' || true)"
 
     if [ -n "$YND_CLIENT_ID" ] && [ -n "$YND_CLIENT_SECRET" ]; then
+        # insecureSkipEmailVerified: the Yundera IdP reports email_verified
+        # honestly (the real Firebase value), and Yundera accounts are not
+        # guaranteed verified at signup. Without this, Dex rejects any account
+        # whose Firebase email is unverified — locking real owners out of their
+        # own PCS. Owner enforcement happens upstream in the IdP, so email
+        # verification is not the access-control boundary here.
         cat >> "$CONFIG_OUT" <<YAML
 
   - type: oidc
@@ -142,6 +148,7 @@ if [ -n "$YUNDERA_API" ] && [ -n "$YND_USER_JWT" ]; then
       redirectURI: ${YND_REDIRECT_URI}
       userNameKey: email
       getUserInfo: true
+      insecureSkipEmailVerified: true
       scopes:
         - openid
         - profile
