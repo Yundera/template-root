@@ -86,7 +86,7 @@ services:
   # The dashboard itself. Named `casadash-app` so the gate above can own the public
   # name `casadash` — see the naming note there.
   casadash-app:
-    image: ghcr.io/worph/casadash:1.0.2
+    image: ghcr.io/worph/casadash:1.0.3
     container_name: casadash-app
     hostname: casadash-app
     restart: unless-stopped
