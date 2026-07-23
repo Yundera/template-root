@@ -42,9 +42,11 @@ session:
       authelia_url: 'https://local-auth-${DOMAIN}'
       name: 'authelia_session'
       same_site: 'lax'
-      inactivity: '5m'
-      expiration: '1h'
-      remember_me: '1M'
+      # ~30-day sessions to match the casaos-oidc-bridge and AppShield gates —
+      # a PCS is single-owner, so long-lived local sessions are acceptable.
+      inactivity: '30d'
+      expiration: '30d'
+      remember_me: '30d'
 
 storage:
   local:

@@ -128,6 +128,10 @@ services:
       CLIENT_ID: dex
       CLIENT_SECRET: "${BRIDGE_SECRET}"
       REDIRECT_URIS: "https://auth-${DOMAIN}/callback"
+      # SSO session cookie lifetime: 30 days (bridge default is only 12h).
+      # NOTE: the bridge keeps sessions in memory, so a container restart still
+      # ends them early regardless of this value.
+      BRIDGE_SESSION_TTL: "2592000"
     volumes:
       - /DATA/AppData/yundera/casaos-oidc-bridge:/data
     expose:
