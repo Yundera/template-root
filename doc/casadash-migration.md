@@ -195,6 +195,18 @@ re-derives. Uninstall is not a risk — `yundera` is already in the casadash sta
   the next `ensure-casaos-apps-up-to-date.sh` flips it back. The result is container churn on
   each self-check, not data loss. **Accepted for phase 1** — the resolution is phase 2, where
   CasaOS stops being a writer.
+- **CasaOS tiles the auxiliary stacks too — casadash on purpose, casaos as a bare tile.**
+  CasaOS's appgrid enumerates every compose project on the box, not just its `apps/` root,
+  so both split stacks appear in CasaOS's UI regardless. The casadash stack carries an
+  `x-casaos` block so its tile is regular (icon, title, link to the gate); the casaos stack
+  deliberately does not — CasaOS must not tile itself inside itself — so it renders as a
+  bare project-name tile. Both tiles expose CasaOS's Uninstall action (`is_uncontrolled`
+  only hides the store-update action, and CasaOS has no `PROTECTED_APPS` equivalent);
+  an uninstall runs `down --volumes` plus working-dir deletion — `/DATA/AppData/casadash`
+  is recreated by the next self-check, but `/DATA/AppData/casaos` is the apps root itself.
+  In practice that path self-terminates (CasaOS stops its own container mid-uninstall),
+  and CasaOS is deleted in phase 3 anyway. Reviewed and **accepted** for phase 1; a
+  server-side uninstall guard in casa-img is the fix if this ever needs closing.
 - **CasaDash's Uninstall is destructive on unmanaged apps.** `Uninstall` calls
   `dx.RemoveProject(..., RemoveVolumes: true)` *unconditionally and first*, then notices there
   is no app dir and returns success. Reviewed and **accepted**.

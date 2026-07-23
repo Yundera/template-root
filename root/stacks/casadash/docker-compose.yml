@@ -165,9 +165,11 @@ networks:
 # port, so there is nothing to derive a URL from).
 #
 # `webui-host` is the ONLY metadata field CasaDash substitutes ${DOMAIN} in — it is
-# resolved against APP_DOMAIN, which the deployment states in .env.app. Never use
-# x-casaos's `hostname` for a templated host: CasaDash parses compose with a plain
-# yaml.Unmarshal and would link to the literal `https://casadash-${DOMAIN}/`. The value
+# resolved against APP_DOMAIN, which the deployment states in .env.app. CasaDash
+# parses compose with a plain yaml.Unmarshal and never interpolates, so a templated
+# host anywhere else (e.g. x-casaos's `hostname` below) would link to the literal
+# `https://casadash-${DOMAIN}/`. CasaDash reads this block in preference to x-casaos
+# field by field, so keeping `webui-host` here is what shields it from that. The value
 # must match the caddy_0 label on the gate above, which is what actually routes.
 #
 # It points at the GATE (`casadash-${DOMAIN}`), not the dashboard container — that is
@@ -182,3 +184,36 @@ x-compose-app:
   webui-host: casadash-${DOMAIN}
   webui-scheme: https
   webui-path: /
+
+# Tiles CasaDash inside CasaOS's own app grid. CasaOS enumerates EVERY compose
+# project on the box (not just its apps/ root) and takes tile metadata only from
+# x-casaos — without this block the stack still shows up there, but as a bare tile
+# (project name, default icon, no working "Open" link).
+#
+# ${DOMAIN} is safe HERE, unlike in x-casaos on a CasaDash-read path: CasaOS loads
+# compose files with the sibling .env (which deploy-stack.sh regenerates from the
+# unified .env), so `hostname` interpolates to the real domain. CasaDash ignores
+# this block because x-compose-app above covers every field it reads.
+#
+# is_uncontrolled hides CasaOS's "Check then update" action — this stack is owned
+# by the self-check (deploy-stack.sh), never by CasaOS's store updater. Note it
+# does NOT hide CasaOS's Uninstall action, and CasaOS has no PROTECTED_APPS
+# equivalent; an uninstall from CasaOS would `down --volumes` this project and
+# delete /DATA/AppData/casadash (recreated by the next self-check). Accepted for
+# phase 1 — the exposure predates this block, since the bare tile carried the same
+# menu (see doc/casadash-migration.md §1.3).
+#
+# The casaos stack deliberately carries NO such block — CasaOS must not tile
+# itself inside itself.
+x-casaos:
+  main: casadash
+  author: Yundera Team
+  category: pcs
+  hostname: casadash-${DOMAIN}
+  icon: https://cdn.jsdelivr.net/gh/Yundera/AppStore@main/Apps/CasaDash/icon.png
+  index: /
+  is_uncontrolled: true
+  port_map: ""
+  scheme: https
+  title:
+    custom: CasaDash
