@@ -48,7 +48,7 @@ services:
   # suffix. Same shape as AppStoreLab's AppShieldSecurityDemo (gate `appshield-demo`,
   # backend `appshield-demo-whoami`).
   casadash:
-    image: ghcr.io/yundera/appshield:2.0.5
+    image: ghcr.io/yundera/appshield:2.0.6
     container_name: casadash
     hostname: casadash
     restart: unless-stopped
@@ -68,8 +68,15 @@ services:
       LISTEN_PORT: "80"
       # Gate session lifetime: 30 days (matches the AppShield default; pinned
       # explicitly so the PCS-wide 30-day session policy is visible here).
-      # NOTE: gate sessions are in-memory — a container restart still ends them.
       SESSION_DURATION_HOURS: "720"
+    volumes:
+      # Gate state under /data: persisted login sessions (sessions.json,
+      # AppShield >= 2.0.6 — older images simply don't write it) and the MCP
+      # OAuth provider state. Without this mount a container recreate logs
+      # everyone out regardless of SESSION_DURATION_HOURS. Lives inside the
+      # stack's own folder (deploy-stack.sh only ever writes docker-compose.yml
+      # and .env there) so it shares the app's lifecycle.
+      - /DATA/AppData/casadash/gate-data:/data
     depends_on:
       - casadash-app
     networks:
