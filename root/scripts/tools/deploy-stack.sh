@@ -16,7 +16,13 @@
 # source file is automatically available to these stacks with no change here.
 #
 # The generated <dest-dir>/.env is chmod 600: it carries DEFAULT_PWD, PROVIDER_STR,
-# USER_JWT and friends, exactly as the yundera .env does.
+# USER_JWT and friends, exactly as the yundera .env does. It is chowned to 1000:1000
+# (pcs, who owns /DATA) rather than left root-owned, because casaos-app-management
+# runs as uid 1000 and reads it: it enumerates EVERY compose project on the box and
+# loads each one from its config file, so a 0600 root-owned .env makes the whole
+# project fail to load ("open <dest>/.env: permission denied") and the stack silently
+# vanishes from CasaOS's app grid. Same reasoning as the chown in
+# ensure-casadash-{app,yundera}-mirror.sh.
 #
 # Retries mirror ensure-user-compose-{pulled,stack-up}.sh: GHCR resets from Contabo
 # are common enough that a single transient failure must not fail the self-check.
@@ -85,6 +91,11 @@ if ! cmp -s "$TMP_ENV" "$DEST_ENV"; then
 else
     rm -f "$TMP_ENV"
 fi
+
+# Unconditional (not inside the branch above): the file may already exist with the
+# right content but the wrong owner, from a template version that predates this.
+# See the header note — casaos-app-management (uid 1000) must be able to read it.
+chown 1000:1000 "$DEST_ENV" 2>/dev/null || true
 
 # --- 3. pull + up ----------------------------------------------------------
 compose() {
