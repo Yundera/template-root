@@ -44,17 +44,17 @@ ensure-casaos-apps-up-to-date.sh
 ensure-user-compose-pulled.sh
 ensure-user-compose-stack-up.sh
 
-# Auxiliary stacks — CasaOS/CasaDash cohabitation (doc/casadash-migration.md).
+# Auxiliary stacks — CasaOS/Maison cohabitation (doc/maison-migration.md).
 # These MUST stay after ensure-user-compose-stack-up.sh: they attach to the `pcs`
 # network, which the yundera stack owns and creates. ensure-casaos-stack.sh also
 # recreates casaos + casaos-oidc-bridge, which the yundera stack-up removes as
 # orphans once they left its compose file.
 ensure-casaos-stack.sh
-ensure-casadash-stack.sh
+ensure-maison-stack.sh
 # Must stay after ensure-casaos-apps-up-to-date.sh so the copies reflect its
 # post-`sed` label rewrites rather than the stale ones.
-ensure-casadash-app-mirror.sh
+ensure-maison-app-mirror.sh
 # The yundera stack's own mirror. Separate from the app mirror above because its
 # .env comes from the unified .env, not from CasaOS's injected cocktail. Must stay
 # after ensure-env-vars-valid.sh (it copies that .env).
-ensure-casadash-yundera-mirror.sh
+ensure-maison-yundera-mirror.sh

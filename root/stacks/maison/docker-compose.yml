@@ -1,32 +1,37 @@
 # =============================================================================
-# CASADASH STACK — the CasaOS replacement dashboard, running alongside CasaOS
-# (phase 1 of the CasaDash migration; see doc/casadash-migration.md).
+# MAISON STACK — the CasaOS replacement dashboard, running alongside CasaOS
+# (phase 1 of the Maison migration; see doc/maison-migration.md).
 #
-# Deployed to /DATA/AppData/casadash/ by scripts/self-check/ensure-casadash-stack.sh,
+# Deployed to /DATA/AppData/maison/ by scripts/self-check/ensure-maison-stack.sh,
 # which also generates the .env alongside it from the yundera unified .env, and the
 # .env.app beside that. DO NOT edit the deployed copies — they are overwritten on every
 # self-check.
 #
-# The directory name is dotless on purpose: CasaDash's managed-app scan of
-# /DATA/AppData skips any name containing a dot, so `casadash` (unlike the old
+# The directory name is dotless on purpose: Maison's managed-app scan of
+# /DATA/AppData skips any name containing a dot, so `maison` (unlike the old hidden
 # `.casadash`) is picked up and the dashboard tiles itself. It is not hidden.
 #
-# That same folder is ALSO CasaDash's state directory (it is DATA_ROOT/AppData/casadash,
-# its StateDir): its settings.json and store cache live here, alongside the stack files
-# and .env.app. One folder holds everything CasaDash — deploy-stack.sh only ever writes
-# docker-compose.yml and .env, so it never disturbs that state.
+# That same folder is ALSO Maison's state directory: STATE_DIR is left unset, so it
+# defaults to DATA_ROOT/AppData/maison — this folder. Its settings.json and store
+# cache live here, alongside the stack files and .env.app. One folder holds
+# everything Maison — deploy-stack.sh only ever writes docker-compose.yml and .env,
+# so it never disturbs that state.
 #
-# SECURITY: CasaDash has NO authentication of any kind (upstream non-goal) and it
+# RENAMED FROM `casadash` (project, directory, container names, and public host) by
+# the 1.1.0 rebrand. ensure-maison-stack.sh carries the one-way migration off the old
+# path; see doc/maison-migration.md.
+#
+# SECURITY: Maison has NO authentication of any kind (upstream non-goal) and it
 # mounts the Docker socket, so an exposed port is root on the host. It is never
 # published: the container only `expose`s 8080 on the internal `pcs` network, and
 # the ONLY route in is the AppShield gate below, which owns the caddy_* labels.
-# Never add a `ports:` mapping to the casadash service.
+# Never add a `ports:` mapping to the maison service.
 # =============================================================================
-name: casadash
+name: maison
 
 services:
   # ===========================================================================
-  # APPSHIELD GATE — the only public entrypoint to CasaDash.
+  # APPSHIELD GATE — the only public entrypoint to Maison.
   #   - humans: interactive SSO. The gate self-registers an OIDC client with the
   #     PCS auth-registrar on first login (no client id/secret to inject), which
   #     federates through Dex to the CasaOS bridge.
@@ -36,21 +41,21 @@ services:
   # install time, and this stack is not a CasaOS app. Machine access therefore
   # goes through real CasaOS identity rather than a shared hash.
   # ===========================================================================
-  # NAMING IS LOAD-BEARING: this container MUST be named `casadash`, and the
-  # dashboard behind it `casadash-app`. The auth-registrar derives an app's
+  # NAMING IS LOAD-BEARING: this container MUST be named `maison`, and the
+  # dashboard behind it `maison-app`. The auth-registrar derives an app's
   # client_id from a PTR lookup of the *caller's container name* on the pcs network
   # ("clientId is the PTR-attested container name — NOT anything the caller sent",
   # mesh-router-auth/src/validation.ts), and then only ever issues redirect URIs
-  # under `<client_id>-<suffix>`. Name this container `casadash-gate` and it
-  # registers callbacks for casadash-gate-${DOMAIN} — a hostname the caddy_* labels
+  # under `<client_id>-<suffix>`. Name this container `maison-gate` and it
+  # registers callbacks for maison-gate-${DOMAIN} — a hostname the caddy_* labels
   # below do not publish, so the OIDC callback lands on an unrouted host and login
   # dead-ends. The gate therefore takes the app's public name; the backend gets the
   # suffix. Same shape as AppStoreLab's AppShieldSecurityDemo (gate `appshield-demo`,
   # backend `appshield-demo-whoami`).
-  casadash:
+  maison:
     image: ghcr.io/yundera/appshield:2.0.6
-    container_name: casadash
-    hostname: casadash
+    container_name: maison
+    hostname: maison
     restart: unless-stopped
     user: "0:0"
     cpu_shares: 40
@@ -63,7 +68,7 @@ services:
       # registrar validates every requested callback against exactly this set.
       REDIRECT_HOST_SUFFIXES: "${DOMAIN},${PUBLIC_IP_DASH}.nip.io,${PUBLIC_IP_DASH}.sslip.io"
       CREDENTIAL_VALIDATE_URL: "http://casaos-oidc-bridge:8090/validate"
-      BACKEND_HOST: "casadash-app"
+      BACKEND_HOST: "maison-app"
       BACKEND_PORT: "8080"
       LISTEN_PORT: "80"
       # Gate session lifetime: 30 days (matches the AppShield default; pinned
@@ -76,41 +81,42 @@ services:
       # everyone out regardless of SESSION_DURATION_HOURS. Lives inside the
       # stack's own folder (deploy-stack.sh only ever writes docker-compose.yml
       # and .env there) so it shares the app's lifecycle.
-      - /DATA/AppData/casadash/gate-data:/data
+      - /DATA/AppData/maison/gate-data:/data
     depends_on:
-      - casadash-app
+      - maison-app
     networks:
       pcs: null
     labels:
       # Standard domain with custom CA (gateway-routed)
-      caddy_0: casadash-${DOMAIN}
+      caddy_0: maison-${DOMAIN}
       caddy_0.import: gateway_tls
       caddy_0.reverse_proxy: "{{upstreams 80}}"
       # nip.io variant for direct access (custom CA)
-      caddy_1: casadash-${PUBLIC_IP_DASH}.nip.io
+      caddy_1: maison-${PUBLIC_IP_DASH}.nip.io
       caddy_1.import: gateway_tls
       caddy_1.reverse_proxy: "{{upstreams 80}}"
       # sslip.io variant for direct access (Let's Encrypt)
-      caddy_2: casadash-${PUBLIC_IP_DASH}.sslip.io
+      caddy_2: maison-${PUBLIC_IP_DASH}.sslip.io
       caddy_2.reverse_proxy: "{{upstreams 80}}"
 
-  # The dashboard itself. Named `casadash-app` so the gate above can own the public
-  # name `casadash` — see the naming note there.
-  casadash-app:
-    image: ghcr.io/worph/casadash:1.0.3
-    container_name: casadash-app
-    hostname: casadash-app
+  # The dashboard itself. Named `maison-app` so the gate above can own the public
+  # name `maison` — see the naming note there.
+  maison-app:
+    image: ghcr.io/yundera/maison:1.1.0
+    container_name: maison-app
+    hostname: maison-app
     restart: unless-stopped
     cpu_shares: 90
     mem_limit: 512m
     environment:
-      CASADASH_ADDR: ":8080"
+      # Renamed from CASADASH_ADDR at the rebrand; :8080 is also the default.
+      HTTP_ADDR: ":8080"
 
-      # DATA_HOST_PATH MUST equal DATA_ROOT. CasaDash reads the raw
+      # DATA_HOST_PATH MUST equal DATA_ROOT. Maison reads the raw
       # `com.docker.compose.project.working_dir` label — a HOST path — and opens it
       # directly, with no container-path remapping. If the two differ, every
       # CasaOS app's compose lookup opens a path that does not exist inside this
-      # container and NO CasaOS app gets a tile. See doc/casadash-migration.md §1.5.
+      # container and NO CasaOS app gets a tile. See doc/maison-migration.md §1.5.
       DATA_ROOT: "/DATA"
       DATA_HOST_PATH: "/DATA"
 
@@ -118,21 +124,27 @@ services:
       PGID: "1000"
       TZ: "${TZ}"
 
-      # NOTE: what CasaDash *forwards to the apps it installs* — the app network, the
+      # NOTE: what Maison *forwards to the apps it installs* — the app network, the
       # domain, the public IP, the default password — is deliberately NOT here. It
-      # lives in /DATA/AppData/casadash/.env.app, written by ensure-casadash-stack.sh
+      # lives in /DATA/AppData/maison/.env.app, written by ensure-maison-stack.sh
       # from the unified .env. That file is the deployment's statement of what an app
-      # receives; this block is only what CasaDash needs to run itself. Keeping the two
-      # apart is the point — see CasaDash's docs/app-env.md.
+      # receives; this block is only what Maison needs to run itself. Keeping the two
+      # apart is the point — see Maison's docs/app-env.md.
       #
       # The old REF_NET / REF_PORT / REF_SCHEME / REF_DOMAIN are gone. REF_PORT,
-      # REF_SCHEME and REF_SEPARATOR drove CasaOS's web-UI-URL synthesis, which CasaDash
+      # REF_SCHEME and REF_SEPARATOR drove CasaOS's web-UI-URL synthesis, which Maison
       # replaced with x-compose-app's webui-* fields; REF_NET and REF_DOMAIN were
       # duplicates of the APP_NET / APP_DOMAIN a PCS already sets. They now live in
       # .env.app under those APP_* names.
       #
-      # VERSION-COUPLED: this requires a CasaDash image that reads .env.app. An older
+      # VERSION-COUPLED: this requires a Maison image that reads .env.app. An older
       # image still expects REF_NET and will attach apps to no network at all.
+      #
+      # REBRAND: CasaDash became Maison at 1.1.0 and moved repo with it
+      # (ghcr.io/worph/casadash -> ghcr.io/yundera/maison, github.com/Yundera/Maison).
+      # Nothing but the names changed, but the old tags do not exist under the new
+      # path, so this pin cannot be rolled back below 1.1.0 without also reverting
+      # the image reference above.
       APPSTORE_URL: "https://github.com/Yundera/AppStore/archive/refs/heads/main.zip"
 
       # The PCS infrastructure must not be uninstallable from the dashboard. The
@@ -141,8 +153,8 @@ services:
       # ALSO CasaOS's apps root (/DATA/AppData/casaos/apps/...), holding every app
       # definition on the box including the yundera stack itself — so an uninstall
       # there would take the whole PCS with it.
-      PROTECTED_APPS: "casadash,casaos,yundera"
-    # Docker socket group — resolved from the host by ensure-casadash-stack.sh.
+      PROTECTED_APPS: "maison,casaos,yundera"
+    # Docker socket group — resolved from the host by ensure-maison-stack.sh.
     group_add:
       - "${DOCKER_GID}"
     expose:
@@ -161,66 +173,71 @@ services:
 
 networks:
   # Created and owned by the `yundera` stack — this project only attaches to it.
-  # ensure-casadash-stack.sh therefore runs after ensure-user-compose-stack-up.sh.
+  # ensure-maison-stack.sh therefore runs after ensure-user-compose-stack-up.sh.
   pcs:
     name: pcs
     external: true
 
 # The dashboard tiles itself. Now that the stack lives in a dotless directory,
-# CasaDash's managed scan picks it up; without this block it would render as a
+# Maison's managed scan picks it up; without this block it would render as a
 # nameless, iconless tile whose "open" button goes nowhere (it publishes no host
 # port, so there is nothing to derive a URL from).
 #
-# `webui-host` is the ONLY metadata field CasaDash substitutes ${DOMAIN} in — it is
-# resolved against APP_DOMAIN, which the deployment states in .env.app. CasaDash
+# `webui-host` is the ONLY metadata field Maison substitutes ${DOMAIN} in — it is
+# resolved against APP_DOMAIN, which the deployment states in .env.app. Maison
 # parses compose with a plain yaml.Unmarshal and never interpolates, so a templated
 # host anywhere else (e.g. x-casaos's `hostname` below) would link to the literal
-# `https://casadash-${DOMAIN}/`. CasaDash reads this block in preference to x-casaos
+# `https://maison-${DOMAIN}/`. Maison reads this block in preference to x-casaos
 # field by field, so keeping `webui-host` here is what shields it from that. The value
 # must match the caddy_0 label on the gate above, which is what actually routes.
 #
-# It points at the GATE (`casadash-${DOMAIN}`), not the dashboard container — that is
+# It points at the GATE (`maison-${DOMAIN}`), not the dashboard container — that is
 # the only authenticated way in.
 x-compose-app:
   schema_version: 2
-  id: casadash
-  title: CasaDash
+  id: maison
+  title: Maison
   category: pcs
   developer: Yundera Team
+  # NOT renamed with the rest of the rebrand: the icon lives in the Yundera/AppStore
+  # repo, which still ships it under Apps/CasaDash/. Repoint both icon: fields to
+  # Apps/Maison/icon.png only once that rename has landed on that repo's `main` —
+  # jsDelivr serves the branch tip, so flipping it early 404s every tile.
   icon: https://cdn.jsdelivr.net/gh/Yundera/AppStore@main/Apps/CasaDash/icon.png
-  webui-host: casadash-${DOMAIN}
+  webui-host: maison-${DOMAIN}
   webui-scheme: https
   webui-path: /
 
-# Tiles CasaDash inside CasaOS's own app grid. CasaOS enumerates EVERY compose
+# Tiles Maison inside CasaOS's own app grid. CasaOS enumerates EVERY compose
 # project on the box (not just its apps/ root) and takes tile metadata only from
 # x-casaos — without this block the stack still shows up there, but as a bare tile
 # (project name, default icon, no working "Open" link).
 #
-# ${DOMAIN} is safe HERE, unlike in x-casaos on a CasaDash-read path: CasaOS loads
+# ${DOMAIN} is safe HERE, unlike in x-casaos on a Maison-read path: CasaOS loads
 # compose files with the sibling .env (which deploy-stack.sh regenerates from the
-# unified .env), so `hostname` interpolates to the real domain. CasaDash ignores
+# unified .env), so `hostname` interpolates to the real domain. Maison ignores
 # this block because x-compose-app above covers every field it reads.
 #
 # is_uncontrolled hides CasaOS's "Check then update" action — this stack is owned
 # by the self-check (deploy-stack.sh), never by CasaOS's store updater. Note it
 # does NOT hide CasaOS's Uninstall action, and CasaOS has no PROTECTED_APPS
 # equivalent; an uninstall from CasaOS would `down --volumes` this project and
-# delete /DATA/AppData/casadash (recreated by the next self-check). Accepted for
+# delete /DATA/AppData/maison (recreated by the next self-check). Accepted for
 # phase 1 — the exposure predates this block, since the bare tile carried the same
-# menu (see doc/casadash-migration.md §1.3).
+# menu (see doc/maison-migration.md §1.3).
 #
 # The casaos stack deliberately carries NO such block — CasaOS must not tile
 # itself inside itself.
 x-casaos:
-  main: casadash
+  main: maison
   author: Yundera Team
   category: pcs
-  hostname: casadash-${DOMAIN}
+  hostname: maison-${DOMAIN}
+  # Still Apps/CasaDash/ — see the note on x-compose-app's icon above.
   icon: https://cdn.jsdelivr.net/gh/Yundera/AppStore@main/Apps/CasaDash/icon.png
   index: /
   is_uncontrolled: true
   port_map: ""
   scheme: https
   title:
-    custom: CasaDash
+    custom: Maison

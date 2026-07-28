@@ -2,11 +2,11 @@
 # ensure-casaos-stack.sh - Deploy the CasaOS stack (casaos + casaos-oidc-bridge).
 #
 # These two services used to live in the main `yundera` compose stack. Phase 1 of
-# the CasaDash migration split them into their own project at /DATA/AppData/casaos
+# the Maison migration split them into their own project at /DATA/AppData/casaos
 # so that retiring CasaOS in phase 3 becomes a stack deletion rather than surgery on
-# the yundera compose file. See doc/casadash-migration.md.
+# the yundera compose file. See doc/maison-migration.md.
 #
-# The directory name carries no leading dot, so CasaDash's managed-app scan of
+# The directory name carries no leading dot, so Maison's managed-app scan of
 # /DATA/AppData (which skips any name containing a dot) picks this stack up and tiles
 # it. That is deliberate: the infrastructure stacks are meant to be visible.
 #

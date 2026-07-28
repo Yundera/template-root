@@ -1,18 +1,18 @@
 #!/bin/bash
-# ensure-casadash-app-mirror.sh - Project every CasaOS app into CasaDash's layout.
+# ensure-maison-app-mirror.sh - Project every CasaOS app into Maison's layout.
 #
 # For each app under /DATA/AppData/casaos/apps/<app> (CasaOS's AppsPath), write:
 #     /DATA/AppData/<app>/docker-compose.yml   copy of CasaOS's compose file
 #     /DATA/AppData/<app>/.env                 CasaOS's injected variables, materialised
 #     /DATA/AppData/<app>/.casaos-mirror       provenance marker (this script's own)
 #
-# WHY: CasaDash already *sees* every CasaOS app without any of this — it reads the
+# WHY: Maison already *sees* every CasaOS app without any of this — it reads the
 # compose from the `com.docker.compose.project.working_dir` label over the Docker
 # socket. What these files buy is the promotion from an "unmanaged" tile (open,
 # start/stop/restart, logs, stats) to a "managed" one (+ Env / Compose / Override /
-# WebUI / Tips editors and store Updates), because CasaDash's isManaged() is simply
+# WebUI / Tips editors and store Updates), because Maison's isManaged() is simply
 # stat(/DATA/AppData/<app>/docker-compose.yml). They are also the artefact phase 2
-# promotes into the real thing. See doc/casadash-migration.md.
+# promotes into the real thing. See doc/maison-migration.md.
 #
 # THIS SCRIPT NEVER RUNS `docker compose up`. It writes files only. CasaOS remains
 # the sole writer of the source compose files and the sole installer.
@@ -21,7 +21,7 @@
 #   - ensure-casaos-apps-up-to-date.sh rewrites stale nip.io/sslip.io labels with
 #     `sed -i`, which REPLACES the inode — the link would split silently into two
 #     divergent files on the first IP change;
-#   - CasaDash's "Apply update" does os.WriteFile() on docker-compose.yml, which
+#   - Maison's "Apply update" does os.WriteFile() on docker-compose.yml, which
 #     truncates in place — through a shared inode that would rewrite CasaOS's copy
 #     too, destroying its install-time $AUTH_HASH substitution and baked-in labels.
 # Re-copying on every self-check gives the same convergence with none of that.
@@ -124,7 +124,7 @@ render_as_casaos() {
     docker compose --project-directory "$dir" -f "$compose_file" config 2>/dev/null
 }
 
-# Render the mirrored folder the way CasaDash will: nothing in the process
+# Render the mirrored folder the way Maison will: nothing in the process
 # environment, everything from the generated .env. `env -i` is what makes this a
 # real test — inheriting our own exports would prove nothing about the .env.
 render_from_dotenv() {
@@ -143,11 +143,11 @@ for app_dir in "$APPS_DIR"/*/; do
     [ "$app_name" = "yundera" ] && continue
     [ -f "$src_compose" ] || continue
 
-    # CasaDash ignores any directory whose name contains a dot (that is how its own
+    # Maison ignores any directory whose name contains a dot (that is how its own
     # dot-prefixed state dirs and <app>.<date>.archive folders stay off the grid), so a
     # mirror of such an app could never be seen. Don't create a misleading folder.
     if [[ "$app_name" == *.* ]]; then
-        log_warn "Skipping '$app_name': CasaDash ignores directory names containing a dot"
+        log_warn "Skipping '$app_name': Maison ignores directory names containing a dot"
         skipped_count=$((skipped_count + 1))
         continue
     fi
@@ -157,12 +157,12 @@ for app_dir in "$APPS_DIR"/*/; do
     marker="$dst_dir/$MARKER_NAME"
 
     # $dst_dir almost always exists already — it is the app's DATA directory
-    # (/DATA/AppData/<app>), and CasaDash's flat layout deliberately puts the compose
+    # (/DATA/AppData/<app>), and Maison's flat layout deliberately puts the compose
     # file next to the data. That is fine. What we must never do is clobber a compose
     # file we did not write: a compose present WITHOUT our marker means a
-    # CasaDash-native app (phase 2) owns this folder.
+    # Maison-native app (phase 2) owns this folder.
     if [ -f "$dst_compose" ] && [ ! -f "$marker" ]; then
-        log_warn "Skipping '$app_name': $dst_compose exists but is not a mirror (CasaDash-native app?)"
+        log_warn "Skipping '$app_name': $dst_compose exists but is not a mirror (Maison-native app?)"
         conflict_count=$((conflict_count + 1))
         continue
     fi
@@ -171,8 +171,8 @@ for app_dir in "$APPS_DIR"/*/; do
 
     # Preserve any pre-existing .env exactly once, before we first take the folder over.
     if [ ! -f "$marker" ] && [ -f "$dst_dir/.env" ]; then
-        cp -p "$dst_dir/.env" "$dst_dir/.env.pre-casadash.bak"
-        log_warn "Backed up pre-existing $dst_dir/.env to .env.pre-casadash.bak"
+        cp -p "$dst_dir/.env" "$dst_dir/.env.pre-maison.bak"
+        log_warn "Backed up pre-existing $dst_dir/.env to .env.pre-maison.bak"
     fi
 
     # --- compose file (only write on change, to keep mtimes stable) ---
@@ -187,7 +187,7 @@ for app_dir in "$APPS_DIR"/*/; do
     {
         echo "# AUTO-GENERATED FILE - DO NOT EDIT"
         echo "# Mirror of the environment CasaOS injects into '$app_name' at compose-up"
-        echo "# time. Written by scripts/self-check/ensure-casadash-app-mirror.sh and"
+        echo "# time. Written by scripts/self-check/ensure-maison-app-mirror.sh and"
         echo "# regenerated on every self-check. CasaOS itself does not read this file."
         echo ""
 
@@ -249,10 +249,10 @@ for app_dir in "$APPS_DIR"/*/; do
         rm -f "$tmp_env"
     fi
 
-    echo "mirrored by ensure-casadash-app-mirror.sh" > "$marker"
+    echo "mirrored by ensure-maison-app-mirror.sh" > "$marker"
 
     # /DATA is owned by pcs:pcs (uid/gid 1000); keep the mirrored files consistent
-    # so the casadash container (PUID/PGID 1000) can read them.
+    # so the maison container (PUID/PGID 1000) can read them.
     chown 1000:1000 "$dst_compose" "$dst_dir/.env" "$marker" 2>/dev/null || true
 
     # --- verification: both sides must render identically ---
@@ -276,11 +276,11 @@ for app_dir in "$APPS_DIR"/*/; do
     mirrored_count=$((mirrored_count + 1))
 done
 
-echo "CasaDash mirror: $mirrored_count mirrored, $skipped_count skipped, $conflict_count conflicts, $unverified_count unverifiable, ${#drifted_apps[@]} drifted"
+echo "Maison mirror: $mirrored_count mirrored, $skipped_count skipped, $conflict_count conflicts, $unverified_count unverifiable, ${#drifted_apps[@]} drifted"
 
 if [ "${#drifted_apps[@]}" -gt 0 ]; then
     # The mirrored folder does NOT render the same compose as CasaOS does. Managing
-    # this app from CasaDash would produce a different container spec than CasaOS
+    # this app from Maison would produce a different container spec than CasaOS
     # would — it is not safe to promote in phase 2. Surface it and fail the check.
     for app in "${drifted_apps[@]}"; do
         echo "MIRROR_DRIFT: $app: mirrored render differs from CasaOS render"

@@ -3,7 +3,7 @@
 #
 # Deploys one of the auxiliary compose stacks shipped under
 # /DATA/AppData/casaos/apps/yundera/stacks/<stack-name>/ (currently `casaos` and
-# `casadash` — see doc/casadash-migration.md) to its own project directory:
+# `maison` — see doc/maison-migration.md) to its own project directory:
 #
 #   1. copy stacks/<stack-name>/docker-compose.yml -> <dest-dir>/docker-compose.yml
 #   2. generate <dest-dir>/.env from the yundera unified .env, plus any extra
@@ -22,7 +22,7 @@
 # loads each one from its config file, so a 0600 root-owned .env makes the whole
 # project fail to load ("open <dest>/.env: permission denied") and the stack silently
 # vanishes from CasaOS's app grid. Same reasoning as the chown in
-# ensure-casadash-{app,yundera}-mirror.sh.
+# ensure-maison-{app,yundera}-mirror.sh.
 #
 # Retries mirror ensure-user-compose-{pulled,stack-up}.sh: GHCR resets from Contabo
 # are common enough that a single transient failure must not fail the self-check.

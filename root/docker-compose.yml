@@ -57,10 +57,10 @@ services:
   # NOTE: `casaos` and `casaos-oidc-bridge` no longer live in this stack. They were
   # split out into their own compose project at /DATA/AppData/casaos (deployed by
   # scripts/self-check/ensure-casaos-stack.sh) so that retiring CasaOS in favour of
-  # CasaDash becomes a stack deletion rather than surgery on this file. Container
+  # Maison becomes a stack deletion rather than surgery on this file. Container
   # names are unchanged, and both stacks share the `pcs` network, so
   # DEFAULT_SERVICE_HOST=casaos and http://casaos-oidc-bridge:8090 still resolve.
-  # See doc/casadash-migration.md.
+  # See doc/maison-migration.md.
 
 
 
@@ -343,17 +343,17 @@ x-casaos:
   title:
     custom: Settings
 
-# CasaDash reads this in preference to x-casaos, field by field.
+# Maison reads this in preference to x-casaos, field by field.
 #
-# IT EXISTS BECAUSE OF THE ${DOMAIN} ABOVE. CasaDash parses compose files with a
+# IT EXISTS BECAUSE OF THE ${DOMAIN} ABOVE. Maison parses compose files with a
 # plain yaml.Unmarshal — it never interpolates, and never reads the sibling .env —
 # so it copies `x-casaos.hostname` verbatim and the Settings tile links to the
 # literal https://admin-${DOMAIN}/. Every CasaOS *store* app escapes this because
 # CasaOS's installer bakes the resolved hostname into the app's compose file at
 # install time; this stack is the template itself, never installed, so its
 # placeholder survives on disk. x-compose-app's `webui-host` is the one field
-# CasaDash substitutes (${DOMAIN}/${domain} -> its REF_DOMAIN), which is exactly
-# the value the caddy_0 label on the admin service publishes.
+# Maison substitutes (${DOMAIN}/${domain} -> the APP_DOMAIN it reads from .env.app),
+# which is exactly the value the caddy_0 label on the admin service publishes.
 x-compose-app:
   schema_version: 2
   id: yundera
