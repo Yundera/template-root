@@ -67,7 +67,12 @@ services:
       # Must list the SAME host suffixes as the caddy_* labels below — the
       # registrar validates every requested callback against exactly this set.
       REDIRECT_HOST_SUFFIXES: "${DOMAIN},${PUBLIC_IP_DASH}.nip.io,${PUBLIC_IP_DASH}.sslip.io"
-      CREDENTIAL_VALIDATE_URL: "http://casaos-oidc-bridge:8090/validate"
+      # No machine/API auth: the gate is interactive SSO only. (Until 2026-07 this
+      # set CREDENTIAL_VALIDATE_URL against casaos-oidc-bridge:8090/validate so API
+      # clients could present CasaOS credentials — dropped ahead of the bridge's
+      # removal. Maison replaces CasaOS, so it must not depend on it. If machine
+      # access is ever needed here, use AUTH_HASH_MODE: "managed" — the /data mount
+      # below already persists the generated token.)
       BACKEND_HOST: "maison-app"
       BACKEND_PORT: "8080"
       LISTEN_PORT: "80"

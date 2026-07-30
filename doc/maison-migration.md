@@ -277,11 +277,15 @@ Maison has **no login**, and it mounts the Docker socket — an exposed port is 
 host. It is therefore never published: the container only `expose`s 8080 on the `pcs` network,
 and the only route in is the **AppShield gate** (`ghcr.io/yundera/appshield`) in the same
 stack, which owns the `caddy_*` labels for `maison-${DOMAIN}` (+ `nip.io` / `sslip.io`
-variants). The gate does interactive SSO via `auth-registrar` → Dex → the CasaOS bridge, and
-machine auth via `CREDENTIAL_VALIDATE_URL` against the bridge's internal validator.
+variants). The gate does interactive SSO via `auth-registrar` → Dex.
 
-`AUTH_HASH` is not set: that is a per-app value CasaOS injects at install time, and this stack
-is not a CasaOS app. Machine access therefore uses CasaOS credentials, not a shared hash.
+**There is no machine/API auth on this gate** — it is interactive SSO only. `AUTH_HASH` is not
+set (that is a per-app value CasaOS injects at install time, and this stack is not a CasaOS
+app), and `CREDENTIAL_VALIDATE_URL` was removed in 2026-07: it pointed at
+`casaos-oidc-bridge:8090/validate`, and Maison exists to *replace* CasaOS, so depending on it
+for login was backwards. If a non-interactive path is ever needed, set
+`AUTH_HASH_MODE: "managed"` — the `/DATA/AppData/maison/gate-data:/data` mount already
+persists the generated token across recreates.
 
 ### 1.5 Environment
 
