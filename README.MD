@@ -48,7 +48,7 @@ Utility scripts invoked by other parts of the system or operators: `os-init.sh`,
 - **`.pcs.secret.env`**: Secret environment variables (JWT tokens, passwords, signatures)
 - **`.ynd.user.env`**: User-specific data (UID, domain, email, username, public IP)
 
-These files feed `ensure-casaos-apps-up-to-date.sh`, which re-renders `/DATA/AppData/casaos/apps/yundera/docker-compose.yml` on every self-check tick. Always mutate them via `tools/env-file-manager.sh` — never raw `sed`/`grep`.
+`ensure-env-vars-valid.sh` assembles these into the unified `/DATA/AppData/casaos/apps/yundera/.env`, which every stack and mirror script reads on each self-check tick. Always mutate them via `tools/env-file-manager.sh` — never raw `sed`/`grep`.
 
 ### Environment Variables
 
@@ -105,19 +105,18 @@ The template tree is intentionally mutable after first install — every self-ch
 
 ### Update Workflow (tail of `scripts-config.txt`)
 
-All triggers run the same four-step sequence at the end of `scripts-config.txt`:
+All triggers run the same three-step sequence at the end of `scripts-config.txt`:
 
 1. **`self-check/ensure-template-sync.sh`** (RUNS FIRST)
    Downloads `UPDATE_URL`, runs **migrations from the new tree** first, then rsyncs over `/DATA/AppData/casaos/apps/yundera/` (honouring `root/.ignore`). A failed migration aborts the sync and restores the previous tree from backup.
 
-2. **`self-check/ensure-casaos-apps-up-to-date.sh`**
-   Re-renders the user's `docker-compose.yml` from the (possibly updated) template and current env files.
-
-3. **`self-check/ensure-user-compose-pulled.sh`**
+2. **`self-check/ensure-user-compose-pulled.sh`**
    `docker compose pull` for the user stack — fetches image versions pinned by the new template.
 
-4. **`self-check/ensure-user-compose-stack-up.sh`**
+3. **`self-check/ensure-user-compose-stack-up.sh`**
    `docker compose up -d` to apply.
+
+This sequence covers the **yundera stack only**. User apps installed from the AppStore are not touched by the self-check chain — they run under Docker's own `restart:` policy and are updated from the CasaOS (or Maison) UI.
 
 Earlier entries in `scripts-config.txt` are host-level prerequisites (user, ssh, partitions, swap, docker install, public IP detection, auth secrets, cron installation, etc.).
 
