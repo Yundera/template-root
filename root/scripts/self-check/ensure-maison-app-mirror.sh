@@ -18,24 +18,24 @@
 # the sole writer of the source compose files and the sole installer.
 #
 # COPY, NOT HARDLINK. A hardlink between the two paths does not survive this tree:
-#   - ensure-casaos-apps-up-to-date.sh rewrites stale nip.io/sslip.io labels with
-#     `sed -i`, which REPLACES the inode — the link would split silently into two
-#     divergent files on the first IP change;
-#   - Maison's "Apply update" does os.WriteFile() on docker-compose.yml, which
-#     truncates in place — through a shared inode that would rewrite CasaOS's copy
-#     too, destroying its install-time $AUTH_HASH substitution and baked-in labels.
-# Re-copying on every self-check gives the same convergence with none of that.
-#
-# ORDERING: must run AFTER ensure-casaos-apps-up-to-date.sh, so the copy reflects
-# the post-`sed` compose files rather than the stale-label ones.
+# Maison's "Apply update" does os.WriteFile() on docker-compose.yml, which truncates
+# in place — through a shared inode that would rewrite CasaOS's copy too, destroying
+# its install-time $AUTH_HASH substitution and baked-in labels. Re-copying on every
+# self-check gives the same convergence with none of that.
 #
 # THE .env IS THE VERIFICATION ARTEFACT. CasaOS uses no per-app .env at all: it
 # interpolates each compose at up-time from the *casaos container's own* environment.
-# We materialise exactly that variable set (the same cocktail
-# ensure-casaos-apps-up-to-date.sh injects) so that the mirrored folder renders
+# We materialise exactly that variable set so that the mirrored folder renders
 # identically to CasaOS's — which this script then asserts with `docker compose
 # config` on both sides, reporting MIRROR_DRIFT on any mismatch. A drifting mirror
 # must not be trusted as a migration source.
+#
+# STALE IP-DASH LABELS. CasaOS bakes the resolved ${PUBLIC_IP_DASH} into an app's
+# caddy labels at install time, so after an IP change those labels point at the old
+# address. ensure-casaos-apps-up-to-date.sh used to repair them with `sed -i` before
+# this script ran; it was removed with the CasaOS migration, so the mirror now copies
+# whatever CasaOS holds — stale labels included. Repair happens only when the user
+# reinstalls or restarts the app from CasaOS.
 set -euo pipefail
 
 APPS_DIR="/DATA/AppData/casaos/apps"
@@ -56,8 +56,8 @@ if [ ! -f "$YUNDERA_ENV" ]; then
     exit 0
 fi
 
-# Same source variables, read the same way, as ensure-casaos-apps-up-to-date.sh —
-# these two scripts must agree exactly or the render comparison below is meaningless.
+# The variables CasaOS injects at compose-up. These must match what the casaos
+# container actually supplies or the render comparison below is meaningless.
 DEFAULT_PWD=$("$ENV_MGR" get DEFAULT_PWD "$YUNDERA_ENV")
 DOMAIN=$("$ENV_MGR" get DOMAIN "$YUNDERA_ENV")
 PUBLIC_IPV4=$("$ENV_MGR" get PUBLIC_IPV4 "$YUNDERA_ENV")

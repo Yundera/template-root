@@ -15,7 +15,7 @@ USER_NAME="pcs"
 # Create user if it doesn't exist.
 #
 # Pin to UID 1000 when that UID is free. Yundera's app composes hardcode
-# PUID=1000 (see ensure-casaos-apps-up-to-date.sh), so file ownership on
+# PUID=1000 (see ensure-maison-app-mirror.sh), so file ownership on
 # /DATA only matches the in-container app user when `pcs` is 1000. On a
 # regular fresh PCS that's what `useradd` picks anyway (first user, smallest
 # free UID >= UID_MIN). On a *migration target* the orchestrator pre-creates

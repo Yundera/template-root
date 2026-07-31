@@ -158,19 +158,13 @@ except `yundera`, **copies** `docker-compose.yml` to `/DATA/AppData/<app>/docker
 and generates a `/DATA/AppData/<app>/.env`.
 
 **Copy, not hardlink.** A hardlink was the original proposal and it does not survive contact
-with this tree:
+with this tree: Maison's *Apply update* does `os.WriteFile(composePath, newBase)`
+(`internal/installer/update.go`), which truncates in place — through a hardlink that would
+**rewrite the CasaOS-side compose too**, destroying the install-time `$AUTH_HASH`
+substitution and the resolved `PUBLIC_IP_DASH` baked into the labels.
 
-- `ensure-casaos-apps-up-to-date.sh` rewrites stale `nip.io` / `sslip.io` Caddy labels with
-  `sed -i`, which **replaces the inode**. The link would silently split into two divergent
-  files on the first IP change, with no error anywhere.
-- Maison's *Apply update* does `os.WriteFile(composePath, newBase)`
-  (`internal/installer/update.go`), which truncates in place — through a hardlink that would
-  **rewrite the CasaOS-side compose too**, destroying the install-time `$AUTH_HASH`
-  substitution and the resolved `PUBLIC_IP_DASH` baked into the labels.
-
-The copy is re-derived on **every** self-check, ordered after
-`ensure-casaos-apps-up-to-date.sh`, so it always reflects the post-`sed` truth. CasaOS
-remains the single writer; the mirror is a downstream projection.
+The copy is re-derived on **every** self-check. CasaOS remains the single writer; the mirror
+is a downstream projection.
 
 **The `.env` exists so the render can be verified.** CasaOS does not use per-app `.env`
 files at all — it interpolates each compose at up-time from the *casaos container's own*
@@ -248,10 +242,10 @@ re-derives. Uninstall is not a risk — `yundera` is already in the maison stack
 - **But the mirror is not inert.** `isManaged()` is just `stat(<app>/docker-compose.yml)`, so
   creating the file flips Maison's start path from label-based `dx.StartProject` to
   `stackup.Up` from the new directory. If a **user** clicks Start/Restart in Maison, Compose
-  runs from `/DATA/AppData/<app>` with the same project name, flipping the `working_dir` label;
-  the next `ensure-casaos-apps-up-to-date.sh` flips it back. The result is container churn on
-  each self-check, not data loss. **Accepted for phase 1** — the resolution is phase 2, where
-  CasaOS stops being a writer.
+  runs from `/DATA/AppData/<app>` with the same project name, flipping the `working_dir` label.
+  Nothing flips it back — `ensure-casaos-apps-up-to-date.sh` used to, and was removed (see
+  "Removed: the CasaOS app up-to-date script" below), so the app simply stays on the mirror's
+  working_dir until CasaOS next touches it. No churn, no data loss.
 - **CasaOS tiles the auxiliary stacks too — maison on purpose, casaos as a bare tile.**
   CasaOS's appgrid enumerates every compose project on the box, not just its `apps/` root,
   so both split stacks appear in CasaOS's UI regardless. The maison stack carries an
@@ -339,7 +333,6 @@ and `REF_DOMAIN` were duplicates of the `APP_NET` / `APP_DOMAIN` a PCS already s
 Appended to `scripts-config.txt`, after the existing update pipeline:
 
 ```
-ensure-casaos-apps-up-to-date.sh   # existing — does the sed -i label rewrite
 ensure-user-compose-pulled.sh      # existing
 ensure-user-compose-stack-up.sh    # existing — yundera stack; removes casaos as orphan
 ensure-casaos-stack.sh             # NEW — recreates casaos + bridge as their own stack
@@ -348,9 +341,32 @@ ensure-maison-app-mirror.sh        # NEW — mirror compose + .env, verify rende
 ensure-maison-yundera-mirror.sh    # NEW — same, for the yundera stack (unified .env source)
 ```
 
-The mirrors run last so they always copy the post-`sed` compose files. The yundera mirror needs
+The mirrors run last so they always copy the current compose files. The yundera mirror needs
 only `ensure-env-vars-valid.sh` (for the unified `.env`) to have run; it sits here to keep the
 two mirrors together.
+
+---
+
+## Removed: the CasaOS app up-to-date script
+
+`ensure-casaos-apps-up-to-date.sh` was deleted ahead of phase 2. It walked
+`/DATA/AppData/casaos/apps/*` on every self-check and did four things; each is either
+obsoleted by Maison or deliberately given up:
+
+| What it did | Status after removal |
+|---|---|
+| `docker compose up -d` per app with CasaOS's injected env, gated on "≥1 container already running" | **Gone.** Nothing in the self-check chain re-ups user apps. They run under Docker's own `restart:` policy, so reboots are unaffected; what stops is the automatic re-injection of a changed `DOMAIN` / `PUBLIC_IP` / `DEFAULT_PWD` into already-created containers. Maison's `.env.app` (read on every start) is the replacement, and covers an app once it is Maison-managed. |
+| `sed -i` repair of stale `<app>-<old-ip-dash>.nip.io` / `.sslip.io` caddy labels | **Gone, deliberately.** No other script in the tree owns this. After an IP change a CasaOS-installed app keeps labels pointing at the previous address — caddy-docker-proxy registers a dead vhost and the real IP subdomain falls through to the catch-all — until the user reinstalls or restarts the app from CasaOS. The mirror copies the stale labels verbatim. The real fix is install-time no longer resolving `${PUBLIC_IP_DASH}`. |
+| The `FORCE_START=1` entry point used by the migration pipeline's `start_user_apps` step | **Broken, known.** `startUserApps.ts` still shells out to the deleted path, so the step throws and the migration rolls back. Must be re-pointed at a Maison-side bring-up (the mirrored `/DATA/AppData/<app>/` folders already carry a render-verified compose + `.env`) before PCS→PCS migration works again. |
+| Non-zero exit on any app that failed to come up, flipping `OVERALL_FAILED` | **Gone.** A box with a broken app image now reports healthy. |
+
+It also removes the working_dir flip-flop described in §1.3: a user pressing Start in Maison
+no longer has their containers churned back on the next self-check.
+
+Removal propagates through `ensure-template-sync.sh`'s `rsync --delete`. Expect one noisy
+cycle per PCS — `self-check.sh` slurps `scripts-config.txt` before iterating, so pass 1 walks
+the pre-removal list and logs `Script not found` with a non-zero exit; pass 2 re-reads the new
+config and the box converges on that same cycle. Same mechanism as the CasaDash→Maison rename.
 
 ---
 
@@ -359,8 +375,9 @@ two mirrors together.
 - Make Maison the installer: new apps land in `/DATA/AppData/<app>` and are managed by
   Maison directly. CasaOS-installed apps are cut over one at a time by **moving**
   `casaos/apps/<app>` out of CasaOS's `AppsPath` so there is exactly one writer per app; the
-  mirror becomes the real thing. This is what removes the working_dir flip-flop from §1.3.
-- Stop `ensure-casaos-apps-up-to-date.sh` from touching cut-over apps.
+  mirror becomes the real thing.
+- **Re-point the migration pipeline's `start_user_apps` step** at the mirrored folders — it
+  still calls the deleted `ensure-casaos-apps-up-to-date.sh` and rolls migrations back today.
 - Point `DEFAULT_SERVICE_HOST` at the AppShield gate so the root domain lands on Maison.
 - Optionally hand Maison the Caddy catch-all so its launch gate works.
 - **Implement OIDC directly in the admin app (settings-center-app)** to replace
@@ -371,7 +388,7 @@ two mirrors together.
 ## Phase 3 — remove CasaOS (outline)
 
 - Delete the `casaos` stack (`casaos` + `casaos-oidc-bridge`) and its ensure script.
-- Delete `ensure-casaos-apps-up-to-date.sh` and `ensure-maison-app-mirror.sh`.
+- Delete `ensure-maison-app-mirror.sh` (`ensure-casaos-apps-up-to-date.sh` is already gone).
 - Drop the `/DATA/AppData/casaos/apps` tree (keeping `yundera/`, which is where the template
   itself lives — it stays put to avoid rewriting every path in the fleet).
 - Remove the `.casaos-mirror` markers.
