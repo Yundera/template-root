@@ -19,8 +19,7 @@
 #
 # ORDERING: must run AFTER ensure-user-compose-stack-up.sh — the `pcs` network is
 # owned by the yundera stack and joined here as external, and the gate depends on
-# auth-registrar / dex (yundera stack) and casaos-oidc-bridge (casaos stack) being
-# reachable by name on that network.
+# auth-registrar / dex (yundera stack) being reachable by name on that network.
 set -euo pipefail
 
 YND_ROOT="/DATA/AppData/casaos/apps/yundera"

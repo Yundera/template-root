@@ -34,12 +34,11 @@ services:
   # APPSHIELD GATE — the only public entrypoint to Maison.
   #   - humans: interactive SSO. The gate self-registers an OIDC client with the
   #     PCS auth-registrar on first login (no client id/secret to inject), which
-  #     federates through Dex to the CasaOS bridge.
-  #   - machines: CasaOS credentials (Basic user:pass, or a CasaOS JWT as Bearer)
-  #     forwarded to the bridge's internal-only validator on port 8090.
+  #     federates through Dex to Authelia (the PCS-local credential).
+  #   - machines: nothing. There is no non-interactive path here — see the
+  #     CREDENTIAL_VALIDATE_URL note in the environment block below.
   # AUTH_HASH is deliberately NOT set: it is a per-app secret CasaOS injects at
-  # install time, and this stack is not a CasaOS app. Machine access therefore
-  # goes through real CasaOS identity rather than a shared hash.
+  # install time, and this stack is not a CasaOS app.
   # ===========================================================================
   # NAMING IS LOAD-BEARING: this container MUST be named `maison`, and the
   # dashboard behind it `maison-app`. The auth-registrar derives an app's

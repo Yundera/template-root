@@ -54,12 +54,13 @@ services:
       caddy_2.reverse_proxy: "{{upstreams 80}}"
 
 
-  # NOTE: `casaos` and `casaos-oidc-bridge` no longer live in this stack. They were
-  # split out into their own compose project at /DATA/AppData/casaos (deployed by
+  # NOTE: `casaos` no longer lives in this stack. It was split out into its own
+  # compose project at /DATA/AppData/casaos (deployed by
   # scripts/self-check/ensure-casaos-stack.sh) so that retiring CasaOS in favour of
-  # Maison becomes a stack deletion rather than surgery on this file. Container
-  # names are unchanged, and both stacks share the `pcs` network, so
-  # DEFAULT_SERVICE_HOST=casaos and http://casaos-oidc-bridge:8090 still resolve.
+  # Maison becomes a stack deletion rather than surgery on this file. The container
+  # name is unchanged, and both stacks share the `pcs` network, so
+  # DEFAULT_SERVICE_HOST=casaos still resolves. `casaos-oidc-bridge` went with it
+  # and has since been deleted outright — Authelia is the local credential now.
   # See doc/maison-migration.md.
 
 
@@ -173,8 +174,11 @@ services:
   # DEX - OIDC identity broker for PCS apps (replaces Authelia)
   # Apps delegate login via OIDC authorization_code flow. Endpoints:
   #   https://auth-${DOMAIN}/.well-known/openid-configuration
-  # User identity is federated to CasaOS through the casaos-oidc-bridge connector
-  # (defined below). App clients are registered dynamically by auth-registrar over
+  # User identity is federated to Authelia (the PCS-local credential store) and,
+  # when the box has a Yundera account, to the orchestrator's IdP — see the
+  # connectors in dex.config.yaml.tmpl and the tail of ensure-dex.sh. The old
+  # CasaOS connector (casaos-oidc-bridge) is gone.
+  # App clients are registered dynamically by auth-registrar over
   # Dex's gRPC API — no static client list. Config + sqlite + issued client
   # secrets are provisioned by scripts/self-check/ensure-dex.sh into
   # /DATA/AppData/yundera/dex/.
@@ -186,7 +190,7 @@ services:
     restart: unless-stopped
     cpu_shares: 80
     command: ["dex", "serve", "/data/config.yaml"]
-    # If the bridge issuer is NOT served with a publicly-trusted cert (e.g. an
+    # If a connector's issuer is NOT served with a publicly-trusted cert (e.g. an
     # internal-CA-only test host), Dex's back-channel TLS to it will fail; in
     # that case add a CA bundle and:
     #   environment:
@@ -210,11 +214,9 @@ services:
       # reachable ONLY by containers on dex-internal (just auth-registrar).
       dex-internal:
         ipv4_address: 172.31.7.2
-    # No `depends_on: casaos-oidc-bridge` — the bridge now lives in the separate
-    # `casaos` stack (/DATA/AppData/casaos) and Compose cannot express a
-    # cross-project dependency. Both containers are `restart: unless-stopped` on the
-    # shared `pcs` network, and Dex retries its connector, so cold-boot ordering
-    # resolves itself.
+    # No `depends_on` for the connectors: authelia is in this stack but Dex must
+    # not block on it, and the Yundera IdP is off-box entirely. Dex retries a
+    # connector's back-channel on use, so cold-boot ordering resolves itself.
     labels:
       # Standard domain with custom CA (gateway-routed)
       caddy_0: auth-${DOMAIN}

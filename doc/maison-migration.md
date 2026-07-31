@@ -1,6 +1,7 @@
 # CasaOS → Maison migration
 
-Status: **phase 1 implemented**, phases 2–3 outlined.
+Status: **phase 1 implemented**, phases 2–3 outlined. Phase 2's identity blocker is closed
+early — the CasaOS OIDC path is deleted (see "Removed: the CasaOS OIDC path").
 
 Maison ([Yundera/Maison](https://github.com/Yundera/Maison)) is a dashboard-only
 reimagining of CasaOS: the same app grid and the same CasaOS App Store format, in a
@@ -114,7 +115,7 @@ is a deletion rather than surgery:
 | Stack | Path | Compose project | Contents |
 |---|---|---|---|
 | `yundera` | `/DATA/AppData/casaos/apps/yundera` | `yundera` | admin, mesh-router-{tunnel,agent,caddy}, smtp, dex, auth-registrar |
-| `casaos` | `/DATA/AppData/casaos` | `casaos` | casaos, casaos-oidc-bridge |
+| `casaos` | `/DATA/AppData/casaos` | `casaos` | casaos (+ casaos-oidc-bridge, since deleted — see "Removed: the CasaOS OIDC path") |
 | `maison` | `/DATA/AppData/maison` | `maison` | maison (AppShield gate), maison-app (dashboard) |
 
 Both new stacks join the **existing `pcs` network as `external: true`** — the `yundera`
@@ -142,14 +143,13 @@ no such overlap.
 runs `docker compose up --remove-orphans` on the `yundera` project; once `casaos` and
 `casaos-oidc-bridge` are no longer in that compose file, they are removed as orphans and
 then recreated by `ensure-casaos-stack.sh` under the new project. Expect a short CasaOS
-outage on the self-check cycle that applies this template. Container names are unchanged
-(`casaos`, `casaos-oidc-bridge`), so `DEFAULT_SERVICE_HOST=casaos` and every
-`http://casaos:8080` / `http://casaos-oidc-bridge:8090` reference keeps resolving over the
-`pcs` network.
+outage on the self-check cycle that applies this template. Container names are unchanged, so
+`DEFAULT_SERVICE_HOST=casaos` and every `http://casaos:8080` reference keeps resolving over
+the `pcs` network.
 
-Dex's `depends_on: [casaos-oidc-bridge]` is dropped — Compose cannot express a cross-stack
-dependency. Both containers `restart: unless-stopped` on a shared network, so this only
-affects cold-boot ordering, which Dex tolerates (it retries the connector).
+Dex's `depends_on: [casaos-oidc-bridge]` was dropped at the split — Compose cannot express a
+cross-stack dependency, and Dex retries a connector's back-channel anyway. The bridge has
+since been deleted outright; see "Removed: the CasaOS OIDC path".
 
 ### 1.2 App mirroring
 
@@ -335,7 +335,7 @@ Appended to `scripts-config.txt`, after the existing update pipeline:
 ```
 ensure-user-compose-pulled.sh      # existing
 ensure-user-compose-stack-up.sh    # existing — yundera stack; removes casaos as orphan
-ensure-casaos-stack.sh             # NEW — recreates casaos + bridge as their own stack
+ensure-casaos-stack.sh             # NEW — recreates casaos as its own stack
 ensure-maison-stack.sh             # NEW — maison + AppShield gate
 ensure-maison-app-mirror.sh        # NEW — mirror compose + .env, verify render equality
 ensure-maison-yundera-mirror.sh    # NEW — same, for the yundera stack (unified .env source)
@@ -370,6 +370,54 @@ config and the box converges on that same cycle. Same mechanism as the CasaDash�
 
 ---
 
+## Removed: the CasaOS OIDC path
+
+Dex's `casaos` connector and the `casaos-oidc-bridge` service are gone. This was written up
+as phase 2's hardest item — "implement OIDC directly in the admin app to replace the bridge,
+the last hard dependency on CasaOS" — and it turned out to need no implementation at all: the
+replacement had already landed. Authelia has been Dex's **Local Account** connector since
+2026-07, seeded from the same `DEFAULT_USER` / `DEFAULT_PWD`, with its own password reset and
+rate limiting. Keeping the CasaOS connector alongside it meant two local identities for one
+person, one of which authenticated against a service scheduled for deletion.
+
+What changed:
+
+| | Before | After |
+|---|---|---|
+| Dex connectors | Local Account (Authelia), CasaOS, *Yundera Login* | Local Account (Authelia), *Yundera Login* |
+| `casaos` stack | `casaos` + `casaos-oidc-bridge` | `casaos` |
+| Secrets | `BRIDGE_SECRET` in `.pcs.secret.env` + `.env` | — |
+| Hosts | `casaos-oidc-${DOMAIN}` (+ nip.io / sslip.io) | — |
+
+*Yundera Login* is italicised because it is conditional: `ensure-dex.sh` appends it only when
+the box has a `YUNDERA_API` and a `USER_JWT`, so a FOSS / test PCS has **Authelia as its only
+connector**. That is the real reason this was safe to do now and not before.
+
+Consequences, in the order they will be noticed:
+
+- **The "CasaOS" button disappears from the Dex login page.** Anyone mid-session stays logged
+  in (Dex's sqlite keeps the grant), but the next login is Local Account.
+- **A diverged CasaOS password does not carry over.** Authelia was seeded once from
+  `DEFAULT_PWD`; a user who later changed their password *in CasaOS* changed it only there.
+  Their Local Account password is still the original `DEFAULT_PWD` — recoverable from
+  `.pcs.secret.env`, or resettable from Authelia's own login page.
+- **Apps that key users on the OIDC subject may see a new user.** Dex derives `sub` per
+  connector, and the two connectors also differ in `userNameKey` (`name` for the bridge,
+  `preferred_username` for Authelia). An app that provisioned an account off the CasaOS
+  identity will treat the Authelia identity as a different person. In practice the PCS is
+  single-owner and most apps map on email, but check anything with per-user state.
+- **CasaOS's own login is untouched.** It still has its user database and its own UI; it is
+  simply no longer an identity source for anything else on the PCS.
+
+`ensure-casaos-stack.sh` ups the project with `--remove-orphans`, so the bridge container is
+torn down on the cycle that applies this template. `scripts/migrations/2026-07-31-15-drop-casaos-oidc.sh`
+sweeps `BRIDGE_SECRET` and `/DATA/AppData/yundera/casaos-oidc-bridge/`.
+
+**What this unblocks.** Phase 3's blocker was identity, and identity no longer lives in
+CasaOS. Deleting the `casaos` stack is now a routing-and-installer question, not an auth one.
+
+---
+
 ## Phase 2 — flip the default (outline)
 
 - Make Maison the installer: new apps land in `/DATA/AppData/<app>` and are managed by
@@ -380,14 +428,12 @@ config and the box converges on that same cycle. Same mechanism as the CasaDash�
   still calls the deleted `ensure-casaos-apps-up-to-date.sh` and rolls migrations back today.
 - Point `DEFAULT_SERVICE_HOST` at the AppShield gate so the root domain lands on Maison.
 - Optionally hand Maison the Caddy catch-all so its launch gate works.
-- **Implement OIDC directly in the admin app (settings-center-app)** to replace
-  `casaos-oidc-bridge` as Dex's identity source. This is the last hard dependency on CasaOS:
-  today Dex federates to the bridge, which authenticates against CasaOS's
-  `/v1/users/login` + JWKS. Until the admin app owns identity, CasaOS cannot be removed.
+- ~~Implement OIDC directly in the admin app to replace `casaos-oidc-bridge`~~ — **done, and
+  not the way this outline expected.** See "Removed: the CasaOS OIDC path" below.
 
 ## Phase 3 — remove CasaOS (outline)
 
-- Delete the `casaos` stack (`casaos` + `casaos-oidc-bridge`) and its ensure script.
+- Delete the `casaos` stack (now just `casaos`) and its ensure script.
 - Delete `ensure-maison-app-mirror.sh` (`ensure-casaos-apps-up-to-date.sh` is already gone).
 - Drop the `/DATA/AppData/casaos/apps` tree (keeping `yundera/`, which is where the template
   itself lives — it stays put to avoid rewriting every path in the fleet).

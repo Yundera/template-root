@@ -4,7 +4,6 @@
 # Responsibilities (all idempotent):
 #   - render Dex config.yaml from the template every run (tracks DOMAIN changes
 #     and re-emits the connector secrets),
-#   - generate the Dex<->bridge connector shared secret once (BRIDGE_SECRET),
 #   - read the Dex<->Authelia connector secret (AUTHELIA_DEX_SECRET, minted by
 #     ensure-authelia.sh) so the Local Account connector renders,
 #   - own the sqlite data dir so the dex container (uid 1001) can write dex.db,
@@ -13,13 +12,17 @@
 # Dex is a pure BROKER: it holds no local credential of its own. The local
 # account lives in Authelia (the "Local Account" connector, see
 # ensure-authelia.sh); the old enablePasswordDB break-glass admin has been
-# removed. Interactive login is therefore always federated to a connector
-# (Authelia or CasaOS).
+# removed. Interactive login is therefore always federated to a connector —
+# Authelia, plus the optional Yundera Login connector appended below.
+#
+# The `casaos` connector (and the BRIDGE_SECRET it consumed) is gone: Authelia is
+# the PCS-local credential now, and casaos-oidc-bridge died with it. The stale
+# BRIDGE_SECRET and /DATA/AppData/yundera/casaos-oidc-bridge are swept by
+# scripts/migrations/2026-07-31-15-drop-casaos-oidc.sh.
 #
 # Storage layout (host /DATA/AppData/yundera/):
 #   dex/config.yaml          rendered Dex config (re-rendered each run)
 #   dex/dex.db               Dex sqlite store (clients, codes, refresh tokens, keys)
-#   casaos-oidc-bridge/signing-key.json  bridge token-signing key (bridge-owned)
 #
 # RECOVERY / BACKUP: none of this needs backing up — it is all CACHE.
 #   - The auth-registrar (mesh-auth) is STATELESS: its OIDC client-secret cache
@@ -44,38 +47,23 @@ YND_ROOT="/DATA/AppData/casaos/apps/yundera"
 source "$YND_ROOT/scripts/library/log.sh"
 
 DEX_ROOT="/DATA/AppData/yundera/dex"
-BRIDGE_ROOT="/DATA/AppData/yundera/casaos-oidc-bridge"
 TEMPLATE="$YND_ROOT/dex.config.yaml.tmpl"
 CONFIG_OUT="$DEX_ROOT/config.yaml"
 
 SECRET_ENV="$YND_ROOT/.pcs.secret.env"
 USER_ENV="$YND_ROOT/.ynd.user.env"
-UNIFIED_ENV="$YND_ROOT/.env"
 ENV_MGR="$YND_ROOT/scripts/tools/env-file-manager.sh"
 
 # ghcr.io/dexidp/dex runs as uid/gid 1001 and must own its sqlite tree.
 DEX_UID=1001
 
-mkdir -p "$DEX_ROOT" "$BRIDGE_ROOT"
+mkdir -p "$DEX_ROOT"
 
 DOMAIN="$("$ENV_MGR" get DOMAIN "$USER_ENV")"
 if [ -z "$DOMAIN" ]; then
     log_error "DOMAIN not set in $USER_ENV; cannot render Dex config"
     exit 1
 fi
-
-# Dex<->bridge connector shared secret. Generated once and persisted in
-# .pcs.secret.env (so subsequent self-checks fold it into the unified .env that
-# docker compose interpolates for the bridge's CLIENT_SECRET). Also written into
-# the live .env here so the SAME cycle's compose-up already sees it — this script
-# runs after ensure-env-vars-valid.sh but before the compose-up steps.
-BRIDGE_SECRET="$("$ENV_MGR" get BRIDGE_SECRET "$SECRET_ENV")"
-if [ -z "$BRIDGE_SECRET" ]; then
-    BRIDGE_SECRET="$(openssl rand -hex 32)"
-    "$ENV_MGR" set BRIDGE_SECRET "$BRIDGE_SECRET" "$SECRET_ENV"
-    log_info "Generated BRIDGE_SECRET (Dex<->bridge connector secret)"
-fi
-"$ENV_MGR" set BRIDGE_SECRET "$BRIDGE_SECRET" "$UNIFIED_ENV"
 
 # Dex<->Authelia connector secret for the "Local Account" connector. Generated
 # and hashed by ensure-authelia.sh (which runs just before this script) and
@@ -92,8 +80,8 @@ fi
 # single envsubst pass suffices.
 TMP="$(mktemp)"
 chmod 600 "$TMP"
-export DOMAIN BRIDGE_SECRET AUTHELIA_DEX_SECRET
-envsubst '${DOMAIN} ${BRIDGE_SECRET} ${AUTHELIA_DEX_SECRET}' < "$TEMPLATE" > "$TMP"
+export DOMAIN AUTHELIA_DEX_SECRET
+envsubst '${DOMAIN} ${AUTHELIA_DEX_SECRET}' < "$TEMPLATE" > "$TMP"
 mv "$TMP" "$CONFIG_OUT"
 chmod 600 "$CONFIG_OUT"
 log_info "Rendered Dex config at $CONFIG_OUT"
@@ -108,7 +96,7 @@ log_info "Rendered Dex config at $CONFIG_OUT"
 #
 # On ANY failure (IdP unreachable, no USER_JWT, malformed response) we log and
 # skip: the connector is simply absent and interactive login continues via
-# Authelia/CasaOS. Login must NEVER hard-depend on the Yundera cloud.
+# Authelia. Login must NEVER hard-depend on the Yundera cloud.
 #
 # Appended to the already-rendered config.yaml (which the render above rewrites
 # from scratch each run, so this never accumulates duplicates), NOT to the
@@ -181,8 +169,6 @@ fi
 # Perms: dex (uid 1001) owns its tree so it can create dex.db.
 chown -R "$DEX_UID:$DEX_UID" "$DEX_ROOT" 2>/dev/null || true
 chmod 755 "$DEX_ROOT" 2>/dev/null || true
-# The bridge persists its signing key here; let it write regardless of its uid.
-chmod 777 "$BRIDGE_ROOT" 2>/dev/null || true
 
 # Pick up the re-rendered config if Dex is already running. A mounted-file change
 # does not trigger a compose recreate, so an explicit restart is needed. Silent

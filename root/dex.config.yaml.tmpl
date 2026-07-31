@@ -2,8 +2,8 @@
 # Rendered by scripts/self-check/ensure-dex.sh to
 #   /DATA/AppData/yundera/dex/config.yaml
 # on every self-check. DO NOT edit the rendered file — edit this template and
-# let the self-check re-render it. Substituted tokens: ${DOMAIN}, ${BRIDGE_SECRET}
-# (CasaOS connector), and ${AUTHELIA_DEX_SECRET} (Local Account connector).
+# let the self-check re-render it. Substituted tokens: ${DOMAIN} and
+# ${AUTHELIA_DEX_SECRET} (Local Account connector).
 
 issuer: https://auth-${DOMAIN}
 
@@ -81,19 +81,9 @@ connectors:
         - profile
         - email
 
-  - type: oidc
-    id: casaos
-    name: CasaOS
-    config:
-      # The casaos-oidc-bridge. Must be a publicly-trusted host so Dex's
-      # back-channel TLS to it validates against system roots.
-      issuer: https://casaos-oidc-${DOMAIN}
-      clientID: dex
-      clientSecret: "${BRIDGE_SECRET}"
-      # Dex's own connector callback.
-      redirectURI: https://auth-${DOMAIN}/callback
-      userNameKey: name
-      scopes:
-        - openid
-        - profile
-        - email
+  # REMOVED: the `casaos` connector (federated to casaos-oidc-bridge, which
+  # authenticated against CasaOS's /v1/users/login). Authelia above is the PCS's
+  # local credential store now, so the CasaOS path was a second local identity for
+  # the same person — and one that dies with CasaOS in phase 3. The bridge service
+  # was removed from stacks/casaos/docker-compose.yml at the same time; it had no
+  # other consumer. See doc/maison-migration.md.
