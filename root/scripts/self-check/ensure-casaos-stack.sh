@@ -1,10 +1,12 @@
 #!/bin/bash
-# ensure-casaos-stack.sh - Deploy the CasaOS stack (casaos + casaos-oidc-bridge).
+# ensure-casaos-stack.sh - Deploy the CasaOS stack (just `casaos` now).
 #
-# These two services used to live in the main `yundera` compose stack. Phase 1 of
-# the Maison migration split them into their own project at /DATA/AppData/casaos
-# so that retiring CasaOS in phase 3 becomes a stack deletion rather than surgery on
-# the yundera compose file. See doc/maison-migration.md.
+# This service used to live in the main `yundera` compose stack. Phase 1 of the
+# Maison migration split it into its own project at /DATA/AppData/casaos so that
+# retiring CasaOS in phase 3 becomes a stack deletion rather than surgery on the
+# yundera compose file. It was joined here by casaos-oidc-bridge, since deleted
+# outright — Dex's `casaos` connector went with it and Authelia is the PCS-local
+# credential now. See doc/maison-migration.md.
 #
 # The directory name carries no leading dot, so Maison's managed-app scan of
 # /DATA/AppData (which skips any name containing a dot) picks this stack up and tiles
@@ -14,10 +16,10 @@
 #   - the `pcs` network is created and owned by the yundera stack; this stack only
 #     attaches to it (external: true), so it must already exist;
 #   - the yundera stack-up runs `--remove-orphans`, which removes the now-absent
-#     casaos / casaos-oidc-bridge containers from the `yundera` project. This script
-#     immediately recreates them under the `casaos` project. On the single
-#     self-check cycle that applies this template version, CasaOS is briefly down
-#     between those two steps. Container names are unchanged, so once it is back
+#     casaos container from the `yundera` project. This script immediately
+#     recreates it under the `casaos` project. On the single self-check cycle that
+#     applies this template version, CasaOS is briefly down between those two
+#     steps. The container name is unchanged, so once it is back
 #     every http://casaos:8080 reference (and DEFAULT_SERVICE_HOST=casaos) resolves
 #     exactly as before.
 set -euo pipefail

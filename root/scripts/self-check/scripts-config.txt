@@ -46,8 +46,8 @@ ensure-user-compose-stack-up.sh
 # Auxiliary stacks — CasaOS/Maison cohabitation (doc/maison-migration.md).
 # These MUST stay after ensure-user-compose-stack-up.sh: they attach to the `pcs`
 # network, which the yundera stack owns and creates. ensure-casaos-stack.sh also
-# recreates casaos + casaos-oidc-bridge, which the yundera stack-up removes as
-# orphans once they left its compose file.
+# recreates casaos, which the yundera stack-up removes as an orphan once it left
+# that compose file.
 ensure-casaos-stack.sh
 ensure-maison-stack.sh
 ensure-maison-app-mirror.sh

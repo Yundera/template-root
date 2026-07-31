@@ -42,8 +42,8 @@ session:
       authelia_url: 'https://local-auth-${DOMAIN}'
       name: 'authelia_session'
       same_site: 'lax'
-      # ~30-day sessions to match the casaos-oidc-bridge and AppShield gates —
-      # a PCS is single-owner, so long-lived local sessions are acceptable.
+      # ~30-day sessions to match the AppShield gates and the PCS-wide session
+      # policy — a PCS is single-owner, so long-lived local sessions are fine.
       inactivity: '30d'
       expiration: '30d'
       remember_me: '30d'
