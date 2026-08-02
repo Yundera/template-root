@@ -1,7 +1,9 @@
 # CasaOS → Maison migration
 
-Status: **phase 1 implemented**, phases 2–3 outlined. Phase 2's identity blocker is closed
-early — the CasaOS OIDC path is deleted (see "Removed: the CasaOS OIDC path").
+Status: **phase 1 implemented; CasaOS removed** (phase 3's stack deletion, done ahead of
+phase 2's app cutover — see "Phase 3" below for what that leaves outstanding). Phase 2's
+identity blocker was closed earlier — the CasaOS OIDC path is deleted (see "Removed: the
+CasaOS OIDC path").
 
 Maison ([Yundera/Maison](https://github.com/Yundera/Maison)) is a dashboard-only
 reimagining of CasaOS: the same app grid and the same CasaOS App Store format, in a
@@ -426,15 +428,41 @@ CasaOS. Deleting the `casaos` stack is now a routing-and-installer question, not
   mirror becomes the real thing.
 - **Re-point the migration pipeline's `start_user_apps` step** at the mirrored folders — it
   still calls the deleted `ensure-casaos-apps-up-to-date.sh` and rolls migrations back today.
-- Point `DEFAULT_SERVICE_HOST` at the AppShield gate so the root domain lands on Maison.
+- ~~Point `DEFAULT_SERVICE_HOST` at the AppShield gate so the root domain lands on Maison.~~
+  — **done** with the CasaOS removal below; it could not wait, since the old target stopped
+  existing.
 - Optionally hand Maison the Caddy catch-all so its launch gate works.
 - ~~Implement OIDC directly in the admin app to replace `casaos-oidc-bridge`~~ — **done, and
   not the way this outline expected.** See "Removed: the CasaOS OIDC path" below.
 
-## Phase 3 — remove CasaOS (outline)
+## Phase 3 — remove CasaOS
 
-- Delete the `casaos` stack (now just `casaos`) and its ensure script.
-- Delete `ensure-maison-app-mirror.sh` (`ensure-casaos-apps-up-to-date.sh` is already gone).
-- Drop the `/DATA/AppData/casaos/apps` tree (keeping `yundera/`, which is where the template
-  itself lives — it stays put to avoid rewriting every path in the fleet).
-- Remove the `.casaos-mirror` markers.
+**Done** (2026-08-02), ahead of phase 2's app cutover:
+
+- `stacks/casaos/` and `ensure-casaos-stack.sh` are deleted, and the
+  `ensure-casaos-stack.sh` entry is out of `scripts-config.txt`.
+- `scripts/migrations/2026-08-02-14-remove-casaos-stack.sh` does the host-side work in this
+  order: repoint `DEFAULT_SERVICE_HOST`/`_PORT` from `casaos:8080` to `maison:80` (only if
+  they still point at CasaOS — a deliberate operator override is respected), then
+  `docker compose down` the `casaos` project and delete the stack's own
+  `docker-compose.yml`/`.env`. Routing first: the reverse order 502s the root domain for the
+  rest of the self-check cycle.
+- `DEFAULT_SERVICE_HOST` defaults to `maison` (the AppShield **gate**, port 80 — never
+  `maison-app`, which has no auth) in `ensure-env-vars-valid.sh`, the `Caddyfile` header and
+  `.pcs.env.example`.
+- **`/DATA/AppData/casaos` stays.** It is CasaOS's AppData root and holds `apps/` —
+  including `apps/yundera`, the template itself. Only the stack's own files were removed.
+
+Still outstanding, and blocked on phase 2's cutover rather than on CasaOS:
+
+- `ensure-maison-app-mirror.sh` **stays for now**, contrary to this outline's original plan.
+  App compose files still live under `/DATA/AppData/casaos/apps/<app>`, and the mirror is
+  what makes them visible and manageable in Maison. Deleting it requires first **moving**
+  each app out of that tree (one writer per app) across the fleet — a data migration, not a
+  template edit. Running containers are unaffected either way: compose derives the project
+  name from the directory basename, so a mirrored copy addresses the same project.
+- Dropping the `/DATA/AppData/casaos/apps` tree and the `.casaos-mirror` markers follows that
+  same move.
+- The migration pipeline's `start_user_apps` step still calls the deleted
+  `ensure-casaos-apps-up-to-date.sh` (see phase 2 above) — already broken before this change,
+  and now with no CasaOS to fall back on.

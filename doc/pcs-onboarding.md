@@ -25,7 +25,8 @@ gone.
 
 There is a second, quieter problem. `DEFAULT_PWD` is also injected into every
 installed app as `APP_DEFAULT_PASSWORD` / `PCS_DEFAULT_PASSWORD` / `default_pwd`
-(`ensure-maison-app-mirror.sh:103-112`, `stacks/casaos/docker-compose.yml:42-55`).
+(`ensure-maison-app-mirror.sh`, `render_as_casaos()` — the injection list outlived CasaOS
+itself, which was removed in migration phase 3).
 It is an **app seed secret**, not a human credential. Using it as the local login
 password means every app on the box ships with the PCS login password in its env.
 
