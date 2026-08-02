@@ -1,7 +1,7 @@
 name: yundera
 services:
   admin:
-    image: ghcr.io/yundera/settings-center-app:1.3.0
+    image: ghcr.io/yundera/settings-center-app:1.3.1
     container_name: admin
     hostname: admin
     restart: unless-stopped
@@ -14,8 +14,15 @@ services:
     # from .pcs.env + .pcs.secret.env + .ynd.user.env). The settings-center-app
     # reads DOMAIN, PUBLIC_IP, UID, DEFAULT_PWD, etc. via process.env to display
     # them on the System Configuration page; without this, every field renders
-    # blank. No new exposure — all three source files are already bind-mounted
-    # at /app/data/ below.
+    # blank.
+    #
+    # This is now the app's ONLY channel to those values — the stack directory is
+    # no longer bind-mounted (see the volumes note below). Keep it a whole-file
+    # inject rather than an enumerated list: the panels read a moving set of keys,
+    # and the failure mode of a missing one is a silently blank field, not an
+    # error. Side effect worth knowing: keys the app has no use for ride along
+    # too (AUTHELIA_DEX_SECRET, minted by ensure-authelia.sh for the Dex<->Authelia
+    # connector).
     env_file: .env
     environment:
       COMPOSE_FOLDER_PATH: "/DATA/AppData/casaos/apps/yundera/"
@@ -32,9 +39,26 @@ services:
       - type: bind
         source: /home/admin/.ssh/
         target: /host_ssh/
-      # This gives the admin app access to its own data (used to update itself)
+      # The app's OWN writable state — today just admin-session-key, the HMAC key
+      # that signs the admin session cookie and the OIDC state cookie
+      # (src/backend/auth/sessionKey.ts).
+      #
+      # This used to be the whole stack directory (/DATA/AppData/casaos/apps/yundera),
+      # on the theory that the app needed it "to update itself". It does not: every
+      # compose/env/self-check operation runs on the HOST over SSH with host paths
+      # (COMPOSE_FOLDER_PATH above is a host path, never a container path — see
+      # DockerUpdate.ts, update-channel.ts, default-app.ts), and the session key was
+      # the only file the container ever opened locally.
+      #
+      # Worse, that directory is the rsync target of ensure-template-sync.sh, which
+      # runs `rsync -a --delete` honouring .ignore — and admin-session-key was not in
+      # .ignore, so every template update deleted it and the next container start
+      # minted a new one, signing every user out. Exactly what persisting the key was
+      # supposed to prevent. Keeping it here, beside dex/ and auth/, puts it outside
+      # the synced tree. Docker creates the dir on first up; migrations/
+      # 2026-08-02-13-move-admin-session-key.sh carries an existing key across.
       - type: bind
-        source: /DATA/AppData/casaos/apps/yundera/
+        source: /DATA/AppData/yundera/admin
         target: /app/data
     expose:
       - "80"
@@ -54,14 +78,15 @@ services:
       caddy_2.reverse_proxy: "{{upstreams 80}}"
 
 
-  # NOTE: `casaos` no longer lives in this stack. It was split out into its own
-  # compose project at /DATA/AppData/casaos (deployed by
-  # scripts/self-check/ensure-casaos-stack.sh) so that retiring CasaOS in favour of
-  # Maison becomes a stack deletion rather than surgery on this file. The container
-  # name is unchanged, and both stacks share the `pcs` network, so
-  # DEFAULT_SERVICE_HOST=casaos still resolves. `casaos-oidc-bridge` went with it
-  # and has since been deleted outright — Authelia is the local credential now.
-  # See doc/maison-migration.md.
+  # NOTE: CasaOS is gone (Maison migration phase 3). It was split out of this
+  # stack in phase 1 precisely so that retiring it would be a stack deletion
+  # rather than surgery on this file — and it was: stacks/casaos/ and
+  # ensure-casaos-stack.sh are deleted, and the container is torn down on
+  # existing hosts by scripts/migrations/2026-08-02-14-remove-casaos-stack.sh,
+  # which also repoints the root domain (DEFAULT_SERVICE_HOST) at the Maison
+  # AppShield gate. `casaos-oidc-bridge` died earlier — Authelia is the local
+  # credential now. /DATA/AppData/casaos survives as a plain directory: it holds
+  # apps/, including apps/yundera, which is this stack. See doc/maison-migration.md.
 
 
 

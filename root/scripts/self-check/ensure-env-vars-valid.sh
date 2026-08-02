@@ -48,16 +48,19 @@ read_env_file "$USER_ENV_FILE"
 # Set default values for optional variables if not already set
 ENV_MANAGER="$YND_ROOT/scripts/tools/env-file-manager.sh"
 
-# DEFAULT_SERVICE_HOST: container name for root domain routing (default: casaos)
+# DEFAULT_SERVICE_HOST / _PORT: what the root domain (${DOMAIN} and the two IP
+# fallbacks, routed in the Caddyfile) resolves to. `maison` is the AppShield gate
+# in the maison stack, which exposes 80 and fronts the dashboard — NOT `maison-app`,
+# which has no auth of its own. Was casaos:8080 until CasaOS was removed; existing
+# hosts are repointed by migrations/2026-08-02-14-remove-casaos-stack.sh.
 if ! "$ENV_MANAGER" exists DEFAULT_SERVICE_HOST "$PCS_ENV_FILE"; then
-    "$ENV_MANAGER" set DEFAULT_SERVICE_HOST "casaos" "$PCS_ENV_FILE"
-    echo "Set default DEFAULT_SERVICE_HOST=casaos"
+    "$ENV_MANAGER" set DEFAULT_SERVICE_HOST "maison" "$PCS_ENV_FILE"
+    echo "Set default DEFAULT_SERVICE_HOST=maison"
 fi
 
-# DEFAULT_SERVICE_PORT: port for root domain routing (default: 8080)
 if ! "$ENV_MANAGER" exists DEFAULT_SERVICE_PORT "$PCS_ENV_FILE"; then
-    "$ENV_MANAGER" set DEFAULT_SERVICE_PORT "8080" "$PCS_ENV_FILE"
-    echo "Set default DEFAULT_SERVICE_PORT=8080"
+    "$ENV_MANAGER" set DEFAULT_SERVICE_PORT "80" "$PCS_ENV_FILE"
+    echo "Set default DEFAULT_SERVICE_PORT=80"
 fi
 
 # NOTE: no JWT_SECRET here any more. It used to be minted for the

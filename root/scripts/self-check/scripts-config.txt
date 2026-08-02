@@ -43,15 +43,20 @@ ensure-dex.sh
 ensure-user-compose-pulled.sh
 ensure-user-compose-stack-up.sh
 
-# Auxiliary stacks — CasaOS/Maison cohabitation (doc/maison-migration.md).
-# These MUST stay after ensure-user-compose-stack-up.sh: they attach to the `pcs`
-# network, which the yundera stack owns and creates. ensure-casaos-stack.sh also
-# recreates casaos, which the yundera stack-up removes as an orphan once it left
-# that compose file.
-ensure-casaos-stack.sh
+# Auxiliary stack — Maison (doc/maison-migration.md). MUST stay after
+# ensure-user-compose-stack-up.sh: it attaches to the `pcs` network, which the
+# yundera stack owns and creates.
+#
+# ensure-casaos-stack.sh is gone — CasaOS is removed (phase 3). Its container is
+# torn down on existing hosts by migrations/2026-08-02-14-remove-casaos-stack.sh.
 ensure-maison-stack.sh
+# STAYS for now, despite phase 3's outline saying to delete it: the app compose
+# files still live under /DATA/AppData/casaos/apps/<app>, and this mirror is what
+# makes them visible and manageable in Maison. It can only go once phase 2 has
+# MOVED each app out of that tree (one writer per app) on the fleet — a data
+# migration, not a template edit.
 ensure-maison-app-mirror.sh
 # The yundera stack's own mirror. Separate from the app mirror above because its
-# .env comes from the unified .env, not from CasaOS's injected cocktail. Must stay
-# after ensure-env-vars-valid.sh (it copies that .env).
+# .env comes from the unified .env rather than a per-app one. Must stay after
+# ensure-env-vars-valid.sh (it copies that .env).
 ensure-maison-yundera-mirror.sh
