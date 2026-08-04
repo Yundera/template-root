@@ -91,7 +91,7 @@ log_info "Rendered Dex config at $CONFIG_OUT"
 # can sign in with their Yundera (cloud) account. Unlike the CasaOS/Authelia
 # connectors whose secrets are local, this connector's client is registered
 # DYNAMICALLY with the IdP: POST the PCS's USER_JWT to
-# ${YUNDERA_API}/auth/pcs-client, which returns a client_id/secret scoped to
+# ${OPERATOR_API}/auth/pcs-client, which returns a client_id/secret scoped to
 # this PCS's own auth-${DOMAIN} callback (idempotent — stable across runs).
 #
 # On ANY failure (IdP unreachable, no USER_JWT, malformed response) we log and
@@ -103,15 +103,17 @@ log_info "Rendered Dex config at $CONFIG_OUT"
 # template — keeping the skip path a clean no-op and the template stock.
 # ---------------------------------------------------------------------------
 PCS_ENV="$YND_ROOT/.pcs.env"
-YUNDERA_API="$("$ENV_MGR" get YUNDERA_API "$PCS_ENV")"
+OPERATOR_API="$("$ENV_MGR" get OPERATOR_API "$PCS_ENV")"
+# Pre-rename name — see 2026-08-04-11-rename-yundera-api.sh.
+[ -n "$OPERATOR_API" ] || OPERATOR_API="$("$ENV_MGR" get YUNDERA_API "$PCS_ENV")"
 YND_USER_JWT="$("$ENV_MGR" get USER_JWT "$SECRET_ENV")"
 
-if [ -n "$YUNDERA_API" ] && [ -n "$YND_USER_JWT" ]; then
+if [ -n "$OPERATOR_API" ] && [ -n "$YND_USER_JWT" ]; then
     YND_REDIRECT_URI="https://auth-${DOMAIN}/callback"
     YND_REG="$(curl -fsS --max-time 20 \
         -H "Authorization: Bearer $YND_USER_JWT" \
         -H "Content-Type: application/json" \
-        -X POST "${YUNDERA_API}/auth/pcs-client" \
+        -X POST "${OPERATOR_API}/auth/pcs-client" \
         -d "{\"redirect_uris\":[\"${YND_REDIRECT_URI}\"]}" 2>/dev/null || true)"
 
     YND_CLIENT_ID="$(printf '%s' "$YND_REG" | grep -o '"client_id":"[^"]*"' | sed 's/.*:"\([^"]*\)"/\1/' || true)"
@@ -130,7 +132,7 @@ if [ -n "$YUNDERA_API" ] && [ -n "$YND_USER_JWT" ]; then
     id: yundera
     name: Yundera Login
     config:
-      issuer: ${YUNDERA_API}/auth
+      issuer: ${OPERATOR_API}/auth
       clientID: ${YND_CLIENT_ID}
       clientSecret: "${YND_CLIENT_SECRET}"
       redirectURI: ${YND_REDIRECT_URI}
@@ -147,7 +149,7 @@ YAML
         log_warn "Yundera client registration returned no client_id/secret; skipping Yundera Login connector"
     fi
 else
-    log_warn "YUNDERA_API or USER_JWT unset; skipping Yundera Login connector"
+    log_warn "OPERATOR_API or USER_JWT unset; skipping Yundera Login connector"
 fi
 
 # Provision the custom Dex frontend (theme + overlaid templates) into the dir the

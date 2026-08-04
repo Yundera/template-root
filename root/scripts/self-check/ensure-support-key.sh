@@ -14,7 +14,7 @@
 # POST {ensure: false}); this script never removes — it only adds.
 #
 # Source of truth for the public key is the orchestrator
-# (${YUNDERA_API}/support/ssh-key). During steady-state self-checks a
+# (${OPERATOR_API}/support/ssh-key). During steady-state self-checks a
 # fetch failure is logged and we exit 0 — a one-cycle gap in the safety
 # net beats blocking the rest of self-check. During first-boot
 # provisioning (PCS_PROVISIONING=1) the same failures abort instead: the
@@ -53,14 +53,19 @@ case "${ENSURE,,}" in
         ;;
 esac
 
-YUNDERA_API=$("$ENV_MANAGER" get YUNDERA_API "$PCS_ENV_FILE" 2>/dev/null || echo "")
-if [ -z "$YUNDERA_API" ]; then
-    YUNDERA_API="https://app.yundera.com/service/pcs"
+OPERATOR_API=$("$ENV_MANAGER" get OPERATOR_API "$PCS_ENV_FILE" 2>/dev/null || echo "")
+if [ -z "$OPERATOR_API" ]; then
+    # Pre-rename name; 2026-08-04-11-rename-yundera-api.sh copies it forward,
+    # but this script can run before that migration on a host that is mid-sync.
+    OPERATOR_API=$("$ENV_MANAGER" get YUNDERA_API "$PCS_ENV_FILE" 2>/dev/null || echo "")
+fi
+if [ -z "$OPERATOR_API" ]; then
+    OPERATOR_API="https://app.yundera.com/service/pcs"
 fi
 # URL construction mirrors SupportKey.ts in settings-center-app — keep
 # them identical so the safety net and the dashboard hit the same
 # endpoint and rotate together.
-SUPPORT_URL="${YUNDERA_API%/}/support/ssh-key"
+SUPPORT_URL="${OPERATOR_API%/}/support/ssh-key"
 
 if ! id "$ADMIN_USER" >/dev/null 2>&1; then
     fail "User '$ADMIN_USER' not found — run ensure-admin-user.sh first"

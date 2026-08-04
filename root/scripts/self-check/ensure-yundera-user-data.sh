@@ -5,9 +5,9 @@
 # and updates the .env file with the complete user data
 #
 # API Configuration:
-# - Reads YUNDERA_API from .pcs.env file (bare orchestrator base, no /user)
+# - Reads OPERATOR_API from .pcs.env file (bare orchestrator base, no /user)
 # - If not configured, uses default: https://app.yundera.com/service/pcs
-# - Makes GET request to ${YUNDERA_API}/user/info to fetch user data
+# - Makes GET request to ${OPERATOR_API}/user/info to fetch user data
 
 set -euo pipefail
 
@@ -17,13 +17,18 @@ USER_ENV_FILE="$YND_ROOT/.ynd.user.env"
 PCS_ENV_FILE="$YND_ROOT/.pcs.env"
 
 # Read Yundera API base from PCS env file or use default
-YUNDERA_API=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get YUNDERA_API "$PCS_ENV_FILE")
+OPERATOR_API=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get OPERATOR_API "$PCS_ENV_FILE")
 
-if [ -z "$YUNDERA_API" ]; then
-    YUNDERA_API="https://app.yundera.com/service/pcs"
-    echo "Using default YUNDERA_API: $YUNDERA_API"
+# Pre-rename name — see 2026-08-04-11-rename-yundera-api.sh.
+if [ -z "$OPERATOR_API" ]; then
+    OPERATOR_API=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get YUNDERA_API "$PCS_ENV_FILE")
+fi
+
+if [ -z "$OPERATOR_API" ]; then
+    OPERATOR_API="https://app.yundera.com/service/pcs"
+    echo "Using default OPERATOR_API: $OPERATOR_API"
 else
-    echo "Using configured YUNDERA_API: $YUNDERA_API"
+    echo "Using configured OPERATOR_API: $OPERATOR_API"
 fi
 
 # Create user env file if it doesn't exist
@@ -47,14 +52,14 @@ if [ -z "$USER_JWT" ]; then
     exit 1
 fi
 
-echo "Found USER_JWT (${#USER_JWT} chars), fetching user data from ${YUNDERA_API}/user/info"
+echo "Found USER_JWT (${#USER_JWT} chars), fetching user data from ${OPERATOR_API}/user/info"
 
 # Make API call to fetch user info from configured API endpoint
 HTTP_RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" \
     -H "Authorization: Bearer $USER_JWT" \
     -H "Content-Type: application/json" \
     -X GET \
-    "${YUNDERA_API}/user/info" || echo "HTTPSTATUS:000")
+    "${OPERATOR_API}/user/info" || echo "HTTPSTATUS:000")
 
 HTTP_CODE=$(echo "$HTTP_RESPONSE" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)
 HTTP_BODY=$(echo "$HTTP_RESPONSE" | sed -E 's/HTTPSTATUS:[0-9]*$//')
