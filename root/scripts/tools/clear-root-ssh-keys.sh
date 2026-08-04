@@ -6,7 +6,7 @@
 # vm_operations/create.py — a create-path call only) and SSHes in as root
 # to run pcs-init.sh. Once the PCS is handed over, all orchestrator access
 # goes through the `admin` sudoer's API-sourced support key
-# (ensure-yundera-support-key.sh), so root's bootstrap key is no longer
+# (ensure-support-key.sh), so root's bootstrap key is no longer
 # needed and is dropped here.
 #
 # Deliberately a one-shot invoked from os-init.sh, NOT a recurring

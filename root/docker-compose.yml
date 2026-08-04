@@ -42,8 +42,16 @@ services:
       UID: ${UID}
       # Certificates panel derives the nip.io / sslip.io domains from it.
       PUBLIC_IP: ${PUBLIC_IP}
-      # Support key exchange (SupportKey.ts) + operator detection in resolveBrand.
-      YUNDERA_API: ${YUNDERA_API}
+      # Operator control-plane base URL: support key exchange (SupportKey.ts) +
+      # operator detection in resolveBrand. Both names carry the same value —
+      # OPERATOR_API is current, YUNDERA_API is what it was called before
+      # migrations/2026-08-04-11-rename-yundera-api.sh. Feeding them from one
+      # expression makes the upgrade order irrelevant: on the tick the migration
+      # runs, the unified .env still only has the old key (it is regenerated
+      # earlier in the chain), and an admin image older than the rename still
+      # only reads the old name. Drop YUNDERA_API once neither is true.
+      OPERATOR_API: ${OPERATOR_API:-${YUNDERA_API:-}}
+      YUNDERA_API: ${OPERATOR_API:-${YUNDERA_API:-}}
       # Current value of the root-domain target, shown by the Domain panel's
       # default-app editor. Writes go to .pcs.env on the host over SSH, not here.
       DEFAULT_SERVICE_HOST: ${DEFAULT_SERVICE_HOST}

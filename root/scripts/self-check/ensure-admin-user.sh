@@ -17,7 +17,7 @@ set -e
 #     password auth impossible. Same posture we want on root.
 #   - NOPASSWD sudo: orchestrator/dashboard run unattended.
 #   - Does NOT seed authorized_keys. admin's authorized_keys is populated
-#     solely by ensure-yundera-support-key.sh with the API-sourced support
+#     solely by ensure-support-key.sh with the API-sourced support
 #     key. The orchestrator's create-time bootstrap ("perso") key is seeded
 #     into /root only and never copied here, so it cannot persist on the
 #     handed-over PCS. clear-root-ssh-keys.sh drops it from /root at handover.
@@ -77,7 +77,7 @@ chown "$USER_NAME:$USER_NAME" "$ADMIN_HOME"
 
 # SSH directory only — deliberately NO key seed.
 #
-# admin's authorized_keys is owned end-to-end by ensure-yundera-support-key.sh
+# admin's authorized_keys is owned end-to-end by ensure-support-key.sh
 # (the API-sourced support key). Copying /root/.ssh/authorized_keys here —
 # as this script used to — would persist the orchestrator's create-time
 # bootstrap ("perso") key on the handed-over PCS, which is exactly what the

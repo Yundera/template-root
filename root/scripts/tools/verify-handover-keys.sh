@@ -3,12 +3,12 @@
 #
 # Expected end state once a PCS is handed over to its user:
 #   - /home/admin/.ssh/authorized_keys  — non-empty: holds the support key
-#     installed by ensure-yundera-support-key.sh (API-sourced). This is the
+#     installed by ensure-support-key.sh (API-sourced). This is the
 #     orchestrator's only way back into the PCS after handover.
 #   - /root/.ssh/authorized_keys        — empty/absent: the create-time
 #     bootstrap ("perso") key has been cleared by clear-root-ssh-keys.sh.
 #
-# This is a final gate, not a fixer: ensure-yundera-support-key.sh installs
+# This is a final gate, not a fixer: ensure-support-key.sh installs
 # the support key during the self-check pass, and clear-root-ssh-keys.sh
 # (run by os-init.sh just before this) drops root's key. If either
 # invariant is violated here, something went wrong upstream — fail loud so
