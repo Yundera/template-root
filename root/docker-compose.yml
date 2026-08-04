@@ -10,22 +10,24 @@ services:
     # hundred MB; 1G leaves room for esbuild workers and a transient spike
     # without an OOM kill, but bounds a runaway leak.
     mem_limit: 1g
-    # Inject every key from the unified .env (assembled by ensure-env-vars-valid.sh
-    # from .pcs.env + .pcs.secret.env + .ynd.user.env). The settings-center-app
-    # reads DOMAIN, PROVIDER_STR, PUBLIC_IP, DEFAULT_SERVICE_HOST/_PORT (Domain
-    # panel), UID and YUNDERA_API (support reports) via process.env; without this,
-    # those panels render blank. It no longer displays DEFAULT_PWD / DEFAULT_USER —
-    # the old System Configuration page that dumped them is gone, System
-    # Information now shows only the public IP and the reboot button.
+    # Env is enumerated, not injected wholesale. This used to be `env_file: .env`
+    # — every key of the unified .env (assembled by ensure-env-vars-valid.sh from
+    # .pcs.env + .pcs.secret.env + .ynd.user.env) — because the old System
+    # Configuration page displayed whatever it was handed, so a renamed key showed
+    # as a silently blank field. That page is gone (System Information now shows
+    # only the public IP and the reboot button), the app's key set is small and
+    # fixed, and each remaining one fails loudly rather than blankly.
     #
-    # This is now the app's ONLY channel to those values — the stack directory is
-    # no longer bind-mounted (see the volumes note below). Keep it a whole-file
-    # inject rather than an enumerated list: the panels read a moving set of keys,
-    # and the failure mode of a missing one is a silently blank field, not an
-    # error. Side effect worth knowing: keys the app has no use for ride along
-    # too (AUTHELIA_DEX_SECRET, minted by ensure-authelia.sh for the Dex<->Authelia
-    # connector).
-    env_file: .env
+    # This is the app's ONLY channel to these values — the stack directory is no
+    # longer bind-mounted (see the volumes note below). The ${...} substitutions
+    # resolve against this same .env, which compose reads from the project
+    # directory, exactly as the caddy labels below already do. What no longer
+    # rides along: DEFAULT_PWD, USER_JWT, AUTHELIA_DEX_SECRET, and PROVIDER_STR
+    # (which the Domain panel used to display, and which the mesh-router and smtp
+    # services below still interpolate for their own use). None of them are read
+    # by the app — and Terminal/TerminalHandler.ts spreads process.env into every
+    # shell it spawns, so they were reaching the web terminal too. Nothing from
+    # .pcs.secret.env now enters this container.
     environment:
       COMPOSE_FOLDER_PATH: "/DATA/AppData/casaos/apps/yundera/"
       # auth-registrar sidecar (defined below) hands out OIDC client_id/secret
@@ -33,6 +35,19 @@ services:
       # (gitignored), so the dashboard would otherwise fail with
       # "OIDC_REGISTRAR_URL not configured" on every login attempt.
       OIDC_REGISTRAR_URL: "http://auth-registrar:9092/register"
+      # Builds the OIDC redirect URI (auth/oidc/redirectUri.ts — login breaks
+      # without it), resolves the brand, and labels support reports.
+      DOMAIN: ${DOMAIN}
+      # Identifies the PCS in support reports.
+      UID: ${UID}
+      # Certificates panel derives the nip.io / sslip.io domains from it.
+      PUBLIC_IP: ${PUBLIC_IP}
+      # Support key exchange (SupportKey.ts) + operator detection in resolveBrand.
+      YUNDERA_API: ${YUNDERA_API}
+      # Current value of the root-domain target, shown by the Domain panel's
+      # default-app editor. Writes go to .pcs.env on the host over SSH, not here.
+      DEFAULT_SERVICE_HOST: ${DEFAULT_SERVICE_HOST}
+      DEFAULT_SERVICE_PORT: ${DEFAULT_SERVICE_PORT}
     volumes:
       # The admin app SSHes back to the host as the `admin` sudoer (created by
       # ensure-admin-user.sh). Privileged work goes through `sudo -n …` on the
