@@ -15,7 +15,7 @@
 #     its connector), pbkdf2 hash cached for Authelia's client config,
 #   - render configuration.yml every run (tracks DOMAIN; re-emits the always-
 #     present single-client identity_providers block),
-#   - seed the admin user in users_database.yml from DEFAULT_USER/DEFAULT_PWD,
+#   - seed the admin user in users_database.yml from DEFAULT_PWD,
 #     refreshing only the email on subsequent runs (Authelia owns the password
 #     once the user changes it),
 #   - restart authelia so a re-rendered config is picked up.
@@ -187,9 +187,10 @@ if [ -f "$USERS_DB" ] && grep -q "^[[:space:]]*password:" "$USERS_DB"; then
         log_info "users_database.yml already seeded; refreshed admin email to ${ADMIN_EMAIL}"
     fi
 else
-    # Authelia's admin username is fixed to 'admin' regardless of DEFAULT_USER
-    # (which drives the host/CasaOS user); a single well-known local login
-    # avoids confusion when the two diverge.
+    # Authelia's admin username is fixed to 'admin' — a single well-known local
+    # login. (This used to be qualified with "regardless of DEFAULT_USER", which
+    # named the host/CasaOS user; CasaOS is gone and nothing reads that var any
+    # more, so it was dropped from .pcs.env.)
     AUTHELIA_ADMIN="admin"
     DEFAULT_PWD="$("$ENV_MGR" get DEFAULT_PWD "$SECRET_ENV")"
     if [ -z "$DEFAULT_PWD" ]; then

@@ -1,7 +1,7 @@
 name: yundera
 services:
   admin:
-    image: ghcr.io/yundera/settings-center-app:1.3.1
+    image: ghcr.io/yundera/settings-center-app:1.3.2
     container_name: admin
     hostname: admin
     restart: unless-stopped
@@ -12,9 +12,11 @@ services:
     mem_limit: 1g
     # Inject every key from the unified .env (assembled by ensure-env-vars-valid.sh
     # from .pcs.env + .pcs.secret.env + .ynd.user.env). The settings-center-app
-    # reads DOMAIN, PUBLIC_IP, UID, DEFAULT_PWD, etc. via process.env to display
-    # them on the System Configuration page; without this, every field renders
-    # blank.
+    # reads DOMAIN, PROVIDER_STR, PUBLIC_IP, DEFAULT_SERVICE_HOST/_PORT (Domain
+    # panel), UID and YUNDERA_API (support reports) via process.env; without this,
+    # those panels render blank. It no longer displays DEFAULT_PWD / DEFAULT_USER —
+    # the old System Configuration page that dumped them is gone, System
+    # Information now shows only the public IP and the reboot button.
     #
     # This is now the app's ONLY channel to those values — the stack directory is
     # no longer bind-mounted (see the volumes note below). Keep it a whole-file
