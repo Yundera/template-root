@@ -143,10 +143,18 @@ ${JWKS_KEY}
         consent_mode: 'implicit'
         redirect_uris:
           - 'https://auth-${DOMAIN}/callback'
+        # 'groups' carries each user's users_database.yml groups through to Dex,
+        # which forwards them to the admin dashboard (insecureEnableGroups in
+        # dex.config.yaml.tmpl). That claim is the ONLY thing distinguishing an
+        # admin from a plain local account — drop it and every user gets the
+        # full dashboard, including the terminal. Authelia serves it from
+        # userinfo rather than the ID token by default, which is what Dex's
+        # getUserInfo: true is for; no claims_policy is needed.
         scopes:
           - 'openid'
           - 'profile'
           - 'email'
+          - 'groups'
         userinfo_signed_response_alg: 'none'
         token_endpoint_auth_method: 'client_secret_basic'
 EOF
@@ -165,16 +173,44 @@ if [ -z "$ADMIN_EMAIL" ]; then
     log_warn "EMAIL not set in $USER_ENV; falling back to ${ADMIN_EMAIL}"
 fi
 
+# Authelia's admin username is fixed to 'admin' — a single well-known local
+# login. (This used to be qualified with "regardless of DEFAULT_USER", which
+# named the host/CasaOS user; CasaOS is gone and nothing reads that var any
+# more, so it was dropped from .pcs.env.)
+AUTHELIA_ADMIN="admin"
+
 # One-shot marker: a `password:` field already present means the file is seeded
 # (by us, or by Authelia writing a password change back). In that case refresh
 # only the email line — never touch the password.
+#
+# The rewrite is SCOPED TO THE ADMIN'S BLOCK. users_database.yml is no longer
+# guaranteed to hold exactly one user, so the previous unanchored
+# /^[[:space:]]+email:/ rule was a latent data-loss bug: it stamped the
+# operator's address onto EVERY user in the file, on every self-check tick,
+# silently redirecting each of their password-reset mails to the admin.
+# Block tracking is by indent — the first key under `users:` establishes the
+# per-user indent, keys at that indent switch blocks, and only deeper `email:`
+# keys inside the admin's own block are rewritten.
 if [ -f "$USERS_DB" ] && grep -q "^[[:space:]]*password:" "$USERS_DB"; then
     TMP="$(mktemp)"
-    awk -v new="$ADMIN_EMAIL" '
-        /^[[:space:]]+email:/ {
-            match($0, /^[[:space:]]+/)
-            print substr($0, 1, RLENGTH) "email: \"" new "\""
-            next
+    awk -v admin="$AUTHELIA_ADMIN" -v new="$ADMIN_EMAIL" '
+        BEGIN { in_users = 0; user_indent = -1; in_admin = 0 }
+        # `users:` opens the map; any other column-0 key closes it.
+        /^users:[[:space:]]*$/ { in_users = 1; print; next }
+        /^[^[:space:]#]/       { in_users = 0; user_indent = -1; in_admin = 0; print; next }
+        in_users && match($0, /^[[:space:]]+/) {
+            indent = RLENGTH
+            key = $0
+            sub(/^[[:space:]]+/, "", key)
+            sub(/:.*$/, "", key)
+            if (key != "") {
+                if (user_indent == -1) user_indent = indent
+                if (indent == user_indent) in_admin = (key == admin)
+                else if (in_admin && key == "email") {
+                    printf "%s%s: \"%s\"\n", substr($0, 1, indent), "email", new
+                    next
+                }
+            }
         }
         { print }
     ' "$USERS_DB" > "$TMP"
@@ -187,11 +223,7 @@ if [ -f "$USERS_DB" ] && grep -q "^[[:space:]]*password:" "$USERS_DB"; then
         log_info "users_database.yml already seeded; refreshed admin email to ${ADMIN_EMAIL}"
     fi
 else
-    # Authelia's admin username is fixed to 'admin' — a single well-known local
-    # login. (This used to be qualified with "regardless of DEFAULT_USER", which
-    # named the host/CasaOS user; CasaOS is gone and nothing reads that var any
-    # more, so it was dropped from .pcs.env.)
-    AUTHELIA_ADMIN="admin"
+    # AUTHELIA_ADMIN is set above the branch — the refresh path needs it too.
     DEFAULT_PWD="$("$ENV_MGR" get DEFAULT_PWD "$SECRET_ENV")"
     if [ -z "$DEFAULT_PWD" ]; then
         log_error "DEFAULT_PWD not set in $SECRET_ENV; cannot seed Authelia admin. Run scripts/tools/generate-default-pwd.sh, then re-run."
