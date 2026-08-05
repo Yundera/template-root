@@ -188,13 +188,13 @@ if [ -n "$OPERATOR_API" ] && [ -n "$YND_USER_JWT" ]; then
       # Forward the IdP's group membership. Without this Dex silently drops the
       # claim, and the admin dashboard sees no groups at all — which now means
       # the PCS owner is treated as a plain user and loses the dashboard
-      # (settings-center-app derives its admin role from `admins`).
+      # (settings-center-app derives its admin role from \`admins\`).
       #
       # NOTE the asymmetry with the Authelia connector, which also lists
       # 'groups' in its scopes: this IdP exposes groups through the PROFILE
       # scope (oidcAPI.ts -> claims: { profile: ["groups"] }) and defines no
       # 'groups' scope at all. Requesting one here would ask for a scope the
-      # provider does not have. `profile` below is what carries it.
+      # provider does not have. \`profile\` below is what carries it.
       #
       # "insecure" refers to staleness, not exposure: Dex only refreshes group
       # claims when the ID token is refreshed, so an ownership change does not
