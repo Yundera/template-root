@@ -116,11 +116,23 @@ log_info "Rendered Dex config at $CONFIG_OUT"
 # particular) passes through verbatim.
 #
 # NOT VALIDATED, deliberately — this runs before Dex sees the file, and a
-# schema check here would be a second, drifting copy of Dex's own. The cost is
-# that a malformed drop-in crash-loops Dex and takes interactive login with it.
-# Two rules for anything written here: keep the shape above, and never reuse an
-# id the template already renders (`authelia`, `yundera`) — Dex rejects
-# duplicate connector ids at startup.
+# schema check here would be a second, drifting copy of Dex's own.
+#
+# THE COST IS HIGH, so read this before adding one. Dex resolves every oidc
+# connector's discovery document AT STARTUP and treats a failure as fatal:
+#
+#   failed to initialize server: server: Failed to open connector demo:
+#   failed to get provider: 502 Bad Gateway
+#
+# and the process exits. A drop-in pointing at an issuer that is down, slow to
+# boot, or not yet routed by Caddy therefore takes down ALL interactive login on
+# this PCS — Local Account and Yundera Login included, not just itself. Whatever
+# writes a drop-in must confirm the issuer answers over its public URL first.
+# A malformed drop-in does the same thing via a YAML parse error.
+#
+# Two more rules: keep the shape above, and never reuse an id the template
+# already renders (`authelia`, `yundera`) — Dex rejects duplicate ids at
+# startup.
 # ---------------------------------------------------------------------------
 CONNECTORS_D="$DEX_ROOT/connectors.d"
 mkdir -p "$CONNECTORS_D"
