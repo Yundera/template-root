@@ -35,6 +35,13 @@ log:
 authentication_backend:
   file:
     path: /config/users_database.yml
+    # Reload the user store when it changes on disk. The Account panel in the
+    # admin dashboard adds and revokes local accounts by rewriting this file
+    # (via scripts/tools/authelia-user-manager.sh on the host); without watch
+    # the change would not take effect until the next `docker restart authelia`,
+    # which drops every session on the box. Verified supported on 4.39 —
+    # Authelia rejects unknown configuration keys, and this one validates.
+    watch: true
 
 session:
   cookies:

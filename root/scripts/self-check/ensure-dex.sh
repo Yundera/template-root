@@ -6,6 +6,7 @@
 #     and re-emits the connector secrets),
 #   - read the Dex<->Authelia connector secret (AUTHELIA_DEX_SECRET, minted by
 #     ensure-authelia.sh) so the Local Account connector renders,
+#   - concatenate any drop-in connectors from dex/connectors.d/*.yaml,
 #   - own the sqlite data dir so the dex container (uid 1001) can write dex.db,
 #   - restart dex so a re-rendered config is picked up.
 #
@@ -22,6 +23,7 @@
 #
 # Storage layout (host /DATA/AppData/yundera/):
 #   dex/config.yaml          rendered Dex config (re-rendered each run)
+#   dex/connectors.d/*.yaml  drop-in connectors, concatenated into config.yaml
 #   dex/dex.db               Dex sqlite store (clients, codes, refresh tokens, keys)
 #
 # RECOVERY / BACKUP: none of this needs backing up — it is all CACHE.
@@ -34,6 +36,9 @@
 #     simply log in again (Dex regenerates its signing keys, invalidating old
 #     tokens). Deleting /DATA/AppData/yundera/dex is therefore safe — this script
 #     reconstructs config.yaml and the rest self-heals through normal logins.
+#   - ONE EXCEPTION: connectors.d/ (below) is not cache. It is whatever the
+#     deployment dropped in, and nothing here regenerates it. Wiping the dex dir
+#     silently removes those connectors from the login page.
 #
 # NETWORK: Dex's gRPC client-management API is UNAUTHENTICATED, so the rendered
 # config binds it to a static IP (172.31.7.2) on the isolated `dex-internal`
@@ -85,6 +90,47 @@ envsubst '${DOMAIN} ${AUTHELIA_DEX_SECRET}' < "$TEMPLATE" > "$TMP"
 mv "$TMP" "$CONFIG_OUT"
 chmod 600 "$CONFIG_OUT"
 log_info "Rendered Dex config at $CONFIG_OUT"
+
+# ---------------------------------------------------------------------------
+# Drop-in connectors — /DATA/AppData/yundera/dex/connectors.d/*.yaml
+#
+# A generic extension point, deliberately shaped like Authelia's clients.d/*.yml:
+# a deployment can federate Dex to something this template does not ship without
+# the template knowing anything about it. Each file holds one or more items for
+# the `connectors:` block, indented two spaces to match the template:
+#
+#     - type: oidc
+#       id: example
+#       name: Example
+#       config:
+#         issuer: https://example-${DOMAIN}
+#         ...
+#
+# The directory lives in the runtime data dir, NOT the template tree, so
+# ensure-template-sync.sh's rsync never touches it and a drop-in survives
+# updates. Concatenated onto the freshly-rendered config, which is rewritten
+# from scratch each run — so this never accumulates duplicates.
+#
+# ${DOMAIN} is the only token expanded, letting a drop-in reference the PCS
+# domain without knowing it at write time. Anything else ($-bearing secrets in
+# particular) passes through verbatim.
+#
+# NOT VALIDATED, deliberately — this runs before Dex sees the file, and a
+# schema check here would be a second, drifting copy of Dex's own. The cost is
+# that a malformed drop-in crash-loops Dex and takes interactive login with it.
+# Two rules for anything written here: keep the shape above, and never reuse an
+# id the template already renders (`authelia`, `yundera`) — Dex rejects
+# duplicate connector ids at startup.
+# ---------------------------------------------------------------------------
+CONNECTORS_D="$DEX_ROOT/connectors.d"
+mkdir -p "$CONNECTORS_D"
+shopt -s nullglob
+for dropin in "$CONNECTORS_D"/*.yaml "$CONNECTORS_D"/*.yml; do
+    printf '\n' >> "$CONFIG_OUT"
+    envsubst '${DOMAIN}' < "$dropin" >> "$CONFIG_OUT"
+    log_info "Added drop-in Dex connector from $(basename "$dropin")"
+done
+shopt -u nullglob
 
 # ---------------------------------------------------------------------------
 # Yundera Login connector — federates to the orchestrator's OIDC IdP so users
@@ -139,6 +185,21 @@ if [ -n "$OPERATOR_API" ] && [ -n "$YND_USER_JWT" ]; then
       userNameKey: email
       getUserInfo: true
       insecureSkipEmailVerified: true
+      # Forward the IdP's group membership. Without this Dex silently drops the
+      # claim, and the admin dashboard sees no groups at all — which now means
+      # the PCS owner is treated as a plain user and loses the dashboard
+      # (settings-center-app derives its admin role from `admins`).
+      #
+      # NOTE the asymmetry with the Authelia connector, which also lists
+      # 'groups' in its scopes: this IdP exposes groups through the PROFILE
+      # scope (oidcAPI.ts -> claims: { profile: ["groups"] }) and defines no
+      # 'groups' scope at all. Requesting one here would ask for a scope the
+      # provider does not have. `profile` below is what carries it.
+      #
+      # "insecure" refers to staleness, not exposure: Dex only refreshes group
+      # claims when the ID token is refreshed, so an ownership change does not
+      # take effect until the user logs in again.
+      insecureEnableGroups: true
       scopes:
         - openid
         - profile
