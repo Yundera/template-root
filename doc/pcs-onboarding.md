@@ -1,6 +1,6 @@
 # PCS onboarding — claiming the local account
 
-Status: **implemented, except the provisioning-mail CTA.**
+Status: **implemented.**
 
 | Piece | State |
 |---|---|
@@ -9,7 +9,7 @@ Status: **implemented, except the provisioning-mail CTA.**
 | Conditional Local Account connector (`ensure-dex.sh`) | ✅ implemented |
 | `tools/onboarding.sh` + deployment override | ✅ implemented |
 | First-start wizard (`settings-center-app`) | ✅ implemented |
-| Provisioning-mail CTA (`pcs-orchestrator`) | ❌ not retargeted |
+| Provisioning-mail CTA (`pcs-orchestrator`) | ✅ implemented |
 
 This doc covers how a fresh PCS goes from "provisioned" to "the owner has a
 working login". It replaces the CasaOS first-run wizard, which disappeared with
@@ -49,8 +49,8 @@ password in its environment.
 | Claim mechanism | A subcommand of the existing host script — `authelia-user-manager.sh claim` — not a separate primitive. |
 | Managed onboarding | **Path C** — SSO. The owner proves ownership via Yundera Login, whose owner gate is enforced server-side. No onboarding secret. |
 | Break-glass | **The Yundera support SSH key**, which already exists and is independent of the whole login chain. |
-| Entry point | One stable URL — `https://admin-${DOMAIN}/start` — that adapts to the claimed/unclaimed state. Not a single-use link. |
-| Enforcement | Soft. `/start` has no skip button; Dex shows only Yundera Login until claimed. No AppShield or Maison change. |
+| Entry point | One stable URL — `https://admin-${DOMAIN}` — that adapts to the claimed/unclaimed state. Not a single-use link, and not a dedicated route: the wizard gates the whole admin app shell. |
+| Enforcement | Soft. The wizard has no skip button; Dex shows only Yundera Login until claimed. No AppShield or Maison change. |
 
 ---
 
@@ -284,7 +284,7 @@ no support key — but their owner has root on their own machine.
 "Your PCS is ready" mail   (the existing provisioning mail, CTA retargeted)
         │
         ▼
-https://admin-${DOMAIN}/start
+https://admin-${DOMAIN}
         │  not authenticated
         ▼
       Dex  →  [ Log in with Yundera ]      ← the only connector while unclaimed
@@ -317,9 +317,8 @@ registered owner — fail-closed, no opt-out flag
 (`src/service/oidc/validation.ts:39-51`, wired unconditionally at
 `src/service/oidcAPI.ts:120`; documented at `doc/oidc-idp.md:143`).
 
-> Note: `pcs-orchestrator/CLAUDE.md` describes the owner gate as "off by
-> default". That line is stale — the code and `doc/oidc-idp.md` both say always
-> enforced. Worth correcting when this lands.
+> `pcs-orchestrator/CLAUDE.md` used to describe this gate as "off by default",
+> which was never true of the code. Corrected when this landed.
 
 So "is this browser the owner of this PCS?" is answered by the Yundera Login
 round-trip itself. A secret would only add a second, weaker answer to a question
@@ -328,7 +327,7 @@ it is lost.
 
 ### Why one stable, adaptive URL
 
-`/start` is not a single-use activation page. It is the permanent entry point:
+The admin app URL is not a single-use activation page. It is the permanent entry point:
 the provisioning mail links to it, the yundera.com dashboard links to it, and it
 works from any device at any time because Dex re-authenticates the owner on every
 visit.
@@ -343,7 +342,7 @@ The mail template never has to change again, and "I lost the email" stops being 
 support case. `authelia-user-manager.sh list` now returns a `disabled` field per
 user, which is how the page tells the two states apart.
 
-### Where `/start` lives
+### Where the wizard lives
 
 The admin app (`settings-center-app`, `admin-${DOMAIN}`). It already exists, is a
 Next.js app, is an OIDC client of Dex, and SSHes to the host as the `admin`
@@ -353,13 +352,13 @@ Caddy label, and no new certificate.
 ### Enforcement is deliberately soft
 
 A user who navigates directly to `maison-${DOMAIN}` gets in via Yundera Login
-without ever seeing `/start`. **This is accepted.** The mitigations are:
+without ever seeing the wizard. **This is accepted.** The mitigations are:
 
-- `/start` has **no skip button** — claiming the account is the only way out of
+- the wizard has **no skip button** — claiming the account is the only way out of
   the wizard;
 - Dex presents only Yundera Login until the account is claimed, so no second
   door is advertised;
-- both the mail CTA and the dashboard button point at `/start`.
+- both the mail CTA and the dashboard button point at the admin app.
 
 Explicitly **not** built: a redirect in the AppShield gate or in Maison that
 bounces un-onboarded users. It would cover the gap, but it puts onboarding state
@@ -372,7 +371,7 @@ into an unusable PCS.
 
 The terminal **is** the onboarding process. The installer prompts for a username
 and password (or uses `--generate` and prints the result), calls `claim`, and the
-box serves its first page already claimed: Dex shows Local Account, `/start`
+box serves its first page already claimed: Dex shows Local Account, the admin app
 renders "you're all set".
 
 No part of Path C is required for this to work, and nothing in the managed flow
@@ -419,10 +418,10 @@ source.
 | | `authelia-user-manager.sh`: `claim` verb, `disabled` in `list`, `PROTECTED_USER` from `LOCAL_ADMIN_USER` | ✅ |
 | | `ensure-dex.sh`: conditional Authelia connector, never-empty warning | ✅ |
 | | `dex.config.yaml.tmpl`: connector block lifted out into the script | ✅ |
-| `settings-center-app` | `/start` Getting Started page + API route invoking `claim` over host SSH; adaptive on claimed state; no skip button | ❌ |
+| `settings-center-app` | `OnboardingGate` around the app shell + API routes invoking `onboarding.sh` over host SSH; adaptive on claimed state; no skip button | ✅ |
 | | `AutheliaUsers.ts`: `PROTECTED_USER` is still the literal `'admin'`. It is only a 400-vs-500 nicety (the script is the enforcing copy), but it is wrong after a rename | ❌ |
-| `pcs-orchestrator` | retarget the provisioning mail CTA to `admin-${DOMAIN}/start`; correct the stale owner-gate line in `CLAUDE.md` | ❌ |
-| yundera.com dashboard | *(optional)* "Finish setup" button → `admin-${DOMAIN}/start` | ❌ |
+| `pcs-orchestrator` | provisioning mail CTA retargeted to `admin-${DOMAIN}`; stale owner-gate line in `CLAUDE.md` corrected; shared `adminUrl()` helper | ✅ |
+| yundera.com dashboard | *(optional)* "Finish setup" button → `admin-${DOMAIN}` | ❌ |
 
 Nothing changes in AppShield or Maison.
 
