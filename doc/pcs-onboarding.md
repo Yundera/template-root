@@ -1,13 +1,14 @@
 # PCS onboarding — claiming the local account
 
-Status: **template-root side implemented. Admin-app wizard still to build.**
+Status: **implemented, except the provisioning-mail CTA.**
 
 | Piece | State |
 |---|---|
 | Unclaimed seed (`ensure-authelia.sh`) | ✅ implemented |
 | `claim` verb (`tools/authelia-user-manager.sh`) | ✅ implemented |
 | Conditional Local Account connector (`ensure-dex.sh`) | ✅ implemented |
-| `/start` Getting Started wizard (`settings-center-app`) | ❌ not built |
+| `tools/onboarding.sh` + deployment override | ✅ implemented |
+| First-start wizard (`settings-center-app`) | ✅ implemented |
 | Provisioning-mail CTA (`pcs-orchestrator`) | ❌ not retargeted |
 
 This doc covers how a fresh PCS goes from "provisioned" to "the owner has a
@@ -158,12 +159,77 @@ is never in the host command line, never in the script's argv, and never on
 disk; it is briefly visible in the container's process table, i.e. to root on
 this host — who already owns the hash file and can reset any credential anyway.
 
-Callers: the `/start` wizard (over the admin app's existing host SSH), an
-operator over SSH, and scripted provisioning via `--generate`.
+Callers: `onboarding.sh` (which the admin app's wizard drives over its existing
+host SSH), an operator over SSH, and scripted provisioning via `--generate`.
 
 **The invariant to protect: the unclaimed state must always be resolvable from a
 terminal, with no network dependency.** As long as that holds, everything below
 is a convenience layer that cannot brick a PCS.
+
+---
+
+## The onboarding hook — `scripts/tools/onboarding.sh`
+
+The admin app does not know what onboarding *is*. It collects a credential and
+calls one host script; that script decides what happens. This is the same
+reasoning as `dex/connectors.d`: a deployment changes behaviour by replacing a
+file, and the shipped product carries no branch for it.
+
+```
+onboarding.sh status            -> {"claimed":bool,"completed":bool,"username":str}
+onboarding.sh run               -> performs onboarding (password on stdin)
+onboarding.sh mark-completed    -> records that the wizard was seen
+```
+
+**Override**: if `/DATA/AppData/yundera/onboarding.d/onboarding.sh` exists and is
+executable, it is `exec`'d in place of the shipped one. It lives in the runtime
+data dir on purpose — editing the template copy in place on a live PCS looks like
+it works and is then silently reverted by the next `ensure-template-sync.sh`
+rsync, since `root/.ignore` preserves only the env files, logs, `*.backup` and
+`migration-markers/`.
+
+**Inputs**: `ONBOARDING_USERNAME` (required), `ONBOARDING_DISPLAYNAME`,
+`ONBOARDING_GENERATE=1`; the **password arrives on stdin**. That split is not
+stylistic. The admin app reaches the host by base64-ing its whole command into an
+ssh argv (`HostExecutor.ts`), so a password in the environment would sit
+decodable in `ps` on both the container and the host. `executeHostCommand` grew
+an optional `stdin` for exactly this. Anything replacing this script must keep
+the split.
+
+**Two states, deliberately not conflated** — the same distinction the rest of this
+document turns on:
+
+| | Source | Cost of being wrong |
+|---|---|---|
+| `claimed` | derived from `users_database.yml` on every call | box is unreachable |
+| `completed` | marker at `/DATA/AppData/yundera/onboarding/completed` | a redundant welcome screen |
+
+Deriving `claimed` is what keeps a restored backup or a migrated PCS honest: the
+migration pipeline copies `/DATA/AppData/yundera/auth/`, so a marker-driven
+wizard would either nag forever on a claimed box or — far worse — refuse to
+appear on an unclaimed one, stranding an owner with no credential and no Local
+Account connector to make one with. The marker only ever suppresses the welcome.
+
+Marker placement follows from the same constraint: `/DATA/AppData/yundera/` is
+user data (backed up, carried by migration), not the template tree.
+
+`run` writes the marker **only after** the claim succeeds, so a half-finished
+onboarding is re-runnable, and it refuses outright on an already-claimed box
+(re-claiming would rename the owner account).
+
+### The wizard
+
+`OnboardingGate` wraps the app shell rather than sitting on a route — "first
+start" has to be unavoidable, and a route can be navigated away from. Unclaimed
+renders a blocking dialog with no skip and no close; claimed-but-never-welcomed
+renders a dismissible one over a live dashboard. If the status call fails it
+renders the app untouched: a broken endpoint must never lock a working dashboard
+behind a modal.
+
+It is a **convenience over the script, never the only path**. The admin app
+redirects unauthenticated loads to Dex, and an unclaimed FOSS box may legitimately
+have no connectors at all — so on that box nobody can reach the wizard and the
+terminal is the way in, by design.
 
 ---
 
@@ -320,11 +386,19 @@ The earlier plan here — pre-claim each demo box with a published password — 
 **superseded and should not be revived**. `demo/src/lib/DemoManager.ts`
 (`buildOpenEntryAuthCommand()`) instead deploys `navikt/mock-oauth2-server` to
 `/DATA/AppData/.demo-auth` and drops an "Open Entry" connector into Dex's
-`connectors.d/`. A visitor clicks one button and is in.
+`connectors.d/`. A visitor is in without typing anything.
 
 That is strictly better here: no published credential to rotate, no shared
 account to lock out, and — because the presence of the drop-in file *is* the
 condition — no auth-bypass path that could ever ship to a real user's PCS.
+
+Open Entry is also the demo's **only** connector, which is why the visitor sees
+no login screen at all: Local Account is absent (the box is never claimed) and
+Yundera Login is switched off with `YUNDERA_LOGIN_ENABLED=0` in the demo's
+`PCS_ENV`. That connector federates to the orchestrator IdP, whose owner policy
+admits only the PCS's owner — the demo service's own account — so on a demo box
+it could only ever take a visitor's real credentials and then deny them. With a
+single connector left, Dex skips its chooser and redirects straight through.
 
 Two consequences for this document: the demo needs no `YUNDERA_OIDC` flag (the
 concept was dropped entirely), and Authelia's per-username regulation lockout is
