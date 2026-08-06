@@ -15,9 +15,9 @@
 #     its connector), pbkdf2 hash cached for Authelia's client config,
 #   - render configuration.yml every run (tracks DOMAIN; re-emits the always-
 #     present single-client identity_providers block),
-#   - seed the admin user in users_database.yml from DEFAULT_PWD,
-#     refreshing only the email on subsequent runs (Authelia owns the password
-#     once the user changes it),
+#   - seed the owner account in users_database.yml as UNCLAIMED (disabled, with
+#     a throwaway hash nobody ever learns), refreshing only the email on
+#     subsequent runs (Authelia owns the password once the user sets it),
 #   - restart authelia so a re-rendered config is picked up.
 #
 # Storage layout (host /DATA/AppData/yundera/auth/, mounted at /config):
@@ -29,9 +29,10 @@
 #   db.sqlite                                   Authelia session/regulation store
 #
 # RECOVERY: unlike the Dex dir, this holds the local account and IS worth
-# keeping. Losing it resets the local password to DEFAULT_PWD on the next run
-# (the user can also recover via the email reset flow), so it is not a dead end,
-# but back it up with the rest of /DATA/AppData/yundera.
+# keeping. Losing it drops the PCS back to the UNCLAIMED state on the next run
+# — the Local Account connector disappears from Dex and the owner re-claims via
+# Yundera Login or over SSH (`tools/authelia-user-manager.sh claim`), so it is
+# not a dead end, but back it up with the rest of /DATA/AppData/yundera.
 
 set -euo pipefail
 
@@ -173,15 +174,30 @@ if [ -z "$ADMIN_EMAIL" ]; then
     log_warn "EMAIL not set in $USER_ENV; falling back to ${ADMIN_EMAIL}"
 fi
 
-# Authelia's admin username is fixed to 'admin' — a single well-known local
-# login. (This used to be qualified with "regardless of DEFAULT_USER", which
-# named the host/CasaOS user; CasaOS is gone and nothing reads that var any
-# more, so it was dropped from .pcs.env.)
-AUTHELIA_ADMIN="admin"
+# The owner's Authelia username. `admin` is only the SEED placeholder: the user
+# picks their own at onboarding, and `authelia-user-manager.sh claim` renames the
+# entry and records the choice in LOCAL_ADMIN_USER (.pcs.env). Read it back here
+# so the email refresh below tracks the right block after a rename.
+#
+# .pcs.env and NOT .ynd.user.env: the latter is re-fetched from the orchestrator's
+# /user/info on every tick by ensure-yundera-user-data.sh, which would clobber a
+# locally-chosen value. The username is host-local state.
+#
+# Absent = every PCS provisioned before onboarding existed, all of which have a
+# literal `admin` — so the default keeps them working untouched.
+AUTHELIA_ADMIN="$("$ENV_MGR" get LOCAL_ADMIN_USER "$YND_ROOT/.pcs.env")"
+[ -n "$AUTHELIA_ADMIN" ] || AUTHELIA_ADMIN="admin"
 
-# One-shot marker: a `password:` field already present means the file is seeded
+# One-shot marker: a `password:` field already present means the file is SEEDED
 # (by us, or by Authelia writing a password change back). In that case refresh
 # only the email line — never touch the password.
+#
+# Seeded is not the same as CLAIMED. The unclaimed seed below also writes a
+# `password:` (Authelia rejects a user without one — see the seed block), so this
+# check stays a pure "has this file been written yet?" test and is unaffected by
+# onboarding. Claimed-ness is `disabled` being absent/false, and the only reader
+# of that is ensure-dex.sh, which uses it to decide whether the Local Account
+# connector is offered at all. Do not conflate the two.
 #
 # The rewrite is SCOPED TO THE ADMIN'S BLOCK. users_database.yml is no longer
 # guaranteed to hold exactly one user, so the previous unanchored
@@ -223,18 +239,37 @@ if [ -f "$USERS_DB" ] && grep -q "^[[:space:]]*password:" "$USERS_DB"; then
         log_info "users_database.yml already seeded; refreshed admin email to ${ADMIN_EMAIL}"
     fi
 else
-    # AUTHELIA_ADMIN is set above the branch — the refresh path needs it too.
-    DEFAULT_PWD="$("$ENV_MGR" get DEFAULT_PWD "$SECRET_ENV")"
-    if [ -z "$DEFAULT_PWD" ]; then
-        log_error "DEFAULT_PWD not set in $SECRET_ENV; cannot seed Authelia admin. Run scripts/tools/generate-default-pwd.sh, then re-run."
-        exit 1
-    fi
-
-    ADMIN_HASH="$(docker run --rm "$AUTHELIA_IMAGE" \
-        authelia crypto hash generate argon2 --password "$DEFAULT_PWD" 2>/dev/null \
+    # --- seed UNCLAIMED --------------------------------------------------------
+    # A fresh PCS ships with NO usable local credential. The account exists but
+    # is `disabled: true`, which Authelia enforces at authentication: a login
+    # with the right password is refused as "user not found". The owner claims it
+    # at onboarding (admin app, or `authelia-user-manager.sh claim` over SSH),
+    # choosing both the username and the password.
+    #
+    # Two hard constraints from Authelia 4.39, both verified against the image —
+    # violate either and the container dies on startup, taking every interactive
+    # login on the PCS with it:
+    #
+    #   1. a user entry MUST carry a non-empty `password:`. Seeding the
+    #      "unclaimed" state as a bare `disabled: true` with no password field
+    #      is FATAL:
+    #        could not validate the schema: Users.admin.users: non zero value required
+    #      Hence the throwaway hash below — random, never printed, never stored
+    #      anywhere else, and unusable precisely because the account is disabled.
+    #   2. `users:` MUST NOT be empty, so we cannot simply omit the entry and let
+    #      the claim create the first one:
+    #        could not validate the schema: users: non zero value required
+    #      Hence a PLACEHOLDER key, which `claim` renames to the user's choice.
+    #
+    # DEFAULT_PWD is deliberately NOT used here any more. It is an app-seed
+    # secret — ensure-maison-app-mirror.sh injects it into every installed app as
+    # default_pwd / PCS_DEFAULT_PASSWORD / APP_DEFAULT_PASSWORD — so making it
+    # the PCS login password put the owner's credential in every app's env.
+    THROWAWAY_HASH="$(docker run --rm "$AUTHELIA_IMAGE" \
+        authelia crypto hash generate argon2 --random --random.length 64 2>/dev/null \
         | awk '/^Digest:/{print $2}')"
-    if [ -z "$ADMIN_HASH" ]; then
-        log_error "Failed to argon2-hash the admin password via $AUTHELIA_IMAGE"
+    if [ -z "$THROWAWAY_HASH" ]; then
+        log_error "Failed to generate the unclaimed-account placeholder hash via $AUTHELIA_IMAGE"
         exit 1
     fi
 
@@ -242,15 +277,16 @@ else
     cat > "$TMP" <<EOF
 users:
   ${AUTHELIA_ADMIN}:
+    disabled: true
     displayname: "Administrator"
-    password: "${ADMIN_HASH}"
+    password: "${THROWAWAY_HASH}"
     email: "${ADMIN_EMAIL}"
     groups:
       - admins
 EOF
     chmod 600 "$TMP"
     mv "$TMP" "$USERS_DB"
-    log_success "Seeded Authelia admin user: ${AUTHELIA_ADMIN}"
+    log_success "Seeded Authelia owner account UNCLAIMED (${AUTHELIA_ADMIN}, disabled until onboarding)"
 fi
 
 # Restart Authelia if running so the re-rendered config is picked up. SIGHUP is

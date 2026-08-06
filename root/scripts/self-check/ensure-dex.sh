@@ -91,6 +91,71 @@ mv "$TMP" "$CONFIG_OUT"
 chmod 600 "$CONFIG_OUT"
 log_info "Rendered Dex config at $CONFIG_OUT"
 
+# Tracks whether anything at all ended up under `connectors:` — see the
+# never-empty check at the end of this script.
+CONNECTOR_COUNT=0
+
+# ---------------------------------------------------------------------------
+# Local Account connector — Authelia — ONLY when the account is claimed.
+#
+# A fresh PCS seeds its owner account `disabled: true` (ensure-authelia.sh), and
+# Authelia refuses a disabled user as "user not found" — so offering the button
+# before onboarding shows a login that cannot possibly work. Claimed-ness is
+# therefore the render condition, and it is read straight from the user store:
+# at least one user that is not disabled.
+#
+# FAIL-OPEN on any doubt (yq missing, unreadable file, malformed YAML): render
+# the connector. Guessing "unclaimed" on a box that is actually claimed would
+# hide the owner's only door; guessing "claimed" on a fresh box merely restores
+# the old cosmetic wart. The asymmetry is deliberate.
+# ---------------------------------------------------------------------------
+USERS_DB="/DATA/AppData/yundera/auth/users_database.yml"
+LOCAL_ACCOUNT_CLAIMED=1
+if [ -f "$USERS_DB" ] && command -v yq >/dev/null 2>&1; then
+    if ENABLED="$(yq -e '[.users[] | select(.disabled != true)] | length' "$USERS_DB" 2>/dev/null)"; then
+        [ "$ENABLED" -gt 0 ] 2>/dev/null || LOCAL_ACCOUNT_CLAIMED=0
+    fi
+fi
+
+if [ "$LOCAL_ACCOUNT_CLAIMED" = "1" ]; then
+    cat >> "$CONFIG_OUT" <<YAML
+  # Local Account — Authelia, the PCS-local credential store (replaces reliance
+  # on CasaOS). Publicly-trusted host so Dex's back-channel TLS validates against
+  # system roots. Authelia's own login page carries the password-reset link.
+  - type: oidc
+    id: authelia
+    name: Local Account
+    config:
+      issuer: https://local-auth-${DOMAIN}
+      clientID: dex
+      clientSecret: "${AUTHELIA_DEX_SECRET}"
+      # Dex's own connector callback.
+      redirectURI: https://auth-${DOMAIN}/callback
+      # Authelia 4.39 returns scope claims (preferred_username, email, name) from
+      # its userinfo endpoint rather than in the ID token, so Dex must fetch it.
+      getUserInfo: true
+      userNameKey: preferred_username
+      # Group membership drives authorization in the PCS admin dashboard: the
+      # \`admins\` group in users_database.yml becomes role=admin in the session
+      # (settings-center-app, callback.ts deriveRole), which is what gates every
+      # panel and every /api/admin route. Without these two settings the claim
+      # never arrives and EVERY local account is treated as a plain user.
+      #
+      # "insecure" is about staleness, not exposure: Dex only refreshes group
+      # claims when the ID token is refreshed, so promoting or demoting a user
+      # does not take effect until they log in again.
+      insecureEnableGroups: true
+      scopes:
+        - openid
+        - profile
+        - email
+        - groups
+YAML
+    CONNECTOR_COUNT=$((CONNECTOR_COUNT + 1))
+else
+    log_info "Local account is unclaimed; omitting the Local Account connector until onboarding completes"
+fi
+
 # ---------------------------------------------------------------------------
 # Drop-in connectors — /DATA/AppData/yundera/dex/connectors.d/*.yaml
 #
@@ -140,6 +205,7 @@ shopt -s nullglob
 for dropin in "$CONNECTORS_D"/*.yaml "$CONNECTORS_D"/*.yml; do
     printf '\n' >> "$CONFIG_OUT"
     envsubst '${DOMAIN}' < "$dropin" >> "$CONFIG_OUT"
+    CONNECTOR_COUNT=$((CONNECTOR_COUNT + 1))
     log_info "Added drop-in Dex connector from $(basename "$dropin")"
 done
 shopt -u nullglob
@@ -217,6 +283,7 @@ if [ -n "$OPERATOR_API" ] && [ -n "$YND_USER_JWT" ]; then
         - profile
         - email
 YAML
+        CONNECTOR_COUNT=$((CONNECTOR_COUNT + 1))
         log_info "Added Yundera Login connector (client ${YND_CLIENT_ID})"
     else
         log_warn "Yundera client registration returned no client_id/secret; skipping Yundera Login connector"
@@ -239,6 +306,28 @@ if [ -d "$THEME_SRC" ]; then
     log_info "Provisioned custom Dex frontend at $DEX_FRONTEND"
 else
     log_warn "dex-theme/ not found in template; Dex will use its stock login UI"
+fi
+
+# ---------------------------------------------------------------------------
+# Never-empty check.
+#
+# Not a gate — the config is already written and Dex starts fine with an empty
+# connector list. This exists so the state is OBVIOUS in yundera.log instead of
+# being reverse-engineered from a login page with no buttons.
+#
+# Reaching zero means: the local account is still unclaimed AND no Yundera Login
+# client could be registered (no OPERATOR_API / USER_JWT, or the IdP refused).
+# Nobody can log in interactively. The way out is the Yundera support key, which
+# is SSH and therefore independent of this entire chain — ensure-support-key.sh
+# re-asserts it every tick and provisioning aborts without it:
+#
+#     ssh admin@<host>
+#     sudo /DATA/AppData/casaos/apps/yundera/scripts/tools/authelia-user-manager.sh claim <username>
+# ---------------------------------------------------------------------------
+if [ "$CONNECTOR_COUNT" -eq 0 ]; then
+    log_warn "Dex rendered with NO connectors — interactive login is impossible on this PCS."
+    log_warn "  Cause: local account unclaimed and no Yundera Login client registered."
+    log_warn "  Fix over SSH: sudo $YND_ROOT/scripts/tools/authelia-user-manager.sh claim <username>"
 fi
 
 # Perms: dex (uid 1001) owns its tree so it can create dex.db.

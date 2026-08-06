@@ -3,6 +3,8 @@
 #
 # Usage:
 #   authelia-user-manager.sh list
+#   authelia-user-manager.sh claim <username> [displayname]   # password on stdin
+#   authelia-user-manager.sh claim --generate <username> [displayname]
 #   authelia-user-manager.sh add <username> <displayname> <email> [groups-csv]
 #   authelia-user-manager.sh delete <username>
 #   authelia-user-manager.sh set-password <username>
@@ -13,8 +15,9 @@
 # this over SSH (`sudo -n authelia-user-manager.sh ...`) and parses stdout, the
 # same way default-app.ts drives env-file-manager.sh.
 #
-#   list                    -> [{"username","displayname","email","groups":[]}]
+#   list                    -> [{"username","displayname","email","groups":[],"disabled"}]
 #   add / set-password      -> {"username","password"}   <- plaintext, shown ONCE
+#   claim                   -> {"username","claimed":true[,"password"]}
 #   delete / set-email      -> {"username"}
 #
 # Passwords are never accepted as input and never appear in argv: `authelia
@@ -36,16 +39,26 @@ AUTH_ROOT="/DATA/AppData/yundera/auth"
 USERS_DB="$AUTH_ROOT/users_database.yml"
 LOCK_FILE="$AUTH_ROOT/.users-db.lock"
 
+YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+PCS_ENV="$YND_ROOT/.pcs.env"
+ENV_MGR="$YND_ROOT/scripts/tools/env-file-manager.sh"
+
 # Must stay in sync with AUTHELIA_IMAGE in self-check/ensure-authelia.sh — both
 # hash with the same binary, and a version skew there would mean two different
 # argon2 parameter sets in one users_database.yml.
 AUTHELIA_IMAGE="authelia/authelia:4.39"
 
-# The seeded operator account. Deleting it is unrecoverable: the seed branch in
+# The owner account. Deleting it is unrecoverable: the seed branch in
 # ensure-authelia.sh is guarded by a FILE-level check (`grep -q "password:"`), so
 # with any other user still present it will not re-seed, and the box is left with
 # no way back into the dashboard.
-PROTECTED_USER="admin"
+#
+# NOT a fixed string any more: the owner picks their username at onboarding and
+# `claim` records it in LOCAL_ADMIN_USER (.pcs.env). `admin` is the seed
+# placeholder and the fallback for every PCS provisioned before onboarding
+# existed. Kept in sync with the identical lookup in ensure-authelia.sh.
+PROTECTED_USER="$("$ENV_MGR" get LOCAL_ADMIN_USER "$PCS_ENV" 2>/dev/null || echo "")"
+[ -n "$PROTECTED_USER" ] || PROTECTED_USER="admin"
 ADMIN_GROUP="admins"
 
 error() {
@@ -140,6 +153,47 @@ generate_password_and_digest() {
     [ -n "$GEN_DIGEST" ] || error "Could not parse argon2 digest from authelia output"
 }
 
+# argon2-hash a CALLER-SUPPLIED password (onboarding: the owner chooses it).
+# Sets GEN_DIGEST. Reads the plaintext from $1 and never echoes it.
+#
+# The header above explains why the other paths use --random: the Authelia CLI
+# refuses piped stdin, and --password would put the secret in the HOST's process
+# list. This path needs a specific password, so it hands it over as an
+# ENVIRONMENT variable and expands it inside the container:
+#
+#   docker run -e SECRET ...      <- name only; the value comes from our env,
+#                                    so it is absent from the host's argv
+#   sh -c 'authelia ... "$SECRET"' <- expansion happens in the container
+#
+# The plaintext is therefore never in the host command line, never in this
+# script's argv (it arrives on stdin), and never on disk. It is briefly visible
+# in the CONTAINER's process table, i.e. to root on this host — who already owns
+# the hash file and can reset any credential anyway. That residual is the reason
+# the other subcommands prefer --random.
+hash_password() {
+    local plaintext="$1" out
+    [ -n "$plaintext" ] || error "password must not be empty"
+
+    out="$(SECRET="$plaintext" docker run --rm -e SECRET --entrypoint sh "$AUTHELIA_IMAGE" \
+        -c 'authelia crypto hash generate argon2 --password "$SECRET"' 2>/dev/null)" \
+        || error "Failed to run $AUTHELIA_IMAGE to hash the password"
+
+    GEN_DIGEST="$(printf '%s' "$out" | awk '/^Digest:/{print $2}')"
+    [ -n "$GEN_DIGEST" ] || error "Could not parse argon2 digest from authelia output"
+}
+
+# Claimed = at least one user that is not disabled.
+#
+# Deliberately a property of the FILE rather than of a particular username, so it
+# survives the rename that `claim` performs and stays correct once there are
+# several accounts. ensure-dex.sh evaluates the same predicate to decide whether
+# to offer the Local Account connector — keep the two in sync.
+is_claimed() {
+    local enabled
+    enabled="$(yq '[.users[] | select(.disabled != true)] | length' "$USERS_DB" 2>/dev/null || echo 0)"
+    [ "${enabled:-0}" -gt 0 ] 2>/dev/null
+}
+
 # Apply a yq expression to a temp copy, sanity-check it, then swap it in.
 # Never edits USERS_DB in place: a yq failure partway through would otherwise
 # leave the only copy of the local account store truncated.
@@ -176,9 +230,134 @@ cmd_list() {
             "username": .key,
             "displayname": (.value.displayname // ""),
             "email": (.value.email // ""),
-            "groups": (.value.groups // [])
+            "groups": (.value.groups // []),
+            "disabled": (.value.disabled // false)
           })
     ' "$USERS_DB"
+}
+
+# Onboarding. Turns the unclaimed seed into the owner's real account:
+#   - renames the placeholder key to the username THEY choose,
+#   - sets the password THEY choose (stdin) or mints one (--generate),
+#   - clears `disabled`, which is what makes the account usable at all,
+#   - records the username in LOCAL_ADMIN_USER so ensure-authelia.sh keeps
+#     stamping the owner's email onto the right block after the rename,
+#   - re-runs ensure-dex.sh so the Local Account connector appears immediately
+#     rather than at the next self-check tick.
+#
+# Why rename rather than create-then-delete: Authelia rejects an empty `users:`
+# map (verified — "could not validate the schema: users: non zero value
+# required"), so the placeholder cannot be removed first. Carrying the entry
+# forward also preserves the email that ensure-authelia.sh seeded from
+# .ynd.user.env.
+#
+# The username is the OIDC `preferred_username`, which every app on the PCS keys
+# its per-user account on. Choosing it HERE is free — nothing has logged in yet.
+# Changing it later is not: it would orphan every app-side account. That is why
+# there is no rename subcommand, and why claim refuses to run twice without
+# --force.
+cmd_claim() {
+    local generate=0
+    if [ "${1:-}" = "--generate" ]; then
+        generate=1
+        shift
+    fi
+    local force=0
+    if [ "${1:-}" = "--force" ]; then
+        force=1
+        shift
+    fi
+
+    local username="${1:-}" displayname="${2:-}"
+    validate_username "$username"
+    [ -n "$displayname" ] || displayname="Administrator"
+    [ "${#displayname}" -le 64 ] || error "displayname must be 64 characters or fewer"
+
+    if [ "$force" -ne 1 ] && is_claimed; then
+        error "this PCS is already claimed; use 'set-password' to change a password, or pass --force to re-claim"
+    fi
+
+    # The entry to convert: the recorded owner if present, else the sole user.
+    # A box with several accounts and no recorded owner is ambiguous, so refuse
+    # rather than guess which one to rename.
+    local placeholder=""
+    if user_exists "$PROTECTED_USER"; then
+        placeholder="$PROTECTED_USER"
+    else
+        local count
+        count="$(yq '.users | length' "$USERS_DB" 2>/dev/null || echo 0)"
+        [ "${count:-0}" = "1" ] \
+            || error "cannot determine which account to claim (no '$PROTECTED_USER', and $count users present)"
+        placeholder="$(yq -r '.users | keys | .[0]' "$USERS_DB")"
+    fi
+
+    if [ "$username" != "$placeholder" ] && user_exists "$username"; then
+        error "user already exists: $username"
+    fi
+
+    if [ "$generate" -eq 1 ]; then
+        generate_password_and_digest
+    else
+        # Password on stdin so it never reaches this script's argv either.
+        local plaintext=""
+        if [ -t 0 ]; then
+            error "no password on stdin; pipe one (printf '%s' 'pass' | ... claim <username>) or pass --generate"
+        fi
+        IFS= read -r plaintext || true
+        [ -n "$plaintext" ] || error "no password on stdin; pipe one or pass --generate"
+        [ "${#plaintext}" -ge 8 ] || error "password must be at least 8 characters"
+        hash_password "$plaintext"
+        GEN_PASSWORD=""
+    fi
+
+    # Drop the placeholder only when the owner actually renamed it. Built as a
+    # string here rather than branched inside the expression: yq has no
+    # if/then/else (its lexer rejects `if` outright), and doing it in one
+    # expression keeps the whole rename to a SINGLE atomic write — a two-call
+    # version interrupted midway would leave both entries behind.
+    local del_clause=""
+    [ "$placeholder" != "$username" ] && del_clause='| del(.users[strenv(P)])'
+
+    # Assigning the whole entry is what clears `disabled`: the replacement object
+    # simply has no such key. Groups are deduped in a SEPARATE top-level step —
+    # a piped `unique` inside the map literal silently drops the key instead of
+    # deduping it.
+    P="$placeholder" U="$username" DN="$displayname" PW="$GEN_DIGEST" G="$ADMIN_GROUP" \
+        write_users_db '
+            .users[strenv(U)] = {
+                "displayname": strenv(DN),
+                "password": strenv(PW),
+                "email": (.users[strenv(P)].email // ""),
+                "groups": (.users[strenv(P)].groups // [])
+            }
+            | .users[strenv(U)].groups = ((.users[strenv(U)].groups // []) + [strenv(G)] | unique)
+            | .users[strenv(U)].displayname style="double"
+            | .users[strenv(U)].password style="double"
+            | .users[strenv(U)].email style="double"
+            | .users[strenv(U)].groups[] style="double"
+            '"$del_clause"
+
+    user_exists "$username" || error "verification failed: $username missing after claim"
+    is_claimed || error "verification failed: account still reads as unclaimed after claim"
+
+    # Record the choice BEFORE re-rendering Dex: ensure-authelia.sh reads it to
+    # keep the owner's email stamped on the right block.
+    "$ENV_MGR" set LOCAL_ADMIN_USER "$username" "$PCS_ENV" >/dev/null 2>&1 \
+        || echo "WARNING: could not record LOCAL_ADMIN_USER in $PCS_ENV" >&2
+
+    # Surface the Local Account connector now. Failure is non-fatal — the next
+    # self-check tick renders it anyway.
+    if [ -x "$YND_ROOT/scripts/self-check/ensure-dex.sh" ]; then
+        "$YND_ROOT/scripts/self-check/ensure-dex.sh" >/dev/null 2>&1 \
+            || echo "WARNING: ensure-dex.sh failed; the Local Account connector appears at the next self-check" >&2
+    fi
+
+    if [ -n "${GEN_PASSWORD:-}" ]; then
+        U="$username" P="$GEN_PASSWORD" yq -o=json -I=0 -n \
+            '{"username": strenv(U), "claimed": true, "password": strenv(P)}'
+    else
+        U="$username" yq -o=json -I=0 -n '{"username": strenv(U), "claimed": true}'
+    fi
 }
 
 cmd_add() {
@@ -280,6 +459,10 @@ usage() {
     cat >&2 <<'EOF'
 Usage:
   authelia-user-manager.sh list
+  authelia-user-manager.sh claim [--generate] [--force] <username> [displayname]
+      Onboarding: names the owner account, sets its password and enables it.
+      Password is read from stdin unless --generate is given.
+      e.g.  printf '%s' 'my-password' | authelia-user-manager.sh claim pierre "Pierre H"
   authelia-user-manager.sh add <username> <displayname> <email> [groups-csv]
   authelia-user-manager.sh delete <username>
   authelia-user-manager.sh set-password <username>
@@ -294,6 +477,7 @@ shift
 
 case "$COMMAND" in
     list)         [ $# -eq 0 ] || usage; cmd_list ;;
+    claim)        [ $# -ge 1 ] && [ $# -le 4 ] || usage; cmd_claim "$@" ;;
     add)          [ $# -ge 3 ] && [ $# -le 4 ] || usage; cmd_add "$@" ;;
     delete)       [ $# -eq 1 ] || usage; cmd_delete "$@" ;;
     set-password) [ $# -eq 1 ] || usage; cmd_set_password "$@" ;;

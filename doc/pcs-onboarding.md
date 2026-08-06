@@ -1,12 +1,20 @@
 # PCS onboarding — claiming the local account
 
-Status: **design. Not implemented.**
+Status: **template-root side implemented. Admin-app wizard still to build.**
 
-This doc covers how a fresh PCS goes from "provisioned" to "the owner has a working
-login". It replaces the CasaOS first-run wizard, which disappears with CasaOS
-(see `maison-migration.md` — Maison has no authentication at all).
+| Piece | State |
+|---|---|
+| Unclaimed seed (`ensure-authelia.sh`) | ✅ implemented |
+| `claim` verb (`tools/authelia-user-manager.sh`) | ✅ implemented |
+| Conditional Local Account connector (`ensure-dex.sh`) | ✅ implemented |
+| `/start` Getting Started wizard (`settings-center-app`) | ❌ not built |
+| Provisioning-mail CTA (`pcs-orchestrator`) | ❌ not retargeted |
 
-It assumes the local-account IdP is in place: Authelia sits behind Dex as the
+This doc covers how a fresh PCS goes from "provisioned" to "the owner has a
+working login". It replaces the CasaOS first-run wizard, which disappeared with
+CasaOS (see `maison-migration.md` — Maison has no authentication of its own).
+
+The local-account IdP it assumes is in place: Authelia sits behind Dex as the
 "Local Account" connector, owning the PCS-local credential
 (`scripts/self-check/ensure-authelia.sh`, `auth/configuration.yml.tmpl`,
 `dex.config.yaml.tmpl`).
@@ -15,20 +23,17 @@ It assumes the local-account IdP is in place: Authelia sits behind Dex as the
 
 ## The problem
 
-Today a new user who picks "Local Account" on the Dex page has to discover two
-things nobody told them: that the username is hardcoded `admin`
-(`ensure-authelia.sh:193`), and that their password is `DEFAULT_PWD` — a 24-char
-random generated on the host by `tools/generate-default-pwd.sh` and never shown to
-them. In practice the only way through is to guess `admin` and run a password
-reset. That is the whole of PCS onboarding once CasaOS's getting-started page is
-gone.
+A new PCS used to seed Authelia's `admin` with `DEFAULT_PWD` — a 24-char random
+generated on the host and **never shown to the owner**. The only way in was to
+guess the username `admin` and run a password reset. Meanwhile the Dex login page
+advertised a "Local Account" button that, in practice, nobody could use.
 
-There is a second, quieter problem. `DEFAULT_PWD` is also injected into every
+There was a second, quieter problem. `DEFAULT_PWD` is also injected into every
 installed app as `APP_DEFAULT_PASSWORD` / `PCS_DEFAULT_PASSWORD` / `default_pwd`
-(`ensure-maison-app-mirror.sh`, `render_as_casaos()` — the injection list outlived CasaOS
-itself, which was removed in migration phase 3).
-It is an **app seed secret**, not a human credential. Using it as the local login
-password means every app on the box ships with the PCS login password in its env.
+(`ensure-maison-app-mirror.sh`, `render_as_casaos()` — the injection list outlived
+CasaOS itself). It is an **app seed secret**, not a human credential. Using it as
+the local login password meant every app on the box shipped with the PCS login
+password in its environment.
 
 ---
 
@@ -36,111 +41,174 @@ password means every app on the box ships with the PCS login password in its env
 
 | | Decision |
 |---|---|
-| Initial credential | **None.** The local account is seeded *unclaimed*: `disabled: true`, no `password` field. There is no default credential anywhere on the box. |
-| `DEFAULT_PWD` | Demoted to app-seed-only. It is no longer the Authelia password. |
-| Claim mechanism | A single host-side primitive, `scripts/tools/claim-local-account.sh`, with four callers. |
-| Managed onboarding | **Path C** — SSO. The user proves ownership via Yundera Login, whose owner gate is already enforced server-side. No onboarding secret. |
-| Onboarding secret | **Not built.** Break-glass is SSH + the claim script. |
+| Initial credential | **None.** The owner account is seeded *unclaimed*: `disabled: true`, with a throwaway hash nobody ever learns. There is no usable default credential on the box. |
+| `DEFAULT_PWD` | Demoted to app-seed-only. No longer the Authelia password. |
+| Username | **Chosen by the owner at onboarding.** `admin` is only the seed placeholder; the claim renames it. |
+| Password | **Chosen by the owner**, passed on stdin. `--generate` mints one instead (demo, scripted provisioning). |
+| Claim mechanism | A subcommand of the existing host script — `authelia-user-manager.sh claim` — not a separate primitive. |
+| Managed onboarding | **Path C** — SSO. The owner proves ownership via Yundera Login, whose owner gate is enforced server-side. No onboarding secret. |
+| Break-glass | **The Yundera support SSH key**, which already exists and is independent of the whole login chain. |
 | Entry point | One stable URL — `https://admin-${DOMAIN}/start` — that adapts to the claimed/unclaimed state. Not a single-use link. |
 | Enforcement | Soft. `/start` has no skip button; Dex shows only Yundera Login until claimed. No AppShield or Maison change. |
-| FOSS | `install.sh` calls the claim primitive interactively in the terminal. |
-| Demo | Pre-claimed at provision time via the existing `COMMAND` channel, with `YUNDERA_OIDC=0`. |
 
 ---
 
 ## The unclaimed account model
 
-`ensure-authelia.sh` currently seeds `admin` with an argon2 hash of `DEFAULT_PWD`.
-It should instead seed:
+`ensure-authelia.sh` seeds:
 
 ```yaml
 users:
-  admin:
+  admin:                      # placeholder — the claim renames this
     disabled: true
     displayname: "Administrator"
+    password: "<throwaway argon2 hash, random, never printed>"
     email: "<EMAIL from .ynd.user.env>"
     groups:
       - admins
 ```
 
-No `password` key. Authelia's file backend supports `disabled` per user (see the
-YAML format in Authelia's password reference guide), so "unclaimed" is a real,
-enforced state rather than a convention.
+`disabled: true` is enforced by Authelia at authentication, not merely
+cosmetically: a login attempt with the *correct* password is refused as **`user
+not found`** (verified against `authelia/authelia:4.39`). "Unclaimed" is
+therefore a real, enforced state.
 
-This is the load-bearing simplification. It means:
+### Two constraints that are NOT negotiable
 
-- there is no default credential to leak, guess, or forget to change;
-- the `DEFAULT_PWD` hygiene problem above disappears without a migration;
-- "has this PCS been onboarded?" has exactly one source of truth —
-  does `admin` have a `password` and `disabled: false` in
-  `/DATA/AppData/yundera/auth/users_database.yml`. Everything else (the Dex
-  connector list, the `/start` page, any dashboard badge) is a projection of
-  that bit.
+Both were verified against the image, and violating either is **fatal at
+startup** — Authelia exits and takes every interactive login on the PCS with it:
 
-**Seeding order caveat.** `ensure-authelia.sh:171` treats "a `password:` field is
-present" as the already-seeded marker and refreshes only the email on subsequent
-runs. That check still works unchanged: an unclaimed file has no `password` key,
-so the seed block re-runs harmlessly every tick; a claimed file has one, so the
-password is never touched. The only change needed is that the seed block writes
-the disabled/no-password form instead of hashing `DEFAULT_PWD`.
+1. **A user entry must carry a non-empty `password:`.** Seeding the unclaimed
+   state as a bare `disabled: true` with no password field — which an earlier
+   draft of this document specified — dies with:
+   ```
+   could not validate the schema: Users.admin.users: non zero value required
+   ```
+   Hence the throwaway hash. It is random, never stored anywhere else, and
+   unusable precisely because the account is disabled.
+2. **`users:` must not be empty.** So the placeholder cannot simply be omitted
+   and created for the first time by the claim:
+   ```
+   could not validate the schema: users: non zero value required
+   ```
+   Hence a placeholder entry that the claim **renames**.
 
-### Authelia config changes that go with it
+### What "claimed" means
 
-In `auth/configuration.yml.tmpl`:
+**At least one user in `users_database.yml` that is not `disabled`.**
 
-- `authentication_backend.file.search.email: true` and
-  `search.case_insensitive: true` — the user logs in with **their own email
-  address** instead of discovering `admin`. Keep `admin` as the users_database
-  *key*: it is the `preferred_username` claim and therefore the OIDC `sub` that
-  every app keys its per-user account on. Changing it later resets every app.
-- `authentication_backend.file.watch: true` — hot-reload after the claim script
-  writes the file, so no Authelia restart is needed on the claim path.
-- `password_policy` (zxcvbn or standard) — the claim flow is the only place a
-  password is chosen, so enforce strength there.
-- `server.asset_path` pointing at a `logo.png` / `favicon.ico` / `locales/en/`
-  override directory. Authelia allows **no CSS or JS injection** — those three
-  are the entire branding surface. The `locales` override is how the login and
-  reset copy gets reworded (e.g. "Username" → "Email address").
+Deliberately a property of the file rather than of a particular username: it
+survives the rename the claim performs, and stays correct once the box has
+several accounts. `ensure-dex.sh` and `authelia-user-manager.sh` (`is_claimed`)
+evaluate the same predicate — keep them in sync.
+
+Note this is *not* the same as the seed marker in `ensure-authelia.sh`, which
+greps for a `password:` field. Because the unclaimed seed also writes one, that
+check remains a pure "has this file been written yet?" test and is unaffected by
+onboarding. **Do not conflate the two.**
+
+### Where the chosen username is recorded
+
+`LOCAL_ADMIN_USER`, in **`.pcs.env`**.
+
+Not `.ynd.user.env`: that file is re-fetched from the orchestrator's
+`/user/info` on every self-check tick by `ensure-yundera-user-data.sh`, which
+would clobber a locally-chosen value. The username is host-local state.
+
+Absent means `admin` — which is exactly right for every PCS provisioned before
+onboarding existed. Two readers:
+
+- `ensure-authelia.sh`, so the owner's email keeps being stamped onto the right
+  block after a rename;
+- `authelia-user-manager.sh`, as `PROTECTED_USER` (the account that cannot be
+  deleted or have its email changed locally).
+
+### Why the username is chosen once, at claim time
+
+The username is the OIDC `preferred_username`, which every app on the PCS keys
+its per-user account on. Choosing it **at onboarding is free** — nothing has
+logged in yet. Changing it later is not: it would orphan every app-side account.
+That is why there is no `rename` subcommand and why `claim` refuses to run a
+second time without `--force`.
 
 ---
 
-## The claim primitive
+## The claim verb
 
-`scripts/tools/claim-local-account.sh` — one script, four callers, no UI
-assumptions.
+```bash
+# owner-chosen password, never in argv (stdin → env var → container)
+printf '%s' 'their-password' | authelia-user-manager.sh claim pierre "Pierre H"
 
-Responsibilities:
+# generated instead, returned once in the JSON
+authelia-user-manager.sh claim --generate owner "The Owner"
+```
 
-1. Take a password (argument, stdin, or interactive prompt).
-2. argon2-hash it via `docker run --rm authelia/authelia:4.39 authelia crypto
-   hash generate argon2` — the same image and invocation
-   `ensure-authelia.sh:200` already uses for the seed and
-   `ensure-authelia.sh:100` uses for the Dex client secret.
-3. Write `password:` into `users_database.yml` and set `disabled: false`,
-   atomically, chmod 600.
-4. Re-run `scripts/self-check/ensure-dex.sh` so the Local Account connector
-   appears immediately rather than at the next self-check tick.
-5. Be idempotent, and support a `--force` flag that overwrites an already-claimed
-   password (the demo needs this; see below).
+In one atomic write it renames the placeholder to the chosen username (carrying
+the email and groups forward), sets the password, and clears `disabled` — then
+records `LOCAL_ADMIN_USER` and re-runs `ensure-dex.sh` so the Local Account
+connector appears immediately rather than at the next tick.
 
-Callers:
+Password handling differs from the other subcommands on purpose. `add` and
+`set-password` use `authelia crypto hash generate argon2 --random` because the
+Authelia CLI refuses piped stdin and `--password` would put the secret in the
+**host's** process list. The claim needs a *specific* password, so it passes the
+plaintext as an environment variable and expands it inside the container
+(`docker run -e SECRET … sh -c 'authelia … --password "$SECRET"'`). The plaintext
+is never in the host command line, never in the script's argv, and never on
+disk; it is briefly visible in the container's process table, i.e. to root on
+this host — who already owns the hash file and can reset any credential anyway.
 
-| Caller | Invocation |
-|---|---|
-| Managed (Path C) | `/start` wizard in the admin app, over its existing host SSH |
-| FOSS | `install.sh`, interactively |
-| Demo | orchestrator `COMMAND` channel, `--force`, fixed password |
-| Break-glass | operator over SSH |
+Callers: the `/start` wizard (over the admin app's existing host SSH), an
+operator over SSH, and scripted provisioning via `--generate`.
 
-Putting the logic here rather than in the admin app's request handler is what
-makes the FOSS, demo, and recovery paths fall out for free. **The invariant to
-protect: the unclaimed state must always be resolvable from a terminal, with no
-network dependency.** As long as that holds, everything below is a convenience
-layer that cannot brick a PCS.
+**The invariant to protect: the unclaimed state must always be resolvable from a
+terminal, with no network dependency.** As long as that holds, everything below
+is a convenience layer that cannot brick a PCS.
 
-Hardening note: passing the password as an argv to `docker run` exposes it in
-`ps` for the duration. Prefer stdin if the Authelia CLI accepts it; on a
-single-owner box the exposure is small but it is free to avoid.
+---
+
+## Dex connector rendering
+
+**Local Account (Authelia) is rendered only when the account is claimed.** An
+unclaimed PCS must not advertise a login that cannot work — that was the actual
+defect in the old flow. The connector moved out of `dex.config.yaml.tmpl` into a
+conditional append in `ensure-dex.sh`, the same append-on-condition shape the
+Yundera Login connector already used.
+
+The check **fails open**: on any doubt (`yq` missing, unreadable file, malformed
+YAML) the connector is rendered. Guessing "unclaimed" on a box that is actually
+claimed would hide the owner's only door; guessing "claimed" on a fresh box
+merely restores the old cosmetic wart. The asymmetry is deliberate.
+
+**Yundera Login** is rendered when `OPERATOR_API` + `USER_JWT` are present and
+client registration succeeds; on any failure it is skipped and login continues
+via Authelia. Login must never hard-depend on the Yundera cloud.
+
+### The never-empty case
+
+Unclaimed **and** no Yundera connector = a login page with zero buttons.
+`ensure-dex.sh` logs this loudly, with the fix command, but does **not** treat it
+as an error — Dex starts fine with an empty connector list, and this is a
+legitimate transient state on a fresh box, not a config fault.
+
+It is not a brick, because the recovery path is SSH and therefore independent of
+this entire chain:
+
+```bash
+ssh admin@<host>
+sudo /DATA/AppData/casaos/apps/yundera/scripts/tools/authelia-user-manager.sh claim <username>
+```
+
+The **Yundera support key** guarantees that access on managed boxes:
+`ensure-support-key.sh` re-asserts it into `admin@host`'s `authorized_keys` every
+self-check tick, it is on by default (`ENSURE_SUPPORT_KEY`), and during first
+boot it is mandatory — a missing support key aborts provisioning rather than
+shipping an unreachable PCS. The dashboard toggle can only opt *out*, so there is
+no circular "log in to regain access" dependency.
+
+Two residual cases, both accepted: an owner who sets `ENSURE_SUPPORT_KEY=false`
+*and* loses Yundera Login is genuinely stuck (self-inflicted), and FOSS boxes get
+no support key — but their owner has root on their own machine.
 
 ---
 
@@ -162,10 +230,10 @@ https://admin-${DOMAIN}/start
    Getting Started (admin app)
    ┌──────────────────────────────────────────────┐
    │  Your PCS is live at …                       │
-   │  ▸ Set a local password       ← no skip      │
+   │  ▸ Choose your username + password ← no skip │
    │  ▸ (tour: domains, files, first app)         │
    └──────────────────────────────────────────────┘
-        │  claim-local-account.sh  →  ensure-dex.sh
+        │  authelia-user-manager.sh claim  →  ensure-dex.sh
         ▼
    Maison  (or ?rd= target)
 ```
@@ -192,10 +260,6 @@ round-trip itself. A secret would only add a second, weaker answer to a question
 already answered — plus a value to mint, mail, expire, consume, and support when
 it is lost.
 
-The scenario a secret would have covered is browser-based claim without SSH while
-yundera.com is unreachable. Break-glass is SSH plus the claim script; an operator
-recovering a dead PCS is at a terminal anyway.
-
 ### Why one stable, adaptive URL
 
 `/start` is not a single-use activation page. It is the permanent entry point:
@@ -210,28 +274,22 @@ The **page** decides what to render:
 
 That removes the need for any onboarded/not state to be synchronised anywhere.
 The mail template never has to change again, and "I lost the email" stops being a
-support case.
-
-Optional, not required: the PCS could piggyback a `localAccountClaimed` flag on
-the existing authenticated `/user/info` call to the orchestrator so the
-yundera.com dashboard can render a "finish setup" badge instead of a generic
-button. This buys nagging, not correctness — the flow works without it. A public
-`GET /onboarding-status` on the PCS was considered and rejected: it leaks the bit
-to anyone, and the authenticated channel already exists.
+support case. `authelia-user-manager.sh list` now returns a `disabled` field per
+user, which is how the page tells the two states apart.
 
 ### Where `/start` lives
 
 The admin app (`settings-center-app`, `admin-${DOMAIN}`). It already exists, is a
 Next.js app, is an OIDC client of Dex, and SSHes to the host as the `admin`
-sudoer — so it can invoke `claim-local-account.sh` with no new mounts, no new
-container, no new Caddy label, and no new certificate.
+sudoer — so it can invoke the claim with no new mounts, no new container, no new
+Caddy label, and no new certificate.
 
 ### Enforcement is deliberately soft
 
 A user who navigates directly to `maison-${DOMAIN}` gets in via Yundera Login
 without ever seeing `/start`. **This is accepted.** The mitigations are:
 
-- `/start` has **no skip button** — setting the password is the only way out of
+- `/start` has **no skip button** — claiming the account is the only way out of
   the wizard;
 - Dex presents only Yundera Login until the account is claimed, so no second
   door is advertised;
@@ -240,123 +298,57 @@ without ever seeing `/start`. **This is accepted.** The mitigations are:
 Explicitly **not** built: a redirect in the AppShield gate or in Maison that
 bounces un-onboarded users. It would cover the gap, but it puts onboarding state
 into an image every app on the PCS depends on, and it converts a broken wizard
-into an unusable PCS. Finding another way in is enough friction.
-
----
-
-## Dex connector rendering
-
-`ensure-dex.sh` gains two conditions:
-
-- **Local Account (Authelia)** — rendered only when the account is claimed. An
-  unclaimed PCS must not advertise a login that cannot work; that is the actual
-  defect in today's flow.
-- **Yundera Login** — rendered only when `YUNDERA_OIDC` is not `0` *and* client
-  registration succeeds. The registration-failure branch already exists
-  (`ensure-dex.sh:102-162`); `YUNDERA_OIDC` adds an explicit opt-out.
-
-`YUNDERA_OIDC` lives in `.pcs.env` and means "this PCS federates to Yundera".
-`0` is the honest description of both a demo box and a FOSS box. It is checked
-independently of `USER_JWT` so it works even where a JWT happens to be present.
-
-### The never-empty invariant
-
-Unclaimed **and** no Yundera connector = a login page with zero buttons and a PCS
-nobody can enter. `ensure-dex.sh` must assert it never renders an empty connector
-list, and log loudly if it is about to. The recovery for that state is the claim
-script over SSH — which is exactly why the primitive must not depend on the
-network.
-
-This is the one genuinely new failure mode this design introduces, and it is the
-thing most likely to be silently broken by a later change.
+into an unusable PCS.
 
 ---
 
 ## FOSS / self-hosted
 
-The terminal **is** the onboarding process. `install.sh` prompts for an initial
-password (or generates and prints one), calls `claim-local-account.sh`, and sets
-`YUNDERA_OIDC=0`. By the time the box serves its first page the account is
-claimed, Dex shows Local Account only, and `/start` renders its "you're all set"
-form.
+The terminal **is** the onboarding process. The installer prompts for a username
+and password (or uses `--generate` and prints the result), calls `claim`, and the
+box serves its first page already claimed: Dex shows Local Account, `/start`
+renders "you're all set".
 
 No part of Path C is required for this to work, and nothing in the managed flow
-may become a hard dependency of the claim primitive.
+may become a hard dependency of the claim.
 
 ---
 
-## Demo
+## Demo — solved differently, no claim involved
 
-Demo visitors have no Yundera account, and the owner gate is fail-closed — a
-stranger's Firebase uid is denied (`validation.ts:50`). So Yundera Login is not
-merely useless on a demo box, it is an actively bad experience: sign in, get
-`AccessDenied`. **A demo PCS must ship pre-claimed with a published local
-credential.**
+The earlier plan here — pre-claim each demo box with a published password — was
+**superseded and should not be revived**. `demo/src/lib/DemoManager.ts`
+(`buildOpenEntryAuthCommand()`) instead deploys `navikt/mock-oauth2-server` to
+`/DATA/AppData/.demo-auth` and drops an "Open Entry" connector into Dex's
+`connectors.d/`. A visitor clicks one button and is in.
 
-The `demo` package already has the right hook: `buildDemoCommand()` in
-`src/lib/DemoManager.ts` concatenates optional bash fragments into the single
-`COMMAND` the orchestrator runs on the freshly-provisioned host. Add a
-`buildLocalAccountClaimCommand()` alongside `buildAppDataPreloadCommand()` and
-`buildAnalyticsInjectionCommand()` that:
+That is strictly better here: no published credential to rotate, no shared
+account to lock out, and — because the presence of the drop-in file *is* the
+condition — no auth-bypass path that could ever ship to a real user's PCS.
 
-1. calls `claim-local-account.sh --force` with the published demo password —
-   `--force` is required because demos re-provision daily and the seed logic
-   deliberately never overwrites an existing password;
-2. sets `YUNDERA_OIDC=0` via `tools/env-file-manager.sh` and re-runs
-   `ensure-dex.sh`.
+Two consequences for this document: the demo needs no `YUNDERA_OIDC` flag (the
+concept was dropped entirely), and Authelia's per-username regulation lockout is
+no longer a shared-demo-box concern because no visitor ever types a password.
 
-Result: no wizard, no nag, one connector, and the demo page's existing
-copy-to-clipboard credential UI keeps working unchanged.
-
-### Rejected: no-auth demo
-
-Running the demo with authentication disabled ("Dex passes all") was considered
-and rejected. Maison mounts the Docker socket and the AppShield gate is the only
-thing in front of it, so an open demo box is unauthenticated root on the public
-internet — abusable for mining, spam relay, or hosting content under the Yundera
-domain in the hours between resets. Disposability bounds data loss, not liability.
-Published credentials cost the visitor one paste, and the login is now part of
-what the demo is showing.
-
-### Demo-specific items
-
-1. **Regulation is per-username, not per-IP.** Authelia bans the account after 5
-   failures in 2 minutes for 10 minutes
-   (`configuration.yml.tmpl:62-65`). On a shared demo box, one visitor fumbling
-   the password locks `admin` out **for every visitor** for ten minutes. Loosen
-   or disable `regulation` on demo instances.
-2. **The analytics hook dies with CasaOS.** `buildAnalyticsInjectionCommand()`
-   `docker cp`s a `custom.js` into `casaos:/var/lib/casaos/www/js/custom.js` to
-   detect login and `postMessage` to the demo iframe. Authelia allows no JS
-   injection (logo, favicon, locales only), so this needs a new source of the
-   login-success signal.
-3. **Cookie `same_site` in the iframe.** The demo embeds the PCS in an iframe and
-   the OIDC chain already crosses `maison-…` → `auth-…` → `casaos-oidc-…`
-   there today, so cross-origin redirects in a nested context are evidently fine
-   in this setup. The one new variable is that
-   `configuration.yml.tmpl:44` sets Authelia's session cookie to
-   `same_site: 'lax'`, and a Lax cookie is not sent on cross-site redirects
-   inside a nested browsing context. Check what Dex and the bridge set and match
-   it (likely `none`, whose `Secure` requirement is already satisfied — every
-   origin is HTTPS). One line of config; verify on the demo as soon as Authelia
-   is in the chain.
+One item survives: `buildAnalyticsInjectionCommand()` used to `docker cp` a
+`custom.js` into CasaOS to detect login and `postMessage` to the demo iframe.
+CasaOS is gone and Authelia allows no JS injection, so that signal needs a new
+source.
 
 ---
 
 ## Change list
 
-| Package | Change |
-|---|---|
-| `template-root` | `ensure-authelia.sh`: seed unclaimed (`disabled: true`, no password), stop consuming `DEFAULT_PWD` |
-| | `auth/configuration.yml.tmpl`: `search.email`, `search.case_insensitive`, `watch`, `password_policy`, `asset_path`, `same_site` review |
-| | new `scripts/tools/claim-local-account.sh` |
-| | `ensure-dex.sh`: conditional Authelia connector, `YUNDERA_OIDC` gate, never-empty assertion |
-| | `.pcs.env.example`: document `YUNDERA_OIDC` |
-| | new `auth/assets/` (logo, favicon, `locales/en`) |
-| `settings-center-app` | `/start` Getting Started page + API route that invokes the claim script over host SSH; adaptive on claimed state; no skip button |
-| `pcs-orchestrator` | retarget the provisioning mail CTA to `admin-${DOMAIN}/start`; correct the stale owner-gate line in `CLAUDE.md`; *(optional)* accept `localAccountClaimed` on `/user/info` |
-| `demo` | `buildLocalAccountClaimCommand()`; `YUNDERA_OIDC=0`; loosen regulation; replace the CasaOS analytics injection |
-| yundera.com dashboard | *(optional)* "Finish setup" button → `admin-${DOMAIN}/start` |
+| Package | Change | State |
+|---|---|---|
+| `template-root` | `ensure-authelia.sh`: seed unclaimed, stop consuming `DEFAULT_PWD`, resolve `LOCAL_ADMIN_USER` | ✅ |
+| | `authelia-user-manager.sh`: `claim` verb, `disabled` in `list`, `PROTECTED_USER` from `LOCAL_ADMIN_USER` | ✅ |
+| | `ensure-dex.sh`: conditional Authelia connector, never-empty warning | ✅ |
+| | `dex.config.yaml.tmpl`: connector block lifted out into the script | ✅ |
+| `settings-center-app` | `/start` Getting Started page + API route invoking `claim` over host SSH; adaptive on claimed state; no skip button | ❌ |
+| | `AutheliaUsers.ts`: `PROTECTED_USER` is still the literal `'admin'`. It is only a 400-vs-500 nicety (the script is the enforcing copy), but it is wrong after a rename | ❌ |
+| `pcs-orchestrator` | retarget the provisioning mail CTA to `admin-${DOMAIN}/start`; correct the stale owner-gate line in `CLAUDE.md` | ❌ |
+| yundera.com dashboard | *(optional)* "Finish setup" button → `admin-${DOMAIN}/start` | ❌ |
 
 Nothing changes in AppShield or Maison.
 
@@ -364,14 +356,21 @@ Nothing changes in AppShield or Maison.
 
 ## Open items
 
-- **Getting Started scope.** Beyond the password, how much of the CasaOS
+- **Getting Started scope.** Beyond the credential, how much of the CasaOS
   getting-started page gets rebuilt (domain explainer, where files live, install
   your first app, mail setup)? Additive — it does not change anything above.
+- **Password policy.** `auth/configuration.yml.tmpl` has no `password_policy`, so
+  a password chosen at claim time or via Authelia's portal is unconstrained. The
+  claim enforces a bare 8-character minimum of its own.
+- **Login by email.** `authentication_backend.file.search.email` is still off, so
+  the local login is by username. Less critical now that the owner chooses that
+  username, but still a discoverability win.
+- **Branding.** Authelia allows no CSS/JS injection — `server.asset_path` (logo,
+  favicon, `locales/en`) is the entire surface, and is currently unset. Lower
+  priority than it looks: Dex owns the page users normally see and is themed
+  (`dex-theme/`); Authelia's own page appears only on the local-account leg.
 - **Passkeys.** Once a local password exists, Authelia 4.39 can enrol a passkey
-  from its settings portal. A good follow-up so the independent credential is
-  pleasant to use day-to-day rather than the one nobody touches.
+  from its settings portal — a good follow-up so the independent credential is
+  pleasant day-to-day.
 - **`DEFAULT_PWD` rename.** Its only remaining job is seeding app credentials.
   The name now overstates what it is.
-- **Reset-flow copy.** `identity_validation.reset_password.jwt_lifespan`
-  defaults to 5 minutes. Fine for a genuine reset; check it is not being relied
-  on for anything onboarding-shaped.

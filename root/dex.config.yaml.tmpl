@@ -59,43 +59,22 @@ oauth2:
 # secrets), and apps re-register on every login, so the client list here is
 # disposable cache that rebuilds itself.
 
+# EVERY connector is appended by ensure-dex.sh — none are declared here, and the
+# key below is deliberately left with no items.
+#
+# "Local Account" (Authelia) used to live here as a static entry. It moved into
+# the script because it is now CONDITIONAL: a freshly-provisioned PCS seeds its
+# owner account `disabled: true` (unclaimed), and Authelia refuses a disabled
+# user as "user not found". Rendering the button unconditionally meant a brand
+# new PCS advertised a login that could not work — the exact thing onboarding
+# exists to fix. The script offers it only once the account is claimed. Same
+# append-on-condition shape the Yundera Login connector already used.
+#
+# An empty `connectors:` is valid YAML for Dex and is a legitimate transient
+# state (unclaimed + no operator), not a config error. ensure-dex.sh logs loudly
+# when it renders one, since it means nobody can log in interactively until the
+# account is claimed over SSH.
 connectors:
-  # Local Account — Authelia, the PCS-local credential store (replaces reliance
-  # on CasaOS). Publicly-trusted host so Dex's back-channel TLS validates against
-  # system roots. Authelia's own login page carries the password-reset link.
-  - type: oidc
-    id: authelia
-    name: Local Account
-    config:
-      issuer: https://local-auth-${DOMAIN}
-      clientID: dex
-      clientSecret: "${AUTHELIA_DEX_SECRET}"
-      # Dex's own connector callback.
-      redirectURI: https://auth-${DOMAIN}/callback
-      # Authelia 4.39 returns scope claims (preferred_username, email, name) from
-      # its userinfo endpoint rather than in the ID token, so Dex must fetch it.
-      getUserInfo: true
-      userNameKey: preferred_username
-      # Group membership drives authorization in the PCS admin dashboard: the
-      # `admins` group in users_database.yml becomes role=admin in the session
-      # (settings-center-app, callback.ts deriveRole), which is what gates every
-      # panel and every /api/admin route. Without these two settings the claim
-      # never arrives and EVERY local account is treated as a plain user.
-      #
-      # Authelia emits `groups` from its userinfo endpoint, not the ID token
-      # (that is Authelia's privacy-focused default, and needs no claims_policy
-      # on its side) — getUserInfo above is what makes it reachable.
-      #
-      # "insecure" is about staleness, not exposure: Dex only refreshes group
-      # claims when the ID token is refreshed, so promoting or demoting a user
-      # does not take effect until they log in again. Acceptable here — group
-      # changes on a single-owner box are rare and deliberate.
-      insecureEnableGroups: true
-      scopes:
-        - openid
-        - profile
-        - email
-        - groups
 
   # REMOVED: the `casaos` connector (federated to casaos-oidc-bridge, which
   # authenticated against CasaOS's /v1/users/login). Authelia above is the PCS's
