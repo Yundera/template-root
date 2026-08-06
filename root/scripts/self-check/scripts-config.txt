@@ -39,6 +39,12 @@ ensure-support-key.sh
 # into .pcs.secret.env / .env, which ensure-dex.sh interpolates into the Dex
 # "Local Account" connector's clientSecret.
 ensure-authelia.sh
+# ensure-yundera-login.sh writes dex/connectors.d/yundera.yaml, which
+# ensure-dex.sh concatenates into the rendered config — so it belongs before it.
+# Not a hard dependency: it re-runs ensure-dex.sh itself whenever the drop-in
+# actually changed, which is also what covers the first cycle after this line is
+# introduced (newly-added scripts run last in that one cycle).
+ensure-yundera-login.sh
 ensure-dex.sh
 ensure-user-compose-pulled.sh
 ensure-user-compose-stack-up.sh

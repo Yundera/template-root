@@ -13,8 +13,14 @@
 # Dex is a pure BROKER: it holds no local credential of its own. The local
 # account lives in Authelia (the "Local Account" connector, see
 # ensure-authelia.sh); the old enablePasswordDB break-glass admin has been
-# removed. Interactive login is therefore always federated to a connector —
-# Authelia, plus the optional Yundera Login connector appended below.
+# removed. Interactive login is therefore always federated to a connector.
+#
+# Dex reads exactly ONE config file — it has no include/conf.d mechanism of its
+# own (verified against v2.45.1: `cobra.ExactArgs(1)`, single ReadFile +
+# Unmarshal). connectors.d/ below is how this template provides that anyway, and
+# it is the ONLY way a connector gets added: "Yundera Login" is written by
+# ensure-yundera-login.sh, and only "Local Account" is still rendered inline
+# here (it is the one connector whose secret this script already holds).
 #
 # The `casaos` connector (and the BRIDGE_SECRET it consumed) is gone: Authelia is
 # the PCS-local credential now, and casaos-oidc-bridge died with it. The stale
@@ -191,13 +197,15 @@ fi
 #
 # and the process exits. A drop-in pointing at an issuer that is down, slow to
 # boot, or not yet routed by Caddy therefore takes down ALL interactive login on
-# this PCS — Local Account and Yundera Login included, not just itself. Whatever
-# writes a drop-in must confirm the issuer answers over its public URL first.
+# this PCS — every other connector included, not just itself. Whatever writes a
+# drop-in must confirm the issuer answers over its public URL first, and must
+# REMOVE its file rather than leave a stale one behind when it cannot. See
+# ensure-yundera-login.sh — the in-tree example of both rules.
 # A malformed drop-in does the same thing via a YAML parse error.
 #
-# Two more rules: keep the shape above, and never reuse an id the template
-# already renders (`authelia`, `yundera`) — Dex rejects duplicate ids at
-# startup.
+# Two more rules: keep the shape above, and never reuse a connector id that is
+# already taken — `authelia` (rendered above) and `yundera`
+# (ensure-yundera-login.sh) — Dex rejects duplicate ids at startup.
 # ---------------------------------------------------------------------------
 CONNECTORS_D="$DEX_ROOT/connectors.d"
 mkdir -p "$CONNECTORS_D"
@@ -209,88 +217,6 @@ for dropin in "$CONNECTORS_D"/*.yaml "$CONNECTORS_D"/*.yml; do
     log_info "Added drop-in Dex connector from $(basename "$dropin")"
 done
 shopt -u nullglob
-
-# ---------------------------------------------------------------------------
-# Yundera Login connector — federates to the orchestrator's OIDC IdP so users
-# can sign in with their Yundera (cloud) account. Unlike the CasaOS/Authelia
-# connectors whose secrets are local, this connector's client is registered
-# DYNAMICALLY with the IdP: POST the PCS's USER_JWT to
-# ${OPERATOR_API}/auth/pcs-client, which returns a client_id/secret scoped to
-# this PCS's own auth-${DOMAIN} callback (idempotent — stable across runs).
-#
-# On ANY failure (IdP unreachable, no USER_JWT, malformed response) we log and
-# skip: the connector is simply absent and interactive login continues via
-# Authelia. Login must NEVER hard-depend on the Yundera cloud.
-#
-# Appended to the already-rendered config.yaml (which the render above rewrites
-# from scratch each run, so this never accumulates duplicates), NOT to the
-# template — keeping the skip path a clean no-op and the template stock.
-# ---------------------------------------------------------------------------
-PCS_ENV="$YND_ROOT/.pcs.env"
-OPERATOR_API="$("$ENV_MGR" get OPERATOR_API "$PCS_ENV")"
-# Pre-rename name — see 2026-08-04-11-rename-yundera-api.sh.
-[ -n "$OPERATOR_API" ] || OPERATOR_API="$("$ENV_MGR" get YUNDERA_API "$PCS_ENV")"
-YND_USER_JWT="$("$ENV_MGR" get USER_JWT "$SECRET_ENV")"
-
-if [ -n "$OPERATOR_API" ] && [ -n "$YND_USER_JWT" ]; then
-    YND_REDIRECT_URI="https://auth-${DOMAIN}/callback"
-    YND_REG="$(curl -fsS --max-time 20 \
-        -H "Authorization: Bearer $YND_USER_JWT" \
-        -H "Content-Type: application/json" \
-        -X POST "${OPERATOR_API}/auth/pcs-client" \
-        -d "{\"redirect_uris\":[\"${YND_REDIRECT_URI}\"]}" 2>/dev/null || true)"
-
-    YND_CLIENT_ID="$(printf '%s' "$YND_REG" | grep -o '"client_id":"[^"]*"' | sed 's/.*:"\([^"]*\)"/\1/' || true)"
-    YND_CLIENT_SECRET="$(printf '%s' "$YND_REG" | grep -o '"client_secret":"[^"]*"' | sed 's/.*:"\([^"]*\)"/\1/' || true)"
-
-    if [ -n "$YND_CLIENT_ID" ] && [ -n "$YND_CLIENT_SECRET" ]; then
-        # insecureSkipEmailVerified: the Yundera IdP reports email_verified
-        # honestly (the real Firebase value), and Yundera accounts are not
-        # guaranteed verified at signup. Without this, Dex rejects any account
-        # whose Firebase email is unverified — locking real owners out of their
-        # own PCS. Owner enforcement happens upstream in the IdP, so email
-        # verification is not the access-control boundary here.
-        cat >> "$CONFIG_OUT" <<YAML
-
-  - type: oidc
-    id: yundera
-    name: Yundera Login
-    config:
-      issuer: ${OPERATOR_API}/auth
-      clientID: ${YND_CLIENT_ID}
-      clientSecret: "${YND_CLIENT_SECRET}"
-      redirectURI: ${YND_REDIRECT_URI}
-      userNameKey: email
-      getUserInfo: true
-      insecureSkipEmailVerified: true
-      # Forward the IdP's group membership. Without this Dex silently drops the
-      # claim, and the admin dashboard sees no groups at all — which now means
-      # the PCS owner is treated as a plain user and loses the dashboard
-      # (settings-center-app derives its admin role from \`admins\`).
-      #
-      # NOTE the asymmetry with the Authelia connector, which also lists
-      # 'groups' in its scopes: this IdP exposes groups through the PROFILE
-      # scope (oidcAPI.ts -> claims: { profile: ["groups"] }) and defines no
-      # 'groups' scope at all. Requesting one here would ask for a scope the
-      # provider does not have. \`profile\` below is what carries it.
-      #
-      # "insecure" refers to staleness, not exposure: Dex only refreshes group
-      # claims when the ID token is refreshed, so an ownership change does not
-      # take effect until the user logs in again.
-      insecureEnableGroups: true
-      scopes:
-        - openid
-        - profile
-        - email
-YAML
-        CONNECTOR_COUNT=$((CONNECTOR_COUNT + 1))
-        log_info "Added Yundera Login connector (client ${YND_CLIENT_ID})"
-    else
-        log_warn "Yundera client registration returned no client_id/secret; skipping Yundera Login connector"
-    fi
-else
-    log_warn "OPERATOR_API or USER_JWT unset; skipping Yundera Login connector"
-fi
 
 # Provision the custom Dex frontend (theme + overlaid templates) into the dir the
 # compose file bind-mounts over the stock image. Copied every run so template
@@ -315,8 +241,9 @@ fi
 # connector list. This exists so the state is OBVIOUS in yundera.log instead of
 # being reverse-engineered from a login page with no buttons.
 #
-# Reaching zero means: the local account is still unclaimed AND no Yundera Login
-# client could be registered (no OPERATOR_API / USER_JWT, or the IdP refused).
+# Reaching zero means: the local account is still unclaimed AND no drop-in
+# supplied a connector either (typically ensure-yundera-login.sh finding no
+# OPERATOR_API / USER_JWT, or the IdP refusing to register a client).
 # Nobody can log in interactively. The way out is the Yundera support key, which
 # is SSH and therefore independent of this entire chain — ensure-support-key.sh
 # re-asserts it every tick and provisioning aborts without it:
@@ -326,7 +253,7 @@ fi
 # ---------------------------------------------------------------------------
 if [ "$CONNECTOR_COUNT" -eq 0 ]; then
     log_warn "Dex rendered with NO connectors — interactive login is impossible on this PCS."
-    log_warn "  Cause: local account unclaimed and no Yundera Login client registered."
+    log_warn "  Cause: local account unclaimed and no drop-in connector present."
     log_warn "  Fix over SSH: sudo $YND_ROOT/scripts/tools/authelia-user-manager.sh claim <username>"
 fi
 
