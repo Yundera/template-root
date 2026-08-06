@@ -8,6 +8,7 @@ Status: **implemented.**
 | `claim` verb (`tools/authelia-user-manager.sh`) | ✅ implemented |
 | Conditional Local Account connector (`ensure-dex.sh`) | ✅ implemented |
 | `tools/onboarding.sh` + deployment override | ✅ implemented |
+| `onboarding.sh reset` (replay, terminal only) | ✅ implemented |
 | First-start wizard (`settings-center-app`) | ✅ implemented |
 | Provisioning-mail CTA (`pcs-orchestrator`) | ✅ implemented |
 
@@ -179,6 +180,7 @@ file, and the shipped product carries no branch for it.
 onboarding.sh status            -> {"claimed":bool,"completed":bool,"username":str}
 onboarding.sh run               -> performs onboarding (password on stdin)
 onboarding.sh mark-completed    -> records that the wizard was seen
+onboarding.sh reset --confirm   -> back to unclaimed (terminal only, see below)
 ```
 
 **Override**: if `/DATA/AppData/yundera/onboarding.d/onboarding.sh` exists and is
@@ -216,6 +218,45 @@ user data (backed up, carried by migration), not the template tree.
 `run` writes the marker **only after** the claim succeeds, so a half-finished
 onboarding is re-runnable, and it refuses outright on an already-claimed box
 (re-claiming would rename the owner account).
+
+### Replaying onboarding — `reset`
+
+Because `claimed` is derived from real state rather than from a flag, there is no
+way to *preview* the wizard: on a claimed box the form renders but `run` answers
+409. Replaying it means genuinely unclaiming the box, which is what `reset` does —
+back up and remove `users_database.yml`, drop the `completed` marker, clear
+`LOCAL_ADMIN_USER`, then re-run `ensure-authelia.sh` (whose one-shot seed check is
+a pure "has this file been written yet?" test, so removing the file re-arms it)
+and `ensure-dex.sh`.
+
+```bash
+sudo /DATA/AppData/casaos/apps/yundera/scripts/tools/onboarding.sh reset --confirm
+```
+
+`--confirm` is mandatory: this disables **every** local account on the PCS. The
+previous `users_database.yml` is copied to a timestamped `*.reset-backup` sibling
+first — it holds the only copy of those password hashes — and the backup name is
+collision-guarded, because resetting twice within one second is precisely what a
+test script does.
+
+**`reset` is deliberately terminal-only. There is no API route and nothing in
+`settings-center-app` calls it.** Unclaiming is a self-lockout button: the gate
+immediately blocks the session that triggered it, and `ensure-dex.sh` then
+withdraws the Local Account connector — so on a PCS whose Yundera Login is absent
+or broken, the only way back in is the support SSH key. That is an acceptable cost
+for someone already at a root shell and an unacceptable one for a control in a
+dashboard.
+
+To replay only the **welcome** screen, the marker alone is enough — no reset, no
+account change:
+
+```bash
+sudo rm -f /DATA/AppData/yundera/onboarding/completed
+```
+
+Note that `authelia-user-manager.sh claim --force` is *not* a replay path. It
+re-claims and renames, but leaves the marker in place, so no wizard appears; it
+exists for correcting a wrong username, not for testing.
 
 ### The wizard
 

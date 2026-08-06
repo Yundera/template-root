@@ -12,6 +12,7 @@
 #   onboarding.sh status                 -> JSON state, safe to poll
 #   onboarding.sh run                    -> perform onboarding (password on stdin)
 #   onboarding.sh mark-completed         -> record that the wizard was seen
+#   onboarding.sh reset --confirm        -> back to unclaimed, so the wizard replays
 #
 # STDOUT IS A MACHINE INTERFACE. Every subcommand prints JSON and nothing else;
 # diagnostics go to stderr and a non-zero exit carries the reason. Identical
@@ -63,6 +64,7 @@ COMPLETED_MARKER="$ONBOARDING_ROOT/completed"
 
 USER_MGR="$YND_ROOT/scripts/tools/authelia-user-manager.sh"
 ENV_MGR="$YND_ROOT/scripts/tools/env-file-manager.sh"
+SELF_CHECK="$YND_ROOT/scripts/self-check"
 PCS_ENV="$YND_ROOT/.pcs.env"
 
 # --- deployment override ------------------------------------------------------
@@ -159,12 +161,79 @@ cmd_run() {
     printf '%s' "$claim_out" | yq -o=json -I=0 '. + {"completed": true}'
 }
 
+# The inverse of `run`: put the box back into the unclaimed state so the wizard
+# is reachable again. For testing and for re-provisioning a box by hand.
+#
+# DELIBERATELY NOT EXPOSED OVER THE ADMIN API, and nothing in settings-center-app
+# calls it. Unclaiming is a self-lockout button: the gate immediately blocks the
+# session that triggered it, and ensure-dex.sh then withdraws the Local Account
+# connector — so on a PCS whose Yundera Login is absent or broken, the only way
+# back in is the support SSH key. That is an acceptable cost for someone already
+# at a root shell and an unacceptable one for a control in a dashboard. Keep it
+# terminal-only; if you find yourself adding a route for it, re-read
+# doc/pcs-onboarding.md first.
+cmd_reset() {
+    [ "${1:-}" = "--confirm" ] \
+        || error "reset disables every local account on this PCS; pass --confirm if that is what you want"
+
+    local backup=""
+
+    # Keep an undo. A box being reset for a test may still hold real accounts,
+    # and users_database.yml is the only copy of their password hashes. The
+    # backup is a sibling file, which is safe: Authelia reads the one path it is
+    # configured with and never scans the directory.
+    if [ -f "$USERS_DB" ]; then
+        local stamp suffix=0
+        stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+        # Second granularity collides when reset runs twice inside one second —
+        # which is exactly what a test script does. Never clobber: the file being
+        # overwritten could be the one holding the real accounts.
+        backup="$USERS_DB.$stamp.reset-backup"
+        while [ -e "$backup" ]; do
+            suffix=$((suffix + 1))
+            backup="$USERS_DB.$stamp-$suffix.reset-backup"
+        done
+        cp -a "$USERS_DB" "$backup" || error "could not back up $USERS_DB"
+        rm -f "$USERS_DB"
+    fi
+
+    rm -f "$COMPLETED_MARKER"
+
+    # Cleared BEFORE the re-seed: ensure-authelia.sh reads LOCAL_ADMIN_USER to
+    # decide whose block to stamp the owner email onto, and a stale value would
+    # re-seed the placeholder under the previous owner's name.
+    "$ENV_MGR" delete LOCAL_ADMIN_USER "$PCS_ENV" >/dev/null 2>&1 || true
+
+    # Removing the file is what re-arms the seed: ensure-authelia.sh's one-shot
+    # check is a pure "has this been written yet?" test on a `password:` field.
+    # It restarts Authelia itself, so no separate restart here.
+    [ -x "$SELF_CHECK/ensure-authelia.sh" ] || error "ensure-authelia.sh not found; cannot re-seed"
+    if ! "$SELF_CHECK/ensure-authelia.sh" >/dev/null 2>&1; then
+        error "ensure-authelia.sh failed${backup:+; previous users_database.yml kept at $backup}"
+    fi
+
+    # Withdraw the Local Account connector now rather than at the next tick — an
+    # unclaimed PCS must not advertise a login that cannot work.
+    if [ -x "$SELF_CHECK/ensure-dex.sh" ]; then
+        "$SELF_CHECK/ensure-dex.sh" >/dev/null 2>&1 \
+            || echo "WARNING: ensure-dex.sh failed; the Local Account connector goes away at the next self-check" >&2
+    fi
+
+    if is_claimed; then
+        error "reset failed: this PCS still reads as claimed${backup:+ (backup at $backup)}"
+    fi
+
+    B="$backup" yq -o=json -I=0 -n \
+        '{"claimed": false, "completed": false, "username": "", "backup": strenv(B)}'
+}
+
 usage() {
     cat >&2 <<'EOF'
 Usage:
   onboarding.sh status
   onboarding.sh run              # ONBOARDING_USERNAME=... ; password on stdin
   onboarding.sh mark-completed
+  onboarding.sh reset --confirm  # unclaim, so the first-start wizard replays
 
 Env for `run`:
   ONBOARDING_USERNAME   (required) login name chosen by the owner
@@ -182,5 +251,6 @@ case "$COMMAND" in
     status)         [ $# -eq 0 ] || usage; cmd_status ;;
     run)            [ $# -eq 0 ] || usage; cmd_run ;;
     mark-completed) [ $# -eq 0 ] || usage; cmd_mark_completed ;;
+    reset)          [ $# -le 1 ] || usage; cmd_reset "$@" ;;
     *)              usage ;;
 esac
