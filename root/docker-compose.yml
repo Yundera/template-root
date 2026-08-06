@@ -1,7 +1,7 @@
 name: yundera
 services:
   admin:
-    image: ghcr.io/yundera/settings-center-app:1.3.2
+    image: ghcr.io/yundera/settings-center-app:1.3.4
     container_name: admin
     hostname: admin
     restart: unless-stopped
@@ -149,7 +149,7 @@ services:
   # Registers public IP with backend for direct routing (bypasses VPN)
   # =============================================================================
   mesh-router-agent:
-    image: ghcr.io/yundera/mesh-router-agent:1.0.10
+    image: ghcr.io/yundera/mesh-router-agent:1.0.11
     container_name: mesh-router-agent
     hostname: mesh-router-agent
     restart: unless-stopped
@@ -234,7 +234,7 @@ services:
   # /DATA/AppData/yundera/dex/.
   # =============================================================================
   dex:
-    image: ghcr.io/dexidp/dex:v2.43.1
+    image: ghcr.io/dexidp/dex:v2.45.1
     container_name: dex
     hostname: dex
     restart: unless-stopped
