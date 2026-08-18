@@ -141,6 +141,25 @@ services:
       IDENTITY_ASSERTION_AUDIENCE: "admin"
       # Where to reach the gate's control API — its own sidecar, by container name.
       APPSHIELD_GATE_URL: "http://admin"
+      # Where the browser POSTs at logout to end the UPSTREAM IdP's session.
+      #
+      # The gate ends its own session at /nhl-auth/logout, but Authelia's cookie
+      # is what actually decides whether the next sign-in asks for a password:
+      # while it stands, Dex re-runs the connector, Authelia answers from its
+      # 30-day session, and the user is back in without typing anything. Ending
+      # it is what turns the connector chooser from theatre into a real prompt.
+      #
+      # A full URL, not a flag, because the app must not know which IdP this is —
+      # it ships in the FOSS mesh template too. Unset it and logout simply ends
+      # the gate session.
+      #
+      # POST /api/logout is Authelia's own portal API. It has to be called by the
+      # BROWSER: the cookie is host-only on local-auth-${DOMAIN} and never
+      # reaches this container. Same-site with admin-${DOMAIN}, so SameSite=lax
+      # lets it ride. Authelia sends no CORS headers and its /logout page sets
+      # frame-ancestors 'none' — a no-cors POST is the one shape that works, and
+      # is why this is a plain URL the client fires rather than a redirect.
+      UPSTREAM_LOGOUT_URL: "https://local-auth-${DOMAIN}/api/logout"
       # Resolves the brand and labels support reports. (It used to also build the
       # OIDC redirect URI; the app no longer runs an OIDC flow of its own.)
       DOMAIN: ${DOMAIN}
