@@ -106,7 +106,7 @@ services:
   # The dashboard itself. Named `maison-app` so the gate above can own the public
   # name `maison` — see the naming note there.
   maison-app:
-    image: ghcr.io/yundera/maison:1.1.4
+    image: ghcr.io/yundera/maison:1.1.5
     container_name: maison-app
     hostname: maison-app
     restart: unless-stopped
@@ -151,13 +151,10 @@ services:
       # the image reference above.
       APPSTORE_URL: "https://github.com/Yundera/AppStore/archive/refs/heads/main.zip"
 
-      # The PCS infrastructure must not be uninstallable from the dashboard. The
-      # tiles still render; only the Uninstall action is withheld, and the API
-      # refuses it too. This matters most for `casaos`: its AppData directory is
-      # ALSO CasaOS's apps root (/DATA/AppData/casaos/apps/...), holding every app
-      # definition on the box including the yundera stack itself — so an uninstall
-      # there would take the whole PCS with it.
-      PROTECTED_APPS: "maison,casaos,yundera"
+      # NO PROTECTED_APPS. It was removed from Maison at 1.1.5: an app is now
+      # protected because its own compose says so, via `x-compose-app.view:
+      # system` (this file's block at the bottom, and the yundera stack's). See
+      # the note there for what that withholds.
     # Docker socket group — resolved from the host by ensure-maison-stack.sh.
     group_add:
       - "${DOCKER_GID}"
@@ -203,6 +200,13 @@ x-compose-app:
   title: Maison
   category: pcs
   developer: Yundera Team
+  # The dashboard is platform, not an app: this puts its tile in Maison's System
+  # grid and — the load-bearing half — makes Maison refuse to stop or uninstall
+  # it, and the nightly backup skip it. It replaces the PROTECTED_APPS env
+  # removed above (Maison >= 1.1.5); on an older image the key is ignored and the
+  # stack is neither grouped nor protected, which is why the image pin above and
+  # this block move together. Restart is deliberately still offered.
+  view: system
   # NOT renamed with the rest of the rebrand: the icon lives in the Yundera/AppStore
   # repo, which still ships it under Apps/CasaDash/. Repoint both icon: fields to
   # Apps/Maison/icon.png only once that rename has landed on that repo's `main` —
@@ -224,8 +228,9 @@ x-compose-app:
 #
 # is_uncontrolled hides CasaOS's "Check then update" action — this stack is owned
 # by the self-check (deploy-stack.sh), never by CasaOS's store updater. Note it
-# does NOT hide CasaOS's Uninstall action, and CasaOS has no PROTECTED_APPS
-# equivalent; an uninstall from CasaOS would `down --volumes` this project and
+# does NOT hide CasaOS's Uninstall action, and CasaOS honours no uninstall guard
+# at all (`view: system` is Maison's, and CasaOS never reads x-compose-app); an
+# uninstall from CasaOS would `down --volumes` this project and
 # delete /DATA/AppData/maison (recreated by the next self-check). Accepted for
 # phase 1 — the exposure predates this block, since the bare tile carried the same
 # menu (see doc/maison-migration.md §1.3).

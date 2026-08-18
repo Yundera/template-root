@@ -234,8 +234,10 @@ is the working_dir label flipping until the next `ensure-user-compose-stack-up.s
 Container churn, not data loss: the same trade-off §1.3 accepts for every mirrored app, applied
 to a more important stack. Note that Maison's `Normalize()` rewrites a managed app's compose
 before every up; here that only ever touches the mirror copy, which the next self-check
-re-derives. Uninstall is not a risk — `yundera` is already in the maison stack's
-`PROTECTED_APPS`.
+re-derives. Uninstall is not a risk — the stack's compose declares
+`x-compose-app.view: system`, which Maison (>= 1.1.5) refuses to stop or uninstall. That
+replaced the maison stack's `PROTECTED_APPS` env, which is gone from Maison at that
+version: protection is now a property the app declares, not one the deployment configures.
 
 ### 1.3 Deliberate non-goals and accepted risks
 
@@ -254,7 +256,8 @@ re-derives. Uninstall is not a risk — `yundera` is already in the maison stack
   `x-casaos` block so its tile is regular (icon, title, link to the gate); the casaos stack
   deliberately does not — CasaOS must not tile itself inside itself — so it renders as a
   bare project-name tile. Both tiles expose CasaOS's Uninstall action (`is_uncontrolled`
-  only hides the store-update action, and CasaOS has no `PROTECTED_APPS` equivalent);
+  only hides the store-update action, and CasaOS honours no uninstall guard at all —
+  `view: system` is Maison's, and CasaOS never reads `x-compose-app`);
   an uninstall runs `down --volumes` plus working-dir deletion — `/DATA/AppData/maison`
   is recreated by the next self-check, but `/DATA/AppData/casaos` is the apps root itself.
   In practice that path self-terminates (CasaOS stops its own container mid-uninstall),
