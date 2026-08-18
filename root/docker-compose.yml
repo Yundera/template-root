@@ -1,9 +1,103 @@
 name: yundera
 services:
+  # =============================================================================
+  # ADMIN GATE (AppShield) — the only public entrypoint to the dashboard.
+  #
+  #   admin      = this gate. Owns admin-${DOMAIN} and the login flow.
+  #   admin-app  = settings-center-app itself (below). No public route.
+  #
+  # The dashboard used to be its own OIDC client. It is not any more: one system
+  # (AppShield) fronts every platform app — Maison, store apps, this — so there is
+  # one auth surface to review instead of one per app.
+  #
+  # NAMING IS LOAD-BEARING, exactly as in stacks/maison: the auth-registrar derives
+  # an app's client_id from a PTR lookup of the CALLER's container name on the pcs
+  # network, and only ever issues redirect URIs under `<client_id>-<suffix>`. So
+  # the gate must be the container named `admin`, and the app takes the suffixed
+  # name. Swap them and the OIDC callback lands on a hostname the caddy_* labels
+  # below do not publish, and login dead-ends.
+  # =============================================================================
   admin:
-    image: ghcr.io/yundera/settings-center-app:1.3.9
+    image: ghcr.io/yundera/appshield:2.2.0
     container_name: admin
     hostname: admin
+    restart: unless-stopped
+    cpu_shares: 40
+    mem_limit: 128m
+    environment:
+      # The gate's identity to the registrar AND the `aud` of every assertion it
+      # signs. Explicit rather than relying on AppShield's hostname default,
+      # because admin-app verifies this exact value.
+      APP_NAME: "admin"
+      OIDC_REGISTRAR_URL: "http://auth-registrar:9092"
+      # Pre-registration guess / fallback if /register is unreachable; the
+      # registrar's own list is what actually decides (appshield >= 2.0.10,
+      # mesh-auth >= 1.1.4). Keep it matching the caddy_* labels below.
+      REDIRECT_HOST_SUFFIXES: "${DOMAIN},${PUBLIC_IP_DASH}.nip.io,${PUBLIC_IP_DASH}.sslip.io"
+      BACKEND_HOST: "admin-app"
+      BACKEND_PORT: "80"
+      LISTEN_PORT: "80"
+      # 30 days, matching the PCS-wide session policy. Revocation is what makes
+      # that safe on a privileged app: deleting an account or resetting its
+      # password makes admin-app call the gate's control API and end sessions
+      # already in flight, so a long TTL is no longer a long window of
+      # un-withdrawable access.
+      SESSION_DURATION_HOURS: "720"
+      # Shared with admin-app, used in both directions: the gate signs identity
+      # assertions with it, the app verifies them and signs revocation calls back.
+      IDENTITY_ASSERTION_SECRET: ${ADMIN_ASSERTION_SECRET}
+      # DELIBERATELY NOT SET — OIDC_REQUIRED_GROUPS. Gate-level group enforcement
+      # would lock a non-admin account out of the dashboard entirely, while the app
+      # is built to let one in as far as its own Account panel and 403 the rest
+      # (adminMiddleware). Authorization stays in the app, where it can be partial;
+      # the gate does authentication.
+      #
+      # DELIBERATELY NOT SET — AUTH_HASH. There is no machine/API path into the
+      # dashboard. The non-interactive trust path is Path C (support SSH -> docker
+      # exec admin-app -> loopback HTTP), which bypasses this gate by construction
+      # and is gated by loopbackOnly on the handler itself.
+      #
+      # Only what MUST answer without a credential; everything else, the SPA's own
+      # assets included, is fetched by an already-authenticated browser. This list
+      # is deliberately TIGHTER than admin-app's own bypass list in serverGate.ts:
+      # stricter here is invisible, looser here would mean the app 302s requests
+      # the gate let through.
+      #   api/health          the operator polls it during provisioning, BEFORE the
+      #                       box has any credential — if this required auth, a
+      #                       fresh PCS could never be declared ready
+      #   api/perf, api/bench `pcs perf` reads them; RAM-cached snapshots
+      #   api/brand           name/logo only, no secrets
+      ALLOWED_PATHS: "api/health,api/perf,api/bench,api/brand"
+    volumes:
+      # Gate state: persisted sessions (sessions.json). Without this mount a
+      # container recreate signs everyone out regardless of SESSION_DURATION_HOURS.
+      # Beside the app's own /app/data, outside the rsync'd stack tree.
+      - type: bind
+        source: /DATA/AppData/yundera/admin/gate-data
+        target: /data
+    expose:
+      - "80"
+    networks:
+      pcs: null
+    depends_on:
+      - admin-app
+    labels:
+      # Standard domain with custom CA (gateway-routed)
+      caddy_0: admin-${DOMAIN}
+      caddy_0.import: gateway_tls
+      caddy_0.reverse_proxy: "{{upstreams 80}}"
+      # nip.io variant for direct access (custom CA)
+      caddy_1: admin-${PUBLIC_IP_DASH}.nip.io
+      caddy_1.import: gateway_tls
+      caddy_1.reverse_proxy: "{{upstreams 80}}"
+      # sslip.io variant for direct access (Let's Encrypt)
+      caddy_2: admin-${PUBLIC_IP_DASH}.sslip.io
+      caddy_2.reverse_proxy: "{{upstreams 80}}"
+
+  admin-app:
+    image: ghcr.io/yundera/settings-center-app:1.4.0
+    container_name: admin-app
+    hostname: admin-app
     restart: unless-stopped
     cpu_shares: 90
     # Safety net, not a tight cap. The Next.js + tsx server steady-states a few
@@ -30,13 +124,25 @@ services:
     # .pcs.secret.env now enters this container.
     environment:
       COMPOSE_FOLDER_PATH: "/DATA/AppData/casaos/apps/yundera/"
-      # auth-registrar sidecar (defined below) hands out OIDC client_id/secret
-      # pairs. Set here because the image does not ship config/core.env.json
-      # (gitignored), so the dashboard would otherwise fail with
-      # "OIDC_REGISTRAR_URL not configured" on every login attempt.
-      OIDC_REGISTRAR_URL: "http://auth-registrar:9092/register"
-      # Builds the OIDC redirect URI (auth/oidc/redirectUri.ts — login breaks
-      # without it), resolves the brand, and labels support reports.
+      # Identity comes from the `admin` gate in front of this container — and is
+      # re-checked here rather than trusted: the app validates the gate's
+      # per-request assertion with this shared secret and refuses every request
+      # without one (backend/auth/gateIdentity.ts). The SAME secret signs the
+      # control tokens the app uses to ask the gate to revoke sessions when an
+      # account is deleted or its password reset (backend/auth/gateControl.ts).
+      #
+      # Minted once by ensure-admin-gate-secret.sh. Were it missing, this app would
+      # authenticate nobody — the correct failure direction, and the reason the gate
+      # must never be the only thing checking.
+      IDENTITY_ASSERTION_SECRET: ${ADMIN_ASSERTION_SECRET}
+      # Expected `aud` on those assertions = the gate's APP_NAME (set explicitly on
+      # the gate above, not left to its hostname default, so the pairing is
+      # readable from either side).
+      IDENTITY_ASSERTION_AUDIENCE: "admin"
+      # Where to reach the gate's control API — its own sidecar, by container name.
+      APPSHIELD_GATE_URL: "http://admin"
+      # Resolves the brand and labels support reports. (It used to also build the
+      # OIDC redirect URI; the app no longer runs an OIDC flow of its own.)
       DOMAIN: ${DOMAIN}
       # Identifies the PCS in support reports.
       UID: ${UID}
@@ -64,9 +170,10 @@ services:
       - type: bind
         source: /home/admin/.ssh/
         target: /host_ssh/
-      # The app's OWN writable state — today just admin-session-key, the HMAC key
-      # that signs the admin session cookie and the OIDC state cookie
-      # (src/backend/auth/sessionKey.ts).
+      # The app's OWN writable state. No session-signing key any more — the gate
+      # owns sessions, so admin-session-key and session-epochs.json are gone — but
+      # brand.json overrides are read from here (src/brand/loadBrandFile.ts), and
+      # the gate's own state sits beside it in gate-data/ (see the gate above).
       #
       # This used to be the whole stack directory (/DATA/AppData/casaos/apps/yundera),
       # on the theory that the app needed it "to update itself". It does not: every
@@ -81,26 +188,20 @@ services:
       # minted a new one, signing every user out. Exactly what persisting the key was
       # supposed to prevent. Keeping it here, beside dex/ and auth/, puts it outside
       # the synced tree. Docker creates the dir on first up; migrations/
-      # 2026-08-02-13-move-admin-session-key.sh carries an existing key across.
+      # 2026-08-02-13-move-admin-session-key.sh carried the old key across and is
+      # now historical — nothing reads that key.
       - type: bind
         source: /DATA/AppData/yundera/admin
         target: /app/data
+    # No caddy_* labels and no published port: the ONLY public route in is the
+    # gate above, which owns the `admin-*` hostnames. `expose` keeps port 80
+    # reachable inside `pcs` — which is precisely why this app verifies the gate's
+    # signed assertion instead of trusting forwarded headers: every container on
+    # `pcs` can open a socket here.
     expose:
       - "80"
     networks:
       pcs: null
-    labels:
-      # Standard domain with custom CA (gateway-routed)
-      caddy_0: admin-${DOMAIN}
-      caddy_0.import: gateway_tls
-      caddy_0.reverse_proxy: "{{upstreams 80}}"
-      # nip.io variant for direct access (custom CA)
-      caddy_1: admin-${PUBLIC_IP_DASH}.nip.io
-      caddy_1.import: gateway_tls
-      caddy_1.reverse_proxy: "{{upstreams 80}}"
-      # sslip.io variant for direct access (Let's Encrypt)
-      caddy_2: admin-${PUBLIC_IP_DASH}.sslip.io
-      caddy_2.reverse_proxy: "{{upstreams 80}}"
 
 
   # NOTE: CasaOS is gone (Maison migration phase 3). It was split out of this
