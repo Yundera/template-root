@@ -52,7 +52,7 @@ services:
   # suffix. Same shape as AppStoreLab's AppShieldSecurityDemo (gate `appshield-demo`,
   # backend `appshield-demo-whoami`).
   maison:
-    image: ghcr.io/yundera/appshield:2.0.9
+    image: ghcr.io/yundera/appshield:2.0.10
     container_name: maison
     hostname: maison
     restart: unless-stopped
@@ -63,8 +63,16 @@ services:
       - "80"
     environment:
       OIDC_REGISTRAR_URL: "http://auth-registrar:9092"
-      # Must list the SAME host suffixes as the caddy_* labels below — the
-      # registrar validates every requested callback against exactly this set.
+      # Fallback only, since appshield 2.0.10 / mesh-auth 1.1.4: the gate now
+      # sends its callback PATH and adopts the redirect_uris the registrar
+      # returns, so the registrar's REDIRECT_HOST_SUFFIXES is what actually
+      # decides. This list is the pre-registration guess, and what gets used if
+      # /register is unreachable — keep it matching the caddy_* labels below.
+      #
+      # It CANNOT express the host that matters most here. As the root app
+      # (DEFAULT_SERVICE_HOST=maison), this gate is also served at the BARE
+      # ${DOMAIN}, and `<app>-<suffix>` has no way to say that — which is why the
+      # registrar has to be the one to answer.
       REDIRECT_HOST_SUFFIXES: "${DOMAIN},${PUBLIC_IP_DASH}.nip.io,${PUBLIC_IP_DASH}.sslip.io"
       # No machine/API auth: the gate is interactive SSO only. (Until 2026-07 this
       # set CREDENTIAL_VALIDATE_URL against casaos-oidc-bridge:8090/validate so API

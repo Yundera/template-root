@@ -1,7 +1,7 @@
 name: yundera
 services:
   admin:
-    image: ghcr.io/yundera/settings-center-app:1.3.7
+    image: ghcr.io/yundera/settings-center-app:1.3.9
     container_name: admin
     hostname: admin
     restart: unless-stopped
@@ -174,7 +174,7 @@ services:
   # Reverse proxy with Docker container discovery via labels
   # =============================================================================
   mesh-router-caddy:
-    image: ghcr.io/yundera/mesh-router-caddy:1.2.5
+    image: ghcr.io/yundera/mesh-router-caddy:1.2.6
     container_name: mesh-router-caddy
     hostname: mesh-router-caddy
     restart: unless-stopped
@@ -184,7 +184,15 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /DATA/AppData/casaos/apps/yundera/Caddyfile:/etc/caddy/Caddyfile:ro
+      # A DIRECTORY, not the Caddyfile itself. A single-file bind mount is pinned
+      # to the inode it started with, and ensure-template-sync.sh updates the
+      # template with rsync — which renames a new file into place. Mounted as a
+      # file, this container would keep serving the Caddyfile it booted with,
+      # silently and forever: caddy-docker-proxy re-reads the path on every
+      # generation, so the config always looked freshly built. Observed in the
+      # field as an eight-week-old Caddyfile behind a correct-looking config.
+      # The dir also cannot be the app root — .pcs.secret.env lives there.
+      - /DATA/AppData/casaos/apps/yundera/caddy:/etc/caddy:ro
       - /DATA/AppData/yundera/data/certs:/certs:ro
       - /DATA/AppData/yundera/data/caddy/data:/data
       - /DATA/AppData/yundera/data/caddy/config:/config
@@ -267,18 +275,22 @@ services:
     # No `depends_on` for the connectors: authelia is in this stack but Dex must
     # not block on it, and the Yundera IdP is off-box entirely. Dex retries a
     # connector's back-channel on use, so cold-boot ordering resolves itself.
+    # Unlike every other service here, these labels declare ONLY the hostnames:
+    # the TLS choice and the upstream live in the (dex_router*) snippets in
+    # caddy/Caddyfile. That is where the connector-memory rules are — named
+    # matchers, `uri`, and a `handle_response` block, none of which can be
+    # expressed as flat caddy-docker-proxy labels. Keep the hostname list here in
+    # sync with the three auth-* hostnames; everything else is in the snippet.
     labels:
       # Standard domain with custom CA (gateway-routed)
       caddy_0: auth-${DOMAIN}
-      caddy_0.import: gateway_tls
-      caddy_0.reverse_proxy: "{{upstreams 5556}}"
+      caddy_0.import: dex_router_tls
       # nip.io variant for direct access (custom CA)
       caddy_1: auth-${PUBLIC_IP_DASH}.nip.io
-      caddy_1.import: gateway_tls
-      caddy_1.reverse_proxy: "{{upstreams 5556}}"
+      caddy_1.import: dex_router_tls
       # sslip.io variant for direct access (Let's Encrypt)
       caddy_2: auth-${PUBLIC_IP_DASH}.sslip.io
-      caddy_2.reverse_proxy: "{{upstreams 5556}}"
+      caddy_2.import: dex_router
 
 
   # =============================================================================
