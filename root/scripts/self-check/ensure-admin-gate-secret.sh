@@ -38,18 +38,49 @@ source "$YND_ROOT/scripts/library/log.sh"
 SECRET_ENV="$YND_ROOT/.pcs.secret.env"
 UNIFIED_ENV="$YND_ROOT/.env"
 ENV_MGR="$YND_ROOT/scripts/tools/env-file-manager.sh"
+STACK_UP="$YND_ROOT/scripts/self-check/ensure-user-compose-stack-up.sh"
 
+MINTED=0
 ADMIN_ASSERTION_SECRET="$("$ENV_MGR" get ADMIN_ASSERTION_SECRET "$SECRET_ENV")"
 if [ -z "$ADMIN_ASSERTION_SECRET" ]; then
     ADMIN_ASSERTION_SECRET="$(openssl rand -hex 32)"
     "$ENV_MGR" set ADMIN_ASSERTION_SECRET "$ADMIN_ASSERTION_SECRET" "$SECRET_ENV"
+    MINTED=1
     log_info "Generated ADMIN_ASSERTION_SECRET (admin gate <-> admin app)"
 fi
 
 # Mirrored on every run, not just on creation: ensure-env-vars-valid.sh rebuilds
 # the unified .env from its sources, and a secret minted after that rebuild would
 # otherwise be missing from the file compose actually reads.
+PREVIOUS_IN_UNIFIED="$("$ENV_MGR" get ADMIN_ASSERTION_SECRET "$UNIFIED_ENV")"
 "$ENV_MGR" set ADMIN_ASSERTION_SECRET "$ADMIN_ASSERTION_SECRET" "$UNIFIED_ENV"
+
+# THE FIRST CYCLE ON AN EXISTING BOX IS THE CASE THIS HANDLES.
+#
+# self-check.sh runs scripts in the order of scripts-config.txt, but a script
+# that APPEARS during a run (ensure-template-sync.sh rsyncs the new config, then
+# the second pass picks up unknown entries) runs after every pre-existing one —
+# including ensure-user-compose-stack-up.sh. So on the very cycle that first
+# delivers the gate, the stack has already been brought up with
+# ${ADMIN_ASSERTION_SECRET} interpolating to an empty string: the gate signs no
+# assertion, the app verifies none, and the dashboard authenticates NOBODY until
+# something recreates those containers. It fails closed, which is the right
+# direction, but it would stay broken until the next nightly self-check.
+#
+# So bring the stack up again ourselves when the value compose was started with
+# is not the value now on disk. `up -d` is idempotent and only recreates
+# containers whose config actually changed, so this is a no-op on every
+# subsequent run — the same shape ensure-yundera-login.sh uses to re-run
+# ensure-dex.sh after changing a Dex drop-in.
+#
+# Tolerant on purpose: ensure-user-compose-stack-up.sh runs on its own next cycle
+# anyway, so a failure here is a delay, not a dead end.
+if [ "$MINTED" = "1" ] || [ "$PREVIOUS_IN_UNIFIED" != "$ADMIN_ASSERTION_SECRET" ]; then
+    if [ -x "$STACK_UP" ] || [ -f "$STACK_UP" ]; then
+        log_info "Admin gate secret changed - recreating the stack so both sides pick it up"
+        bash "$STACK_UP" || log_warn "ensure-user-compose-stack-up.sh failed while applying the admin gate secret"
+    fi
+fi
 
 # The gate persists its sessions here. Docker would create it as root on first
 # up, which is fine — this is only so the directory exists next to the app's own
