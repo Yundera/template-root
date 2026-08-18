@@ -35,6 +35,11 @@ ensure-logrotate.sh
 ensure-docker-installed.sh
 ensure-env-vars-valid.sh
 ensure-support-key.sh
+# ensure-admin-gate-secret.sh MUST run before ensure-user-compose-stack-up.sh: it
+# mints ADMIN_ASSERTION_SECRET into .pcs.secret.env / .env, which the admin gate
+# and the admin app both interpolate. Without it the dashboard authenticates
+# nobody (it fails closed).
+ensure-admin-gate-secret.sh
 # ensure-authelia.sh MUST run before ensure-dex.sh: it mints AUTHELIA_DEX_SECRET
 # into .pcs.secret.env / .env, which ensure-dex.sh interpolates into the Dex
 # "Local Account" connector's clientSecret.
