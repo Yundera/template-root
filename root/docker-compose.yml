@@ -358,6 +358,25 @@ services:
       # callback against this exact set. Must list the SAME suffixes the apps'
       # caddy_* labels use — the user domain plus the IP-based fallbacks.
       REDIRECT_HOST_SUFFIXES: "${DOMAIN},${PUBLIC_IP_DASH}.nip.io,${PUBLIC_IP_DASH}.sslip.io"
+      # The one app allowed to register callbacks on the BARE suffixes
+      # (${DOMAIN} itself, not just <app>-${DOMAIN}) — i.e. whoever the root
+      # domain reverse-proxies to in the Caddyfile above.
+      #
+      # Deliberately the SAME variable that drives that Caddy block: "the app
+      # that owns the bare hostname" and "the app the bare hostname routes to"
+      # are then one fact rather than two settings that can drift. The Domain
+      # panel writes it to .pcs.env and triggers a self-check, so this container
+      # is recreated on the same tick the root route repoints.
+      #
+      # It is a proxy upstream target, not an identity: `host.docker.internal`
+      # is legal here and is not a container name. The registrar validates it
+      # and falls back to "nobody owns the bare hosts" rather than guessing —
+      # check the `root app:` line in `docker logs auth-registrar` if a login on
+      # the bare domain still lands on <app>-${DOMAIN}.
+      #
+      # Needs mesh-auth >= 1.2.0; older images ignore this and apps keep the
+      # pre-existing bounce-to-<app>-${DOMAIN} behaviour.
+      ROOT_CLIENT_ID: "${DEFAULT_SERVICE_HOST}"
     expose:
       - "9092"
     networks:
