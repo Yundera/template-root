@@ -40,8 +40,9 @@
 # second one, and both directories render identically (asserted below). What it does do
 # is flip the working_dir label until the next ensure-user-compose-stack-up.sh flips it
 # back: container churn, not data loss. Identical to the trade-off doc/maison-migration.md
-# §1.3 accepts for every mirrored CasaOS app. Uninstall is not a risk — `yundera` is in
-# the maison stack's PROTECTED_APPS.
+# §1.3 accepts for every mirrored CasaOS app. Uninstall is not a risk — the compose this
+# script copies declares `x-compose-app.view: system`, which Maison (>= 1.1.5) refuses to
+# stop or uninstall. Stop is not a risk for the same reason.
 set -euo pipefail
 
 YND_ROOT="/DATA/AppData/casaos/apps/yundera"

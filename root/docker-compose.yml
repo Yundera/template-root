@@ -413,6 +413,17 @@ x-compose-app:
   icon: https://cdn.jsdelivr.net/gh/Yundera/settings-center-app@main/public/YunderaPCS-setting_iconV2.svg
   category: pcs
   developer: Yundera Team
+  # This stack IS the PCS — mesh-router, dex, authelia, the admin app. `system`
+  # puts its tile in Maison's System grid and, the part that matters, makes
+  # Maison refuse to stop or uninstall it and the nightly backup skip it. It
+  # replaces the maison stack's PROTECTED_APPS env, removed at Maison 1.1.5;
+  # an older image ignores the key entirely, so the guard travels with the pin
+  # in stacks/maison/docker-compose.yml. Restart is still offered.
+  #
+  # It is read from the MIRROR at /DATA/AppData/yundera (ensure-maison-yundera-
+  # mirror.sh copies this file there), which is what makes the tile managed —
+  # and managed is exactly what makes a stray Uninstall click reachable.
+  view: system
   webui-host: admin-${DOMAIN}
   webui-scheme: https
   webui-path: /
