@@ -1,0 +1,238 @@
+# =============================================================================
+# CADDY CONFIGURATION - PCS Template
+# =============================================================================
+# Container routing is handled via Docker labels (caddy-docker-proxy)
+# This file defines global config and reusable snippets only
+# =============================================================================
+
+{
+    log {
+        output stdout
+        format console
+    }
+
+    # Let's Encrypt email for certificate registration (used for sslip.io domains)
+    email {$PCS_EMAIL}
+
+    # Pin ACME to Let's Encrypt only. ZeroSSL was the default fallback and was
+    # failing every attempt with "Invalid signature on JWS request", doubling
+    # the failed-obtain rate for no benefit. With one healthy issuer we still
+    # tolerate LE outages via the internal-CA fallback below.
+    acme_ca https://acme-v02.api.letsencrypt.org/directory
+
+    # Default issuer chain for any site without an explicit `tls` directive —
+    # in practice that's all *.sslip.io labels (including ones emitted by
+    # third-party app compose files we don't control). Caddy tries LE first;
+    # when it fails (rate limits, malformed hostnames from empty
+    # ${PUBLIC_IP_DASH} interpolation, etc.) it falls through to the internal
+    # CA and issues a self-signed cert. Browsers warn on self-signed, but
+    # nobody is hitting the malformed hostnames anyway — the point is to
+    # break the every-5-minutes ACME retry storm that pegs Caddy's CPU.
+    #
+    # 168h leaf lifetime → Caddy renews each host every ~4-5 days instead of
+    # retrying ACME every 5 minutes per host. Bounds CPU even at 100+
+    # services with broken labels: ~22 cert renewals/day total, vs. the
+    # previous ~28 800/day storm. Stays inside the 7-day default lifetime of
+    # the internal intermediate CA, so we don't need `sign_with_root`.
+    cert_issuer acme
+    cert_issuer internal {
+        lifetime 168h
+    }
+}
+
+# Custom CA TLS for gateway-routed and nip.io domains
+# Gateway trusts this CA, so no LE needed for these routes
+# nip.io domains also use this custom CA for consistency
+(gateway_tls) {
+    # Restore original host when request comes through CF worker
+    # The CF worker rewrites Host to nip.io for routing, but preserves
+    # the original nsl.sh domain in X-Original-Host. Restoring it ensures
+    # apps generate correct redirect URLs and cookie domains.
+    @has_original_host header X-Original-Host *
+    request_header @has_original_host Host {http.request.header.X-Original-Host}
+    tls /certs/cert.pem /certs/key.pem
+}
+
+# No :80 block needed - caddy-docker-proxy handles HTTP→HTTPS redirects
+# via container labels, and Caddy's internal ACME handler responds to
+# /.well-known/acme-challenge/* requests automatically
+#
+# Certificate strategy:
+#   - Gateway-routed domains (e.g., admin-${DOMAIN}): custom CA (gateway_tls)
+#   - nip.io domains (e.g., admin-${PUBLIC_IP_DASH}.nip.io): custom CA (gateway_tls)
+#   - sslip.io domains (e.g., admin-${PUBLIC_IP_DASH}.sslip.io): Let's Encrypt,
+#     with internal-CA fallback (see global cert_issuer chain above)
+#
+# Most routes are via container labels in docker-compose.yml
+# Root domains below use configurable DEFAULT_SERVICE_HOST/PORT (defaults to maison:80)
+
+# =============================================================================
+# ROOT DOMAIN ROUTING - Configurable default service
+# =============================================================================
+# Configure via .pcs.env:
+#   DEFAULT_SERVICE_HOST=maison   (container name or host.docker.internal for host ports)
+#   DEFAULT_SERVICE_PORT=80       (port the service listens on)
+#
+# `maison` is the AppShield gate in the maison stack — the authenticated front
+# door to the dashboard. Pointing this at `maison-app` would publish the
+# dashboard with no auth at all. Default was casaos:8080 before CasaOS was removed.
+# =============================================================================
+
+# Root domain via gateway (custom CA)
+{$DOMAIN} {
+    import gateway_tls
+    reverse_proxy {$DEFAULT_SERVICE_HOST}:{$DEFAULT_SERVICE_PORT}
+}
+
+# Root domain via nip.io (custom CA)
+{$PUBLIC_IP_DASH}.nip.io {
+    import gateway_tls
+    reverse_proxy {$DEFAULT_SERVICE_HOST}:{$DEFAULT_SERVICE_PORT}
+}
+
+# Root domain via sslip.io (Let's Encrypt)
+{$PUBLIC_IP_DASH}.sslip.io {
+    reverse_proxy {$DEFAULT_SERVICE_HOST}:{$DEFAULT_SERVICE_PORT}
+}
+
+# =============================================================================
+# DEX SITE - auth-${DOMAIN} (+ nip.io / sslip.io variants)
+# =============================================================================
+# Imported by the `dex` service's caddy_* labels in docker-compose.yml. The
+# labels there declare only the hostnames; everything below (TLS choice,
+# connector memory, upstream) lives here because the connector-memory rules
+# need directives — named matchers, `uri`, `handle_response` — that do not fit
+# into flat caddy-docker-proxy labels.
+#
+# WHY CONNECTOR MEMORY EXISTS
+# Dex is a pure broker: it holds no session of its own and re-runs a connector
+# on every authorization request. Its connector chooser is therefore shown on
+# EVERY app login, even though the upstream IdP (Authelia, or the Yundera IdP)
+# still has a live session and answers instantly. The user experience is: log
+# in to app A with a password, then on app B, C, D... click "Log in with X"
+# once each, with no credentials ever asked for again. That click carries no
+# information Dex did not already have five seconds earlier — it is pure
+# friction, and it is the only thing standing between this PCS and real SSO.
+#
+# Dex auto-selects a connector only when EXACTLY ONE is configured
+# (`oauth2.alwaysShowLoginScreen` exists to force the page back on in that
+# case). This PCS normally has two — `authelia` (Local Account) and `yundera`
+# (Yundera Login) — plus any drop-ins, so the chooser is unavoidable upstream.
+#
+# So we remember the choice at the edge instead. Dex accepts a `connector_id`
+# query parameter on /auth and skips straight to that connector — a supported,
+# documented parameter, not a hack. The three rules below record which door the
+# user walked through and replay it on the next authorization request.
+# =============================================================================
+(dex_router) {
+    # --- 1. REMEMBER ---------------------------------------------------------
+    # The chooser's buttons link to /auth/<connector-id>?<original query> (Dex
+    # copies the query verbatim). A hit on that path is the user picking a door,
+    # so stamp the choice into a cookie. Host-only (no Domain=), so each of the
+    # three auth hostnames keeps its own memory. 2592000s = 30 days, matching
+    # the PCS-wide session policy (Authelia session, AppShield
+    # SESSION_DURATION_HOURS). SameSite=Lax and not Strict: the request arriving
+    # here is a top-level navigation from a DIFFERENT host (the app), which
+    # Strict would strip the cookie from — defeating the whole feature.
+    @dex_pick path_regexp dexpick ^/auth/([^/]+)$
+    header @dex_pick +Set-Cookie "dex_connector={re.dexpick.1}; Path=/; Max-Age=2592000; Secure; HttpOnly; SameSite=Lax"
+
+    # --- 2. FORGET -----------------------------------------------------------
+    # Escape hatch. Without it the first choice is sticky for 30 days and a user
+    # who wants their other identity (Local Account vs Yundera Login) has no way
+    # back to the chooser short of clearing cookies. Append `&switch=1` to any
+    # app's login URL, or hit https://auth-<domain>/auth?switch=1 directly.
+    @dex_switch {
+        path /auth /auth/
+        query switch=1
+    }
+    header @dex_switch +Set-Cookie "dex_connector=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax"
+
+    # --- 3. REPLAY -----------------------------------------------------------
+    # A fresh authorization request (client_id present) with a remembered
+    # connector and no explicit choice gets connector_id injected. This is an
+    # INTERNAL rewrite, not a redirect: the browser's URL is untouched, which
+    # keeps {http.request.orig_uri} pointing at the un-replayed request for the
+    # self-heal in rule 4.
+    #   - `not query connector_id=*` — an app that asks for a specific connector
+    #     wins over the cookie, and it also makes a redirect loop impossible.
+    #   - `not query switch=1` — rule 2 is clearing the cookie on this very
+    #     request; replaying it would defeat the escape hatch.
+    #   - the capture is [A-Za-z0-9_-] so a junk cookie cannot inject query
+    #     syntax into the rewritten URI.
+    @dex_replay {
+        path /auth /auth/
+        query client_id=*
+        not query connector_id=*
+        not query switch=1
+        header_regexp dexconn Cookie dex_connector=([A-Za-z0-9_-]+)
+    }
+    uri @dex_replay query +connector_id {re.dexconn.1}
+
+    # --- 4. SELF-HEAL --------------------------------------------------------
+    # Connectors come and go: ensure-yundera-login.sh REMOVES the `yundera`
+    # connector when the PCS loses its provider credential, and ensure-dex.sh
+    # omits `authelia` while the local account is unclaimed. Dex answers an
+    # unknown connector_id with a 400 error page, so a stale cookie would lock
+    # the user out of every app for the full 30 days — and it would do it at
+    # exactly the moment the fallback connector matters most.
+    #
+    # This proxy therefore handles only requests that were replayed AND carry
+    # our cookie; on a 400 it clears the memory and bounces the browser back to
+    # the original, un-replayed URL. That retry has no cookie, so rule 3 does
+    # not fire, the request falls through to the plain proxy below, and the
+    # chooser renders. Termination is structural: the cookie can only be
+    # cleared, never re-set, along this path.
+    @dex_replayed {
+        path /auth /auth/
+        query connector_id=*
+        header_regexp Cookie dex_connector=[A-Za-z0-9_-]
+    }
+    reverse_proxy @dex_replayed dex:5556 {
+        @dex_connector_gone status 400
+        handle_response @dex_connector_gone {
+            header +Set-Cookie "dex_connector=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax"
+            redir {http.request.orig_uri} 302
+        }
+    }
+
+    # Everything else: /token, /keys, /userinfo, /callback, the chooser itself,
+    # and any /auth whose 400 is genuinely the app's fault.
+    #
+    # `dex:5556` rather than caddy-docker-proxy's `{{upstreams 5556}}`: that
+    # template is only expanded in a LABEL, and this block is in the base
+    # Caddyfile. The container name resolves on the `pcs` network, which both
+    # dex and mesh-router-caddy join.
+    reverse_proxy dex:5556
+}
+
+# Same, plus the custom-CA TLS used by the gateway-routed and nip.io hostnames.
+(dex_router_tls) {
+    import gateway_tls
+    import dex_router
+}
+
+# =============================================================================
+# CUSTOM DOMAIN CATCH-ALL
+# =============================================================================
+# NOTE: This block is dropped by caddy-docker-proxy during config regeneration.
+# The mesh-router-caddy entrypoint injects equivalent config via Admin API:
+#   1. TLS automation policy with on_demand + internal issuer
+#   2. Catch-all HTTP route (no host matcher, appended last)
+#
+# This Caddyfile block is kept for documentation purposes only.
+# The actual config is injected by entrypoint.sh after each reload.
+#
+# What it does:
+#   - Handles any domain pointed at this server that doesn't match other routes
+#   - Auto-generates self-signed certs (issuer internal) for unknown SNI values
+#   - Works with Cloudflare "Full" mode (non-strict) - CF doesn't verify cert CA
+# =============================================================================
+#
+#:443 {
+#    tls {
+#        on_demand
+#        issuer internal
+#    }
+#    reverse_proxy {$DEFAULT_SERVICE_HOST}:{$DEFAULT_SERVICE_PORT}
+#}
