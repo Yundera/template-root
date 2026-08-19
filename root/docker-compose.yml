@@ -95,7 +95,7 @@ services:
       caddy_2.reverse_proxy: "{{upstreams 80}}"
 
   admin-app:
-    image: ghcr.io/yundera/settings-center-app:1.4.0
+    image: ghcr.io/yundera/settings-center-app:1.4.1
     container_name: admin-app
     hostname: admin-app
     restart: unless-stopped
@@ -423,7 +423,7 @@ services:
   # scripts/self-check/ensure-authelia.sh into /DATA/AppData/yundera/auth/.
   # =============================================================================
   authelia:
-    image: authelia/authelia:4.39
+    image: authelia/authelia:4.39.20
     container_name: authelia
     hostname: authelia
     restart: unless-stopped
@@ -473,7 +473,7 @@ services:
   # this is invisible. See: packages/mesh-router-root/mesh-router-auth/README.md
   # =============================================================================
   auth-registrar:
-    image: ghcr.io/yundera/mesh-auth:1.1.3
+    image: ghcr.io/yundera/mesh-auth:1.1.4
     container_name: auth-registrar
     hostname: auth-registrar
     restart: unless-stopped
@@ -506,7 +506,7 @@ services:
       # check the `root app:` line in `docker logs auth-registrar` if a login on
       # the bare domain still lands on <app>-${DOMAIN}.
       #
-      # Needs mesh-auth >= 1.2.0; older images ignore this and apps keep the
+      # Needs mesh-auth >= 1.1.4; older images ignore this and apps keep the
       # pre-existing bounce-to-<app>-${DOMAIN} behaviour.
       ROOT_CLIENT_ID: "${DEFAULT_SERVICE_HOST}"
     expose:

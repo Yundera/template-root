@@ -52,7 +52,7 @@ services:
   # suffix. Same shape as AppStoreLab's AppShieldSecurityDemo (gate `appshield-demo`,
   # backend `appshield-demo-whoami`).
   maison:
-    image: ghcr.io/yundera/appshield:2.0.10
+    image: ghcr.io/yundera/appshield:2.2.0
     container_name: maison
     hostname: maison
     restart: unless-stopped
@@ -114,7 +114,7 @@ services:
   # The dashboard itself. Named `maison-app` so the gate above can own the public
   # name `maison` — see the naming note there.
   maison-app:
-    image: ghcr.io/yundera/maison:1.1.5
+    image: ghcr.io/yundera/maison:1.1.6
     container_name: maison-app
     hostname: maison-app
     restart: unless-stopped
