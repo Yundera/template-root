@@ -18,7 +18,7 @@ services:
   # below do not publish, and login dead-ends.
   # =============================================================================
   admin:
-    image: ghcr.io/yundera/appshield:2.2.0
+    image: ghcr.io/yundera/appshield:2.2.1
     container_name: admin
     hostname: admin
     restart: unless-stopped
@@ -498,7 +498,7 @@ services:
   # this is invisible. See: packages/mesh-router-root/mesh-router-auth/README.md
   # =============================================================================
   auth-registrar:
-    image: ghcr.io/yundera/mesh-auth:1.1.4
+    image: ghcr.io/yundera/mesh-auth:1.1.5
     container_name: auth-registrar
     hostname: auth-registrar
     restart: unless-stopped
