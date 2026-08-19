@@ -91,8 +91,17 @@ fi
 # single envsubst pass suffices.
 TMP="$(mktemp)"
 chmod 600 "$TMP"
-export DOMAIN AUTHELIA_DEX_SECRET
-envsubst '${DOMAIN} ${AUTHELIA_DEX_SECRET}' < "$TEMPLATE" > "$TMP"
+# Encrypts Dex's own session cookie (see the `sessions:` block in the template).
+# Minted by ensure-dex-session-key.sh, which scripts-config.txt orders before
+# this script. Empty is tolerated: Dex starts and sessions still work, the cookie
+# is simply not encrypted — so a missing key degrades rather than breaking login.
+DEX_SESSION_KEY="$("$ENV_MGR" get DEX_SESSION_KEY "$SECRET_ENV")"
+if [ -z "$DEX_SESSION_KEY" ]; then
+    log_warn "DEX_SESSION_KEY not set yet; Dex session cookies will be unencrypted until ensure-dex-session-key.sh has run"
+fi
+
+export DOMAIN AUTHELIA_DEX_SECRET DEX_SESSION_KEY
+envsubst '${DOMAIN} ${AUTHELIA_DEX_SECRET} ${DEX_SESSION_KEY}' < "$TEMPLATE" > "$TMP"
 mv "$TMP" "$CONFIG_OUT"
 chmod 600 "$CONFIG_OUT"
 log_info "Rendered Dex config at $CONFIG_OUT"
