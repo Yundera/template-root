@@ -49,6 +49,40 @@ oauth2:
   # Every PCS app is first-party; skip the per-app consent screen.
   skipApprovalScreen: true
 
+# Dex's own browser session. Requires DEX_SESSIONS_ENABLED=true (set on the dex
+# service in docker-compose.yml) — the config block alone is refused without it.
+#
+# This is what makes Dex an OP you can log out of. Without it Dex holds no
+# session, advertises no `end_session_endpoint`, and every app's gate has to be
+# ended one at a time; with it, Dex advertises RP-Initiated Logout AND
+# Back-Channel Logout, so one logout ends every app through the spec. See
+# SSO-LOGOUT-PLAN.md §10.
+#
+# It also replaces the connector-stickiness hack that used to live in
+# caddy/Caddyfile: the chooser is now skipped because Dex remembers the SESSION,
+# not because Caddy replays a `connector_id` cookie.
+sessions:
+  cookieName: dex_session
+
+  # 720h = 30 days, matching the PCS-wide session policy (Authelia's session,
+  # the AppShield gates' SESSION_DURATION_HOURS, the Yundera IdP's ttl.Session).
+  # BOTH must be set: Dex defaults to 24h absolute and a 1h IDLE timeout, so
+  # taking the defaults would quietly cut SSO to one hour of inactivity — a
+  # regression users feel immediately and would not attribute to this file.
+  absoluteLifetime: "720h"
+  validIfNotUsedFor: "720h"
+
+  # Encrypts the session cookie. Minted by ensure-dex-session-key.sh; must be
+  # 16, 24 or 32 BYTES. Empty is legal and simply leaves cookies unencrypted.
+  cookieEncryptionKey: "${DEX_SESSION_KEY}"
+
+  # Share one Dex session across every client. The default is "none", which
+  # would make each app re-run the connector and bring the chooser back on every
+  # single app — precisely the behaviour this whole change exists to remove.
+  # Safe here because every client on a PCS is first-party and belongs to the
+  # same owner (the same reason skipApprovalScreen is on above).
+  ssoSharedWithDefault: all
+
 # No local password DB. Dex is a pure broker — the local account lives in
 # Authelia (the "Local Account" connector below). The old enablePasswordDB
 # break-glass admin was removed once Authelia became the self-contained local
