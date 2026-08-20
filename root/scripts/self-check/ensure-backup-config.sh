@@ -159,9 +159,19 @@ mv -f "$CRED_TMP" "$CREDENTIALS_FILE"
 # "unable to write session marker: BLOB not found" — which reads as "your backup is
 # corrupt" to a user whose backups are in fact intact. Maison pre-checks this flag
 # instead of interpreting the engine's error text.
+# label is what the user sees in Maison instead of the engine's ID. It belongs here
+# rather than in Maison because "kopia" is the engine while the label describes the
+# SPACE it points at: a Yundera-provisioned PCS should say so, and a self-hoster
+# running the same engine against their own bucket must not be told they are using a
+# service they are not. BACKUP_LABEL overrides it if the credential API ever returns
+# one per space.
+BACKUP_LABEL="$(env_get BACKUP_LABEL "$SECRET_ENV")"
+BACKUP_LABEL="${BACKUP_LABEL:-Yundera Backup Storage}"
+
 cat > "$STATE_FILE" <<EOF
 {
   "engine": "$ENGINE",
+  "label": "$BACKUP_LABEL",
   "spaceId": "$BACKUP_SPACE_ID",
   "deviceId": "$BACKUP_DEVICE_ID",
   "writable": ${BACKUP_WRITABLE:-true},
