@@ -36,9 +36,7 @@ services:
   #     PCS auth-registrar on first login (no client id/secret to inject), which
   #     federates through Dex to Authelia (the PCS-local credential).
   #   - machines: nothing. There is no non-interactive path here — see the
-  #     CREDENTIAL_VALIDATE_URL note in the environment block below.
-  # AUTH_HASH is deliberately NOT set: it is a per-app secret CasaOS injects at
-  # install time, and this stack is not a CasaOS app.
+  #     note in the environment block below.
   # ===========================================================================
   # NAMING IS LOAD-BEARING: this container MUST be named `maison`, and the
   # dashboard behind it `maison-app`. The auth-registrar derives an app's
@@ -52,7 +50,7 @@ services:
   # suffix. Same shape as AppStoreLab's AppShieldSecurityDemo (gate `appshield-demo`,
   # backend `appshield-demo-whoami`).
   maison:
-    image: ghcr.io/yundera/appshield:2.2.1
+    image: ghcr.io/yundera/appshield:3.0.0
     container_name: maison
     hostname: maison
     restart: unless-stopped
@@ -78,8 +76,9 @@ services:
       # set CREDENTIAL_VALIDATE_URL against casaos-oidc-bridge:8090/validate so API
       # clients could present CasaOS credentials — dropped ahead of the bridge's
       # removal. Maison replaces CasaOS, so it must not depend on it. If machine
-      # access is ever needed here, use AUTH_HASH_MODE: "managed" — the /data mount
-      # below already persists the generated token.)
+      # access is ever needed here, set OAUTH_RESOURCE to enable the OAuth 2.1
+      # broker; AppShield 3.0 removed AUTH_HASH and AUTH_HASH_MODE, and the /data
+      # mount below already persists the broker's keys and registered clients.)
       BACKEND_HOST: "maison-app"
       BACKEND_PORT: "8080"
       LISTEN_PORT: "80"

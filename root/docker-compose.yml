@@ -18,7 +18,7 @@ services:
   # below do not publish, and login dead-ends.
   # =============================================================================
   admin:
-    image: ghcr.io/yundera/appshield:2.2.1
+    image: ghcr.io/yundera/appshield:3.0.0
     container_name: admin
     hostname: admin
     restart: unless-stopped
@@ -52,10 +52,12 @@ services:
       # (adminMiddleware). Authorization stays in the app, where it can be partial;
       # the gate does authentication.
       #
-      # DELIBERATELY NOT SET — AUTH_HASH. There is no machine/API path into the
-      # dashboard. The non-interactive trust path is Path C (support SSH -> docker
-      # exec admin-app -> loopback HTTP), which bypasses this gate by construction
-      # and is gated by loopbackOnly on the handler itself.
+      # NO MACHINE/API PATH, deliberately. AppShield 3.0 removed AUTH_HASH
+      # entirely; machine access would now mean setting OAUTH_RESOURCE to run the
+      # OAuth 2.1 broker, and this gate does not. The non-interactive trust path
+      # is Path C (support SSH -> docker exec admin-app -> loopback HTTP), which
+      # bypasses this gate by construction and is gated by loopbackOnly on the
+      # handler itself.
       #
       # Only what MUST answer without a credential; everything else, the SPA's own
       # assets included, is fetched by an already-authenticated browser. This list
