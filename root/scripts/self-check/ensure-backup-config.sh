@@ -260,17 +260,29 @@ if [ -f "$CONFIG_FILE" ] && [ -f "$PASSWORD_FILE" ]; then
         exit 0
     fi
 
-    # Refused by the storage rather than broken: ask for a new credential on the next
-    # cycle. ensure-backup-credentials.sh runs before this script, so the marker is
-    # consumed tomorrow, not in a few seconds.
-    if echo "$OUT" | grep -qiE "access denied|invalidaccesskeyid|signature|expired"; then
-        touch "$REFRESH_MARKER"
-        chown "$PUID:$PGID" "$REFRESH_MARKER" 2>/dev/null || true
-        log_warn "Storage refused the current credential - requesting a fresh one on the next cycle"
-        exit 0
-    fi
-
-    log_warn "Backup repository is configured but unreachable: $(echo "$OUT" | tail -2)"
+    # Could not open the repository. Ask for a new credential on the next cycle.
+    # ensure-backup-credentials.sh runs before this script, so the marker is consumed
+    # on the next run, not in a few seconds.
+    #
+    # ANY failure arms the marker — deliberately, and NOT by matching the provider's
+    # error text. This used to be gated on
+    # `grep -qiE "access denied|invalidaccesskeyid|signature|expired"`, and B2's
+    # wording for a REVOKED key is `The key '<id>' is not valid`, which matches none
+    # of those four. A key deleted server-side therefore left the box holding a
+    # credential that was "current" by expiry and dead in fact: no marker, this
+    # script exiting 0, the self-check reporting green, and no backups at all until
+    # the 30-day renewal window opened — about 60 days later. Observed on wisera,
+    # 2026-08-20, while deliberately testing exactly this.
+    #
+    # The asymmetry is what settles it. A false positive (B2 briefly unreachable)
+    # costs one extra /user/backup/space call, bounded by this script running once
+    # per cycle and by the server's per-device mint ceiling of 10/UTC-day; the box
+    # ends up with a working credential either way. A false negative costs months of
+    # silent data loss. Matching error strings means every wording a provider
+    # invents is a new silent outage, so the strings are gone.
+    touch "$REFRESH_MARKER"
+    chown "$PUID:$PGID" "$REFRESH_MARKER" 2>/dev/null || true
+    log_warn "Backup repository unreachable - requesting a fresh credential on the next cycle: $(echo "$OUT" | tail -2)"
     exit 0
 fi
 
