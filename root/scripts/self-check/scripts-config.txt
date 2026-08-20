@@ -60,6 +60,19 @@ ensure-dex.sh
 ensure-user-compose-pulled.sh
 ensure-user-compose-stack-up.sh
 
+# Backup (BACKUP-STORAGE-PLAN.md §6). Both MUST stay after
+# ensure-yundera-user-data.sh, which supplies and rotates the USER_JWT the
+# credentials call needs, and before ensure-maison-stack.sh, so a freshly
+# provisioned box finds a connected repository on Maison's first boot rather than
+# coming up "not configured" and waiting a day.
+#
+# ensure-backup-credentials.sh MUST run before ensure-backup-config.sh: it writes
+# the BACKUP_* values the second one renders. It does NOT call the API every night —
+# every call mints a key and revokes the previous one, so it only calls when the
+# credential is absent, near expiry, or was refused by the storage.
+ensure-backup-credentials.sh
+ensure-backup-config.sh
+
 # Auxiliary stack — Maison (doc/maison-migration.md). MUST stay after
 # ensure-user-compose-stack-up.sh: it attaches to the `pcs` network, which the
 # yundera stack owns and creates.
