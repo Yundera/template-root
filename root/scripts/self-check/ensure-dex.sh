@@ -229,42 +229,15 @@ shopt -u nullglob
 
 # Provision the custom Dex frontend (theme + overlaid templates) into the dir the
 # compose file bind-mounts over the stock image. Copied every run so template
-# updates propagate. Source ships in the template at dex-theme/; a missing source
-# just leaves Dex on its stock UI.
-THEME_SRC="$YND_ROOT/dex-theme"
-DEX_FRONTEND="/DATA/AppData/yundera/dex-frontend"
-if [ -d "$THEME_SRC" ]; then
-    mkdir -p "$DEX_FRONTEND/templates" "$DEX_FRONTEND/themes"
-
-    # Copy file-by-file, clearing a DIRECTORY sitting where a file belongs.
-    #
-    # The compose file bind-mounts these paths as individual FILES. Docker
-    # auto-creates a missing bind-mount source as a DIRECTORY, so if the stack
-    # ever comes up before this script has run (cold provisioning does exactly
-    # that), templates/login.html exists as a directory. From then on `dex`
-    # cannot start at all:
-    #
-    #   error mounting ".../dex-frontend/templates/login.html" to rootfs at
-    #   "/srv/dex/web/templates/login.html": not a directory
-    #
-    # and a plain `cp -f file dir/` will not fix it — cp refuses to overwrite a
-    # directory. The old form also sent that refusal to /dev/null, so the run
-    # still logged "Provisioned custom Dex frontend" while leaving the PCS with
-    # no IdP and therefore no login of any kind. Observed on demostaging1,
-    # 2026-08-20. Hence: remove non-files first, and let errors be seen.
-    for _src in "$THEME_SRC/templates/"*.html; do
-        [ -e "$_src" ] || continue
-        _dst="$DEX_FRONTEND/templates/$(basename "$_src")"
-        [ -f "$_dst" ] || rm -rf "$_dst"
-        cp -f "$_src" "$_dst" || log_warn "could not provision $_dst"
-    done
-
-    rm -rf "$DEX_FRONTEND/themes/yundera"
-    cp -rf "$THEME_SRC/themes/yundera" "$DEX_FRONTEND/themes/" 2>/dev/null || true
-    log_info "Provisioned custom Dex frontend at $DEX_FRONTEND"
-else
-    log_warn "dex-theme/ not found in template; Dex will use its stock login UI"
-fi
+# updates propagate.
+#
+# The logic lives in tools/provision-dex-frontend.sh because it is NOT
+# exclusive to this script: ensure-user-compose-stack-up.sh runs it too, since
+# a `docker compose up` that happens before these files exist makes Docker
+# create the file bind-mount sources as DIRECTORIES and permanently breaks
+# `dex`. See that tool's header for the full story.
+"$YND_ROOT/scripts/tools/provision-dex-frontend.sh" \
+    || log_warn "Dex frontend provisioning reported an error"
 
 # ---------------------------------------------------------------------------
 # Never-empty check.
