@@ -32,10 +32,16 @@ unset PCS_PROVISIONING
 # One-shot at handover — root SSH is only needed during provisioning.
 execute_script_with_logging "$SCRIPT_DIR/tools/clear-root-ssh-keys.sh"
 
-# Verify the SSH-key handover posture before locking the box down: admin
-# must hold the API-sourced support key and root must hold no key. Runs
-# before lock-password-auth.sh so a failure leaves the box still
-# debuggable (password auth not yet disabled).
+# Verify the SSH-key handover posture: admin must hold the API-sourced
+# support key and root must hold no key.
+#
+# This is a final assertion, not a safety net. ensure-ssh.sh — inside the
+# self-check, ~15 scripts before this point — has already applied
+# `PasswordAuthentication no`, so a failure here does NOT leave the host
+# password-debuggable. There is no fallback credential by design: the support
+# key on admin is the only lifetime credential. What actually prevents an
+# unreachable host is the precondition check inside clear-root-ssh-keys.sh
+# above, which refuses to drop root's key until admin's is in place.
 execute_script_with_logging "$SCRIPT_DIR/tools/verify-handover-keys.sh"
 
 # Then run os-init specific scripts only once in the VM lifecycle

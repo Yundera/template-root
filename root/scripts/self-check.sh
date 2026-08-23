@@ -25,6 +25,14 @@ fi
 if [ "${PCS_SELF_CHECK_LOCK_HELD:-0}" != "1" ]; then
     exec 200>"$LOCK_FILE"
     if ! flock -n 200; then
+        # See self-check-reboot.sh for the full rationale: skipping is correct
+        # for a cron tick, and unsafe during first-run provisioning, where the
+        # caller treats our exit code as "the self-check ran" and then performs
+        # the irreversible SSH-key handover.
+        if [ "${PCS_PROVISIONING:-0}" = "1" ]; then
+            echo "Another self-check instance is running, but PCS_PROVISIONING=1 — the self-check is mandatory during provisioning. Aborting."
+            exit 1
+        fi
         echo "Another self-check instance is running, exiting"
         exit 0
     fi

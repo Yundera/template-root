@@ -7,6 +7,16 @@
 ensure-pcs-user.sh
 ensure-script-executable.sh
 ensure-admin-user.sh
+# ensure-support-key.sh installs the ONLY lifetime credential on this host —
+# admin's authorized_keys is never seeded from root's bootstrap key, so if this
+# fails the orchestrator has no way back in after handover. It therefore runs as
+# early as its dependencies allow: it needs the `admin` user (above), OPERATOR_API
+# from the orchestrator-staged .pcs.env, and network. The support-key fetch is
+# unauthenticated, so it needs neither docker, nor ensure-env-vars-valid.sh, nor
+# ensure-yundera-user-data.sh's USER_JWT. Running it here (rather than ~15 scripts
+# later, after the docker install) means the credential exists within seconds, and
+# provisioning fails fast when the control plane is unreachable.
+ensure-support-key.sh
 
 # Template and configuration sync
 ensure-template-sync.sh
@@ -34,7 +44,6 @@ ensure-logrotate.sh
 # Docker and application setup
 ensure-docker-installed.sh
 ensure-env-vars-valid.sh
-ensure-support-key.sh
 # ensure-admin-gate-secret.sh MUST run before ensure-user-compose-stack-up.sh: it
 # mints ADMIN_ASSERTION_SECRET into .pcs.secret.env / .env, which the admin gate
 # and the admin app both interpolate. Without it the dashboard authenticates

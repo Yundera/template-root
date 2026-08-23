@@ -28,6 +28,23 @@ PCS_ENV="$YND_ROOT/.pcs.env"
 log() { echo "[pcs-init $(date -u +%H:%M:%S)] $*"; }
 die() { log "ERROR: $*"; exit 1; }
 
+# 0. Single-writer guard.
+#
+# Two concurrent pcs-init runs on one host interleave destructively: each
+# re-rsyncs the template tree under the other's feet, and each hands off to
+# os-init.sh, so the second run can reach the irreversible SSH-key handover
+# while the first is still mid-self-check. That is exactly how a demo PCS was
+# bricked on 2026-08-23, when an orchestrator pool-claim race handed the same
+# VPS to two create pipelines.
+#
+# Idempotent is not the same as concurrency-safe. Fail loudly and let the
+# orchestrator surface it, rather than producing a half-provisioned host.
+LOCK_FILE="/var/run/pcs-init.lock"
+exec 200>"$LOCK_FILE"
+if ! flock -n 200; then
+    die "another pcs-init.sh is already running on this host (lock: $LOCK_FILE) — refusing to run concurrently"
+fi
+
 # 1. Validate orchestrator-staged env file.
 [ -f "$PCS_ENV" ] || die ".pcs.env missing at $PCS_ENV — orchestrator did not stage env files"
 UPDATE_URL=$(grep '^UPDATE_URL=' "$PCS_ENV" | cut -d= -f2- || true)
@@ -99,6 +116,11 @@ TMPL_SRC=$(find /tmp/template-root -mindepth 1 -maxdepth 1 -type d | head -1)
 #    ensure-template-sync.sh uses (preserves .pcs.env / .pcs.secret.env /
 #    .ynd.user.env that we — or a previous run — staged).
 log "Syncing tree to $YND_ROOT..."
+# Set exec bits on the SOURCE before syncing. Doing it only after the rsync
+# (step 7) leaves a window where freshly-synced scripts are on disk but not
+# executable; anything reading this tree concurrently — a self-check already
+# in flight — then dies with "Script is not executable" / exit 126.
+find "$TMPL_SRC/root/scripts" -name '*.sh' -exec chmod +x {} \; 2>/dev/null || true
 rsync -a --exclude-from="$TMPL_SRC/root/.ignore" "$TMPL_SRC/root/" "$YND_ROOT/"
 
 # 7. Ownership + exec bits on shipped scripts.

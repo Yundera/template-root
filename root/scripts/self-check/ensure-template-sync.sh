@@ -145,6 +145,13 @@ RSYNC_OPTS+=("--exclude-from=$TEMPLATE_ROOT/.ignore")
 echo "→ Syncing files..."
 mkdir -p "$YND_ROOT"
 
+# Set exec bits on the SOURCE before syncing. The chmod at the end of this
+# script leaves a window in which the newly-synced scripts are on disk but not
+# executable — and this rsync runs *inside* the self-check loop, which is
+# iterating over those very scripts. Same failure mode that broke first-install
+# on 2026-08-23 ("Script is not executable" / exit 126).
+find "$TEMPLATE_ROOT/scripts" -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
+
 # Force filesystem sync and wait for stability
 sync
 sleep 2
