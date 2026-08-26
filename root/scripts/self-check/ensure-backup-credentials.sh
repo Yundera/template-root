@@ -18,6 +18,15 @@
 # marker because the engine was refused by the storage. A healthy box lands on the
 # route about four times a year.
 #
+# Enable/disable with BACKUP_ENABLED in .pcs.env (default: enabled). Set it to
+# 0/false/no on a box that must not consume a backup space at all. The demo box is
+# the case that motivated the knob: it is destroyed and rebuilt daily, and a rebuilt
+# box arrives with a fresh .pcs.secret.env and therefore a fresh BACKUP_DEVICE_ID, so
+# every rebuild mints a key that nothing ever revokes -- revocation is per-device and
+# only ever kills the SAME device's previous key. At a 90-day TTL that accumulates
+# roughly one live orphan key per day, against a space whose owner is the demo
+# service's own account rather than a user who could ever restore from it.
+#
 # FAILURE IS SOFT, ALWAYS. Backups are not load-bearing for a PCS booting, and this
 # runs nightly on every box in the fleet: an orchestrator that is down, an older
 # orchestrator with no such route, or a rate limit must all leave the existing
@@ -45,6 +54,19 @@ REFRESH_MARKER="$ENGINE_DIR/needs-credentials"
 RENEW_WINDOW_DAYS=30
 
 env_get() { "$ENV_MGR" get "$1" "$2" 2>/dev/null || echo ""; }
+
+# --- is it wanted here? ------------------------------------------------------
+#
+# Checked before anything else, so a disabled box never reaches the mint call and
+# never writes a BACKUP_* value that ensure-backup-config.sh would then act on.
+# Absent means enabled: the fleet has no such line today and must keep its backups.
+ENABLED="$(env_get BACKUP_ENABLED "$PCS_ENV")"
+case "$(printf '%s' "$ENABLED" | tr '[:upper:]' '[:lower:]')" in
+    0|false|no|off)
+        log_info "Backups disabled by BACKUP_ENABLED in .pcs.env - not fetching credentials"
+        exit 0
+        ;;
+esac
 
 # --- preconditions -----------------------------------------------------------
 

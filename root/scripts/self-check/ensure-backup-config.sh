@@ -13,6 +13,9 @@
 # a connected repository on Maison's first boot instead of coming up "not configured"
 # and waiting a day.
 #
+# Enable/disable with BACKUP_ENABLED in .pcs.env (default: enabled), the same knob
+# ensure-backup-credentials.sh reads -- see "is it wanted here?" below.
+#
 # VERSION-COUPLED: this requires a Maison image that passes AWS_ACCESS_KEY_ID /
 # AWS_SECRET_ACCESS_KEY into the engine container (see "credentials" below). An older
 # image finds a configuration whose credentials are blank and fails its backups until
@@ -60,6 +63,7 @@ source "$YND_ROOT/scripts/library/log.sh"
 
 SECRET_ENV="$YND_ROOT/.pcs.secret.env"
 UNIFIED_ENV="$YND_ROOT/.env"
+PCS_ENV="$YND_ROOT/.pcs.env"
 ENV_MGR="$YND_ROOT/scripts/tools/env-file-manager.sh"
 
 ENGINE="kopia"
@@ -76,6 +80,28 @@ RECOVERY_MARKER="$ENGINE_DIR/needs-recovery"
 KOPIA_IMAGE="kopia/kopia:0.23.1"
 
 env_get() { "$ENV_MGR" get "$1" "$2" 2>/dev/null || echo ""; }
+
+# --- is it wanted here? ------------------------------------------------------
+#
+# BACKUP_ENABLED in .pcs.env, same knob ensure-backup-credentials.sh reads. On a box
+# that has never been provisioned this is redundant -- no BACKUP_* means the check
+# below exits anyway -- and it is here for the box that HAS been: flipping the knob
+# then means "touch nothing", not "reconfigure with whatever is still lying around".
+#
+# It deliberately leaves the existing repository, password and state file in place.
+# Removing them would make the knob destructive in a way its name does not promise:
+# repository.password is written exactly once, at create, and is the only thing that
+# can read the snapshots already in the space. Maison meanwhile keeps listing and
+# restoring from what it finds, which is the correct answer for "stop using this",
+# and ensure-backup-credentials.sh has already stopped the credential from being
+# renewed -- so the engine ages out on its own within the key's 90-day TTL.
+ENABLED="$(env_get BACKUP_ENABLED "$PCS_ENV")"
+case "$(printf '%s' "$ENABLED" | tr '[:upper:]' '[:lower:]')" in
+    0|false|no|off)
+        log_info "Backups disabled by BACKUP_ENABLED in .pcs.env - not touching the repository"
+        exit 0
+        ;;
+esac
 
 # --- is this box provisioned for backups at all? ------------------------------
 
