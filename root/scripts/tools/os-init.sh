@@ -48,4 +48,15 @@ execute_script_with_logging "$SCRIPT_DIR/tools/verify-handover-keys.sh"
 execute_script_with_logging "$SCRIPT_DIR/tools/lock-password-auth.sh"
 execute_script_with_logging "$SCRIPT_DIR/tools/os-cleanup-before-use.sh"
 
+# Install the apps this PCS ships with (PREINSTALL_APPS). One-shot like everything
+# else in this block — os-init.sh running once per VM lifecycle IS the guard, which
+# is why this is not a self-check: an "ensure these apps exist" tick would reinstall
+# an app the user had deliberately uninstalled.
+#
+# Last, deliberately. It is the only step here that talks to the network, and the
+# least critical thing on the box — it must not delay the irreversible SSH-key
+# handover above. It always exits 0, so a store that is unreachable cannot fail a
+# PCS create over a missing dashboard tile.
+execute_script_with_logging "$SCRIPT_DIR/tools/preinstall-apps.sh"
+
 log "=== Final user hand over completed successfully ==="

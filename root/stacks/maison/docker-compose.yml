@@ -162,6 +162,26 @@ services:
       # protected because its own compose says so, via `x-compose-app.view:
       # system` (this file's block at the bottom, and the yundera stack's). See
       # the note there for what that withholds.
+
+      # Where the HOST's /proc is readable, for the Resources page.
+      #
+      # Most of /proc is NOT namespaced — /proc/stat, /proc/meminfo and
+      # /proc/diskstats already report the host from inside a container — so this
+      # changes nothing for the CPU, memory and disk-IO figures that were always
+      # correct. It buys the three readings that ARE per-namespace or per-process:
+      #   - the host's network interface counters. /proc/net is a symlink to
+      #     `self/net`, so it resolves in the READER's network namespace however it
+      #     is reached; on the pcs bridge that means a veth, not the uplink. Maison
+      #     reads /host/proc/1/net/dev explicitly to get host PID 1's namespace.
+      #   - the host's process table, for the top-processes list.
+      #   - the host's mount table, so a filesystem reached through the /DATA bind
+      #     is named as what it actually is (/dev/sda1 at /) rather than by the
+      #     path this container happens to see it through.
+      #
+      # Maison feature-detects this: without the mount the Resources page hides the
+      # network and process tables and says why, rather than presenting the
+      # container's own figures as the box's.
+      HOST_PROC: "/host/proc"
     # Docker socket group — resolved from the host by ensure-maison-stack.sh.
     group_add:
       - "${DOCKER_GID}"
@@ -178,6 +198,14 @@ services:
       - type: bind
         source: /var/run/docker.sock
         target: /var/run/docker.sock
+      # Read-only, and paired with HOST_PROC above. This exposes host command
+      # lines and /proc/1/environ to this container — which is not a new capability
+      # here: the docker socket mounted just above is already root-equivalent on
+      # the host.
+      - type: bind
+        source: /proc
+        target: /host/proc
+        read_only: true
 
 networks:
   # Created and owned by the `yundera` stack — this project only attaches to it.
