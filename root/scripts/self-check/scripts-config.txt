@@ -44,11 +44,21 @@ ensure-logrotate.sh
 # Docker and application setup
 ensure-docker-installed.sh
 ensure-env-vars-valid.sh
-# ensure-admin-gate-secret.sh MUST run before ensure-user-compose-stack-up.sh: it
-# mints ADMIN_ASSERTION_SECRET into .pcs.secret.env / .env, which the admin gate
-# and the admin app both interpolate. Without it the dashboard authenticates
-# nobody (it fails closed).
-ensure-admin-gate-secret.sh
+# RENDER EVERYTHING, *THEN* BRING THE STACK UP. The auth block below all mints
+# secrets and renders config files that services read at startup, and it must
+# stay ahead of ensure-admin-gate-secret.sh — because that script does not just
+# mint a secret, it calls ensure-user-compose-stack-up.sh itself to propagate it.
+# On a cold provision that is the FIRST `docker compose up` on the box.
+#
+# It used to sit above this block, which meant the first up started Dex against a
+# /DATA/AppData/yundera/dex/config.yaml that ensure-dex.sh had not written yet.
+# `dex serve` on a missing config exits immediately, so Dex crash-looped under
+# restart:unless-stopped for the ~2m45s until ensure-dex.sh ran — and on
+# 2026-08-27 that loop lost Dex's then-pinned gRPC address to auth-registrar and
+# wedged the whole provision. The address is gone (see docker-compose.yml), so
+# the loop can no longer wedge anything, but a service that crash-loops on every
+# cold provision is a standing liability. Keep this order.
+#
 # ensure-authelia.sh MUST run before ensure-dex.sh: it mints AUTHELIA_DEX_SECRET
 # into .pcs.secret.env / .env, which ensure-dex.sh interpolates into the Dex
 # "Local Account" connector's clientSecret.
@@ -65,7 +75,14 @@ ensure-yundera-login.sh
 # accepts (cookies simply go unencrypted), so this is an ordering requirement
 # rather than a hard dependency.
 ensure-dex-session-key.sh
+# Cold-boot safe: ensure-dex.sh's trailing `docker restart dex` is guarded on the
+# container existing, so running it before the stack has ever come up is a no-op.
 ensure-dex.sh
+# ensure-admin-gate-secret.sh MUST run before ensure-user-compose-stack-up.sh: it
+# mints ADMIN_ASSERTION_SECRET into .pcs.secret.env / .env, which the admin gate
+# and the admin app both interpolate. Without it the dashboard authenticates
+# nobody (it fails closed).
+ensure-admin-gate-secret.sh
 ensure-user-compose-pulled.sh
 ensure-user-compose-stack-up.sh
 

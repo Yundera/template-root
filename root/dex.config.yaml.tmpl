@@ -21,12 +21,20 @@ web:
 
 # Client-management gRPC API. auth-registrar (mesh-auth, REGISTRAR_BACKEND=dex)
 # calls CreateClient here when a PCS app first logs in. This API is
-# UNAUTHENTICATED, so it is bound to the isolated `dex-internal` network's static
-# IP ONLY (not 0.0.0.0). App containers live on `pcs` and therefore cannot reach
-# it; only auth-registrar (also on dex-internal) can. The IP is pinned in
-# docker-compose.yml — keep the two in sync.
+# UNAUTHENTICATED, so it is bound to the isolated `yundera-auth` network ONLY
+# (not 0.0.0.0). App containers live on `pcs` and therefore cannot reach it; only
+# auth-registrar (also on yundera-auth) can.
+#
+# `dex-grpc` is a NETWORK-SCOPED ALIAS declared on the dex service in
+# docker-compose.yml, and it resolves in exactly one network's DNS scope — so it
+# has one A record and Dex binds to the yundera-auth interface and nothing else.
+# Do NOT change this to `dex`, `0.0.0.0`, or a literal IP: `dex` is ambiguous
+# (Dex is multi-homed and Docker's resolver can return the pcs-side address),
+# 0.0.0.0 publishes the API to every app container, and a literal IP is what
+# collided with the dynamic allocator before this was an alias. Keep the alias
+# name in sync with docker-compose.yml.
 grpc:
-  addr: 172.31.7.2:5557
+  addr: dex-grpc:5557
 
 # Custom login UI. `dir` MUST be set to the on-disk web dir — without it Dex
 # serves its embedded (in-binary) assets and ignores files on disk, so the

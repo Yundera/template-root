@@ -412,13 +412,29 @@ services:
       - /DATA/AppData/yundera/dex-frontend/themes/yundera:/srv/dex/web/themes/yundera:ro
     expose:
       - "5556"   # OIDC web endpoints (Caddy terminates TLS), bound on pcs
-      - "5557"   # gRPC client-mgmt API — UNAUTHENTICATED, bound to dex-internal IP only
+      - "5557"   # gRPC client-mgmt API — UNAUTHENTICATED, bound to yundera-auth IP only
     networks:
       pcs: null
-      # gRPC (5557) is bound to this static IP in config.yaml.tmpl, so it is
-      # reachable ONLY by containers on dex-internal (just auth-registrar).
-      dex-internal:
-        ipv4_address: 172.31.7.2
+      # gRPC (5557) is bound to `dex-grpc` in config.yaml.tmpl, so it is reachable
+      # ONLY by containers on yundera-auth (just auth-registrar).
+      #
+      # THE ALIAS IS THE WHOLE MECHANISM, and it must stay network-scoped. Dex is
+      # multi-homed, so binding to its own container name is ambiguous — Docker's
+      # embedded DNS answers from the *querying* container's perspective and can
+      # hand back the `pcs`-side address, which would publish an unauthenticated
+      # client-minting API to every app on the box. An alias declared here and
+      # nowhere else exists in exactly one network's DNS scope, so it has exactly
+      # one A record and `net.Listen` can only bind to the yundera-auth interface.
+      #
+      # This replaced a pinned ipv4_address (172.31.7.2 on a /29). That address was
+      # also the first one Docker's IPAM hands out dynamically, so any cycle where
+      # auth-registrar attached while Dex was between restarts stole it and wedged
+      # Dex forever on "Address already in use" — which is exactly what happened on
+      # the 2026-08-27 demostaging2 provision. There is no pinned address left to
+      # collide over; do not reintroduce one.
+      yundera-auth:
+        aliases:
+          - dex-grpc
     # No `depends_on` for the connectors: authelia is in this stack but Dex must
     # not block on it, and the Yundera IdP is off-box entirely. Dex retries a
     # connector's back-channel on use, so cold-boot ordering resolves itself.
@@ -508,8 +524,11 @@ services:
     environment:
       ISSUER_URL: https://auth-${DOMAIN}
       REGISTRAR_BACKEND: dex
-      # Dex gRPC is reachable only on the isolated dex-internal net (static IP)
-      DEX_GRPC_ADDR: 172.31.7.2:5557
+      # Dex gRPC is reachable only on the isolated yundera-auth net, under the
+      # network-scoped alias Dex binds to. Resolving `dex` instead would be a bug:
+      # both containers are on `pcs` too, so that name can resolve to the pcs-side
+      # address, where nothing is listening.
+      DEX_GRPC_ADDR: dex-grpc:5557
       # ephemeral in-container cache (NOT persisted) — see note above
       DEX_CLIENTS_DIR: /tmp/dex-clients
       # Allowed redirect-URI host suffixes (comma-separated). An app's permitted
@@ -540,7 +559,7 @@ services:
       - "9092"
     networks:
       pcs: null            # /register from app sidecars + PTR attestation
-      dex-internal: null   # gRPC to Dex
+      yundera-auth: null   # gRPC to Dex (no fixed address needed — dials the alias)
     depends_on:
       - dex
 
@@ -550,14 +569,22 @@ networks:
   # Isolated gRPC-only net for the auth-registrar <-> Dex client-management API.
   # internal: true → no egress (Dex's egress comes from the pcs network it is also
   # on). App containers live only on pcs, so they cannot reach Dex's gRPC port
-  # (5557), which is bound to 172.31.7.2 on this net. The subnet is pinned so Dex
-  # can bind gRPC to a known IP — keep it clear of other host docker networks.
-  dex-internal:
-    name: dex-internal
+  # (5557), which is bound to the `dex-grpc` alias on this net.
+  #
+  # NO ipam BLOCK, DELIBERATELY. Addressing here is entirely dynamic: Dex is found
+  # by its network-scoped alias, not by a pinned address, so there is no reserved
+  # IP for the dynamic allocator to collide with and no subnet to keep clear of
+  # other host docker networks. See the alias note on the dex service.
+  #
+  # THE NAME IS NAMESPACED ON PURPOSE. The security property of this network is
+  # "only auth-registrar is on it", on a box where the owner installs arbitrary
+  # store apps. A generic top-level name (`auth`) is claimable by any third-party
+  # compose file with `name:` or `external: true`, and the prize for landing here
+  # is unauthenticated OIDC-client minting. Renamed from `dex-internal`;
+  # migrations/2026-08-27-10-rename-dex-internal-network.sh drops the old one.
+  yundera-auth:
+    name: yundera-auth
     internal: true
-    ipam:
-      config:
-        - subnet: 172.31.7.0/29
 
 x-casaos:
   main: admin

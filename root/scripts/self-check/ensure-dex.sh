@@ -47,10 +47,12 @@
 #     silently removes those connectors from the login page.
 #
 # NETWORK: Dex's gRPC client-management API is UNAUTHENTICATED, so the rendered
-# config binds it to a static IP (172.31.7.2) on the isolated `dex-internal`
-# docker network instead of 0.0.0.0. Only auth-registrar sits on that network;
-# app containers (pcs network only) cannot reach gRPC. The IP is pinned in both
-# docker-compose.yml and dex.config.yaml.tmpl — keep them in sync.
+# config binds it to `dex-grpc:5557` — a network-scoped alias on the isolated
+# `yundera-auth` docker network — instead of 0.0.0.0. Only auth-registrar sits on
+# that network; app containers (pcs network only) cannot reach gRPC. The alias is
+# declared in docker-compose.yml and consumed in dex.config.yaml.tmpl — keep the
+# two in sync. It is an alias rather than a pinned address on purpose; see the
+# note on the dex service in docker-compose.yml.
 
 set -euo pipefail
 
