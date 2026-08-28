@@ -6,6 +6,8 @@
 # `maison` — see doc/maison-migration.md) to its own project directory:
 #
 #   1. copy stacks/<stack-name>/docker-compose.yml -> <dest-dir>/docker-compose.yml
+#   1b. copy stacks/<stack-name>/icon.<ext> -> <dest-dir>/.icon.<ext>, the file
+#      Maison renders the stack's tile from
 #   2. generate <dest-dir>/.env from the yundera unified .env, plus any extra
 #      KEY=value pairs given on the command line
 #   3. docker compose pull, then up -d --remove-orphans (both with backoff)
@@ -61,6 +63,45 @@ mkdir -p "$DEST_DIR"
 if ! cmp -s "$SRC_COMPOSE" "$DEST_COMPOSE"; then
     cp "$SRC_COMPOSE" "$DEST_COMPOSE"
     log_info "Updated $DEST_COMPOSE from template"
+fi
+
+# --- 1b. tile icon ---------------------------------------------------------
+# The stack's directory sits directly under /DATA/AppData, so Maison tiles it as a
+# MANAGED app — and since Maison 1.1.18 a managed app's tile is rendered from
+# `.icon.<ext>` in its own folder (internal/apps/icon.go: localIcon() swaps the tile's
+# icon for /api/apps/<app>/icon whenever that file exists), falling back to the compose's
+# `icon:` URL only when it does not. Shipping the file with the template is what keeps
+# these tiles off a store CDN: a URL is a third party on every tile render, and it rots.
+# That is not hypothetical — the maison stack's icon: pointed at Apps/CasaDash/icon.png,
+# the AppStore repo renamed that folder to Apps/CasaOS/, and the tile had been rendering
+# iconless ever since.
+#
+# The compose `icon:` field cannot express this: appicon.fetch() ignores any URL that is
+# not http(s), so a local path there fetches nothing. The local path IS the file, beside
+# the compose — the CasaOS store layout, where every app folder carries an icon.<ext>.
+#
+# Extensions are tried in Maison's own appicon.Path() order, so a folder holding two
+# icons resolves to the same one here as the dashboard would pick. A stack that ships
+# none is a no-op. Nothing else writes this file for these stacks: Maison copies an
+# icon at install and at update, which the platform stacks go through neither, and its
+# boot-time EnsureIcons only fills apps that have NO copy.
+SRC_ICON=""
+DEST_ICON=""
+for ext in png svg jpg jpeg webp gif ico avif; do
+    if [ -f "$YND_ROOT/stacks/$STACK_NAME/icon.$ext" ]; then
+        SRC_ICON="$YND_ROOT/stacks/$STACK_NAME/icon.$ext"
+        DEST_ICON="$DEST_DIR/.icon.$ext"
+        break
+    fi
+done
+# Write only on change, as with the compose above. The rm clears a copy under a
+# DIFFERENT extension: two .icon.* files would make Path()'s answer depend on its own
+# ordering rather than on what the template shipped.
+if [ -n "$SRC_ICON" ] && ! cmp -s "$SRC_ICON" "$DEST_ICON"; then
+    rm -f "$DEST_DIR"/.icon.*
+    cp "$SRC_ICON" "$DEST_ICON"
+    chown 1000:1000 "$DEST_ICON" 2>/dev/null || true
+    log_info "Updated $DEST_ICON from template"
 fi
 
 # --- 2. .env ---------------------------------------------------------------

@@ -1,0 +1,392 @@
+# =============================================================================
+# KOPIA STACK — the backup engine, and the engine's own web UI behind SSO.
+#
+# Deployed to /DATA/AppData/kopia/ by scripts/self-check/ensure-kopia-stack.sh,
+# which generates the .env alongside it from the yundera unified .env. DO NOT edit the
+# deployed copies — they are overwritten on every self-check.
+#
+# Three containers, one image doing two jobs and a gate in front of it:
+#
+#   kopia         AppShield gate. The only public entrypoint (kopia-${DOMAIN}).
+#   kopia-app     `kopia server --ui` — the upstream web UI, browse and restore.
+#   kopia-engine  `sleep infinity` — the container Maison runs `docker exec` in.
+#
+# WHY A RESIDENT ENGINE AT ALL
+#
+# Maison used to start one of these per engine command, `docker run --rm`. On a PCS
+# that costs six to seven seconds of container start before kopia's own process
+# begins — measured with an entrypoint of /bin/true, so it is start-up and not work.
+# Against it, kopia's whole `snapshot list` (connect, cache scan, list) is ~1.5s, and
+# the bucket round trips inside that are ~100ms. Clicking Install in the store waited
+# on exactly this, which is what made the button look broken.
+#
+# So the container stays up and Maison runs `docker exec` in it. Nothing else about
+# the engine changes: same image, same capabilities, same per-invocation secrets, same
+# repository. Measured on a test PCS, one `snapshot list` went 13.1s -> 3.0s with
+# byte-identical output.
+#
+# WHY THE UI AND THE ENGINE ARE TWO CONTAINERS, NOT ONE
+#
+# They are the same image, the same identity and the same repository, and kopia is
+# perfectly happy to have both processes open at once — that is the ordinary desktop
+# setup, where KopiaUI's server and the CLI share one config and one cache. Verified
+# here too: a `snapshot create` from the engine while the server was up completed
+# normally, and the server kept serving.
+#
+# What separates them is lifecycle. The UI holds S3 credentials it read at start, so it
+# has to be restarted when those rotate (see ensure-kopia-stack.sh), and it is the half
+# with a listening socket and a crash loop available to it. The engine is a `sleep` that
+# never needs restarting. Merging them would mean a UI restart could kill a backup
+# mid-run, and the engine's whole value is that it is boring.
+#
+# THE ENGINE IS OPTIONAL, AND THAT IS LOAD-BEARING
+#
+# If this stack is missing, stopped, or mid-upgrade, Maison silently falls back to
+# starting a one-shot container per command — the behaviour that predates it. Boxes
+# whose repository is on a local filesystem keep using one-shot containers regardless,
+# because those get `--network none`, which a long-lived container cannot offer. Losing
+# this stack costs latency and the UI, never a backup.
+#
+# NOTHING BUT THE GATE IS ON THE `pcs` NETWORK, and that is a rule rather than
+# tidiness. Two reasons, and either alone would be enough:
+#   - auth-registrar derives an app's OIDC client_id from a reverse-DNS lookup of the
+#     *calling* container's name on that network, so a named container sitting on it is
+#     a claimable identity. The gate is meant to claim `kopia`; the two kopia
+#     containers must claim nothing.
+#   - kopia-app is an unauthenticated API with root and DAC_READ_SEARCH over the whole
+#     of /DATA (see the flag note on it). On `pcs` that is reachable by every store app
+#     the owner installs. On the private bridge below it is reachable by the gate.
+# Maison's engine package refuses any network but `none` and the default bridge for the
+# same reason. These containers reach a bucket, never a peer.
+# =============================================================================
+name: kopia
+
+services:
+  # ===========================================================================
+  # APPSHIELD GATE — the only public entrypoint to the kopia UI.
+  #   - humans: interactive SSO. The gate self-registers an OIDC client with the
+  #     PCS auth-registrar on first login (no client id/secret to inject), which
+  #     federates through Dex to Authelia (the PCS-local credential).
+  #   - machines: nothing. There is no non-interactive path here.
+  # ===========================================================================
+  # NAMING IS LOAD-BEARING: this container MUST be named `kopia`, and the server
+  # behind it `kopia-app`. The auth-registrar derives an app's client_id from a PTR
+  # lookup of the *caller's container name* on the pcs network ("clientId is the
+  # PTR-attested container name — NOT anything the caller sent",
+  # mesh-router-auth/src/validation.ts), and then only ever issues redirect URIs under
+  # `<client_id>-<suffix>`. Name this container `kopia-gate` and it registers callbacks
+  # for kopia-gate-${DOMAIN} — a hostname the caddy_* labels below do not publish, so
+  # the OIDC callback lands on an unrouted host and login dead-ends. The gate therefore
+  # takes the app's public name; the backend gets the suffix. Same shape as the maison
+  # stack, and as AppStoreLab's AppShieldSecurityDemo.
+  kopia:
+    image: ghcr.io/yundera/appshield:3.0.0
+    container_name: kopia
+    hostname: kopia
+    restart: unless-stopped
+    user: "0:0"
+    cpu_shares: 40
+    mem_limit: 128m
+    expose:
+      - "80"
+    environment:
+      OIDC_REGISTRAR_URL: "http://auth-registrar:9092"
+      # Fallback only, since appshield 2.0.10 / mesh-auth 1.1.4: the gate now sends its
+      # callback PATH and adopts the redirect_uris the registrar returns, so the
+      # registrar's REDIRECT_HOST_SUFFIXES is what actually decides. This list is the
+      # pre-registration guess, and what gets used if /register is unreachable — keep it
+      # matching the caddy_* labels below.
+      REDIRECT_HOST_SUFFIXES: "${DOMAIN},${PUBLIC_IP_DASH}.nip.io,${PUBLIC_IP_DASH}.sslip.io"
+      BACKEND_HOST: "kopia-app"
+      BACKEND_PORT: "51515"
+      LISTEN_PORT: "80"
+      # Gate session lifetime: 30 days (matches the AppShield default; pinned
+      # explicitly so the PCS-wide 30-day session policy is visible here).
+      SESSION_DURATION_HOURS: "720"
+    volumes:
+      # Gate state under /data: persisted login sessions (sessions.json). Without this
+      # mount a container recreate logs everyone out regardless of
+      # SESSION_DURATION_HOURS. Lives inside the stack's own folder — deploy-stack.sh
+      # only ever writes docker-compose.yml, .env and .icon.* there, so it never
+      # disturbs this.
+      - /DATA/AppData/kopia/gate-data:/data
+    depends_on:
+      - kopia-app
+    networks:
+      # Both: `pcs` is where Caddy and auth-registrar are, `engine` is where the
+      # backend is. The gate is the only member of both, which is the whole design.
+      pcs: null
+      engine: null
+    labels:
+      # Standard domain with custom CA (gateway-routed)
+      caddy_0: kopia-${DOMAIN}
+      caddy_0.import: gateway_tls
+      caddy_0.reverse_proxy: "{{upstreams 80}}"
+      # nip.io variant for direct access (custom CA)
+      caddy_1: kopia-${PUBLIC_IP_DASH}.nip.io
+      caddy_1.import: gateway_tls
+      caddy_1.reverse_proxy: "{{upstreams 80}}"
+      # sslip.io variant for direct access (Let's Encrypt)
+      caddy_2: kopia-${PUBLIC_IP_DASH}.sslip.io
+      caddy_2.reverse_proxy: "{{upstreams 80}}"
+
+  # ===========================================================================
+  # THE UI — upstream `kopia server`, pointed at the repository this box already has.
+  #
+  # It is the engine's own interface, not something written here: snapshot browsing,
+  # per-file restore, retention policies, the task log. Maison owns the scheduled
+  # backup and the app-level restore; this is the "let me look inside" half, which
+  # Maison does not attempt to reimplement.
+  # ===========================================================================
+  kopia-app:
+    image: ${KOPIA_IMAGE}
+    container_name: kopia-app
+    restart: unless-stopped
+
+    # NO `hostname:` pin, deliberately — unlike kopia-engine below, which needs one.
+    # The identity snapshots are filed under comes from repository.config
+    # (`"username": "pcs"`, `"hostname": "<device id>"`), and the server reads it from
+    # there: verified by starting this container with an unrelated OS hostname and
+    # watching /api/v1/sources still report pcs@<device id>. Nothing here can put a
+    # snapshot in the wrong lineage.
+
+    # The image's entrypoint is /bin/kopia, so the wrapper has to be explicit. It exists
+    # because kopia takes the repository password and the S3 credentials from the
+    # ENVIRONMENT and there is no file-based flag for either, while both live on disk as
+    # files written by ensure-backup-config.sh (which is their owner — Maison never
+    # generates them, and neither does this stack).
+    #
+    # `$$` is compose's escape for a literal `$`: the shell gets `$(...)`, not an
+    # interpolation attempt.
+    #
+    # CREDENTIALS ARE READ ONCE, AT START. They rotate roughly every 90 days, and a
+    # server holding a revoked key serves an error page rather than the UI — so
+    # ensure-kopia-stack.sh restarts this container whenever credentials.env is newer
+    # than it is. The engine is unaffected: Maison passes credentials per exec.
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -euo pipefail
+        set -a; . /DATA/AppDataShared/backup/kopia/credentials.env; set +a
+        export KOPIA_PASSWORD="$$(cat /DATA/AppDataShared/backup/kopia/repository.password)"
+        exec /bin/kopia server start \
+          --config-file=/DATA/AppDataShared/backup/kopia/repository.config \
+          --address=0.0.0.0:51515 \
+          --ui \
+          --ui-preferences-file=/DATA/AppDataShared/backup/kopia/ui-preferences.json \
+          --insecure \
+          --without-password \
+          --allow-extremely-dangerous-unauthenticated-server-on-the-network \
+          --no-grpc \
+          --no-check-for-updates
+
+    # THAT FLAG NAME IS NOT A JOKE, AND THIS IS WHY IT IS ACCEPTED HERE.
+    #
+    # kopia refuses `--without-password` on anything but a loopback bind, and it is
+    # right to: the API it serves can read, restore and delete every backup this box
+    # has. The alternative it offers is HTTP Basic auth, which would put a browser
+    # password prompt behind the SSO login the owner already passed, with a secret this
+    # stack would have to mint, store and rotate.
+    #
+    # So the bind is narrowed instead of the auth: this container is on ONE network
+    # whose only other member is the gate in front of it, it publishes no port, and the
+    # gate demands SSO before a byte reaches it. That is a strictly smaller audience
+    # than maison-app — which has no authentication either and sits on `pcs`, where
+    # every installed app can reach it.
+    #
+    # --enable-actions is (and must stay) absent: it lets a snapshot policy run
+    # arbitrary commands, which would turn the UI into a remote shell.
+    # --no-check-for-updates keeps the box off GitHub; the image pin is the update
+    # mechanism.
+    # --no-grpc: the repository-server protocol has no client here.
+
+    # Root, narrowed to the five capabilities a restore actually needs — the same set
+    # as the engine, because it does the same work when the owner restores a file from
+    # the UI. See the note on kopia-engine.
+    user: "0:0"
+    cap_drop:
+      - ALL
+    cap_add:
+      - DAC_READ_SEARCH
+      - DAC_OVERRIDE
+      - CHOWN
+      - FOWNER
+      - FSETID
+    security_opt:
+      - no-new-privileges:true
+
+    expose:
+      - "51515"   # NEVER `ports:` — the gate is the only way in
+
+    networks:
+      engine: null
+
+    # Idle while nobody is looking at it; the ceiling is for a browse of a large
+    # snapshot tree. Lower than the engine's, which has to hash whole app directories.
+    cpu_shares: 50
+    mem_limit: 1g
+
+    environment:
+      # The image bakes KOPIA_CACHE_DIRECTORY=/app/cache and KOPIA_LOG_DIR=/app/logs,
+      # and those outrank --cache-directory / --log-dir. /app belongs to root and is
+      # inside the container either way, so both are pointed back at the engine's own
+      # directory. SHARED WITH THE ENGINE on purpose: it is the same repository, the
+      # cache is content-addressed and self-validating, and one warm cache serves both.
+      # kopia's own desktop build shares a cache between its server and the CLI the
+      # same way.
+      KOPIA_CACHE_DIRECTORY: "/DATA/AppDataShared/backup/kopia/cache"
+      KOPIA_LOG_DIR: "/DATA/AppDataShared/backup/kopia/logs"
+      TZ: "${TZ}"
+
+    volumes:
+      # A restore writes back into an app's data directory, so the UI needs the data
+      # root exactly as the engine has it. rshared so mounts made underneath after this
+      # container starts are still visible to it.
+      - type: bind
+        source: /DATA
+        target: /DATA
+        bind:
+          propagation: rshared
+
+  # ===========================================================================
+  # THE ENGINE — the container Maison runs `docker exec` in. No listener, no UI.
+  # ===========================================================================
+  kopia-engine:
+    image: ${KOPIA_IMAGE}
+    container_name: kopia-engine
+    # MUST match the `hostname` in /DATA/AppDataShared/backup/kopia/repository.config,
+    # which ensure-backup-config.sh writes once and never rewrites. kopia files
+    # snapshots under user@host; a container disagreeing would open a second lineage
+    # inside one repository — invisible until a restore comes back empty. Maison
+    # verifies this container against that file before using it and falls back to
+    # one-shot containers when they disagree, so a wrong value here is slow rather
+    # than dangerous. ensure-kopia-stack.sh reads it from the file itself.
+    #
+    # It is also the ONLY thing Maison checks (engine.residentUsable), which is why the
+    # container Maison is pointed at — BACKUP_ENGINE_CONTAINER in the maison stack —
+    # must be this one and not kopia-app.
+    hostname: ${KOPIA_HOSTNAME}
+    restart: unless-stopped
+
+    # The image's entrypoint is /bin/kopia and there is no daemon to run: this
+    # container exists only to be exec'd into. Maison names the binary on every exec.
+    entrypoint: ["/usr/bin/sleep"]
+    command: ["infinity"]
+
+    # Root, narrowed to the five capabilities a backup actually needs. PUID:PGID cannot
+    # read an app's own private data directories — postgres' 0700 pgdata is the usual
+    # one — and CHOWN/FOWNER/FSETID are what let a restore put the recorded ownership
+    # and setuid bits back, so a restored database starts instead of coming back as a
+    # directory postgres refuses. This mirrors engineCaps in Maison's kopia provider;
+    # the two must not drift.
+    user: "0:0"
+    cap_drop:
+      - ALL
+    cap_add:
+      - DAC_READ_SEARCH
+      - DAC_OVERRIDE
+      - CHOWN
+      - FOWNER
+      - FSETID
+    security_opt:
+      - no-new-privileges:true
+
+    # Attached explicitly. Without this the service silently lands on compose's implicit
+    # `default` and the declaration below is dropped as unused — which happens to be a
+    # bridge too, so it would work while saying nothing about the one property that
+    # matters here.
+    networks:
+      engine: null
+
+    # Idle almost always; busy only while a backup or restore runs. The memory limit is
+    # higher than anything else on the box on purpose — a one-shot engine had no limit
+    # at all, and an OOM here fails a restore rather than slowing a page.
+    cpu_shares: 70
+    mem_limit: 2g
+
+    environment:
+      # See the note on kopia-app: same reason, same directories, shared deliberately.
+      # Maison overrides both per exec as well; setting them here too means anyone
+      # debugging by hand lands in the same place.
+      KOPIA_CACHE_DIRECTORY: "/DATA/AppDataShared/backup/kopia/cache"
+      KOPIA_LOG_DIR: "/DATA/AppDataShared/backup/kopia/logs"
+      TZ: "${TZ}"
+
+    volumes:
+      # The engine reads every app's data and writes restores back into it, so it needs
+      # the data root exactly as Maison's own DataMount hands it over. rshared so mounts
+      # made underneath after this container starts are still visible to it.
+      - type: bind
+        source: /DATA
+        target: /DATA
+        bind:
+          propagation: rshared
+
+    # One pid file per in-flight command. `docker exec` has no --name and no --rm, so
+    # this is the only handle Maison has on an engine whose client it had to kill —
+    # without it a cancelled backup would leave kopia holding an app's files open while
+    # Maison brings the app back up. tmpfs so a restart clears whatever a crash left
+    # behind, and deliberately NOT a named volume: the Maison rebrand migration runs
+    # `docker compose down` without --volumes, and a named volume here would be one more
+    # thing a future migration has to know about.
+    tmpfs:
+      - /run/maison-ops
+
+networks:
+  # The stack's own bridge, stated rather than inherited from compose's implicit
+  # default, so that "the engine and the UI are not on pcs" is something a reader can
+  # check here. Namespaced for the reason the yundera stack namespaces its auth
+  # network: on a box where the owner installs arbitrary store apps, a generic
+  # top-level name is claimable by any third-party compose file, and the security
+  # property is "nothing else is on it".
+  #
+  # NOT `internal: true`, unlike that auth network — the whole job is reaching an
+  # offsite bucket.
+  engine:
+    name: kopia-engine
+
+  # Created and owned by the `yundera` stack — this project only attaches to it, and
+  # only with the gate. ensure-kopia-stack.sh therefore runs after
+  # ensure-user-compose-stack-up.sh.
+  pcs:
+    name: pcs
+    external: true
+
+# Tiles the stack in Maison's System grid.
+#
+# The deployment directory is dotless, so Maison's managed-app scan of /DATA/AppData
+# picks this stack up whether or not this block exists; without it the tile would be
+# nameless and unprotected. `view: system` is the load-bearing half: it groups the tile
+# with the platform rather than the user's apps, makes Maison refuse to stop or
+# uninstall it, and makes the nightly backup skip it — which matters more here than
+# anywhere else, since this stack is what performs that backup. Stopping it from the
+# apps grid would silently drop every box back to one-shot engine containers.
+#
+# It tiles like any store app otherwise: an icon, and an Open button that goes to the
+# GATE (`kopia-${DOMAIN}`) — the only authenticated way in, and the value that must
+# match caddy_0 above, which is what actually routes. `webui-host` is the ONLY metadata
+# field Maison substitutes ${DOMAIN} in; it resolves against APP_DOMAIN from
+# .env.app.
+#
+# The icon ships with the template — stacks/kopia/icon.svg, deployed to
+# /DATA/AppData/kopia/.icon.svg by scripts/tools/deploy-stack.sh — rather than as a
+# URL: since Maison 1.1.18 a managed app's tile prefers `.icon.<ext>` in its own
+# folder, and the Yundera AppStore ships no asset for this stack, so a speculative URL
+# would 404 on every tile render rather than falling back. Swap the file, not this
+# block, when a designed one exists.
+x-compose-app:
+  schema_version: 2
+  id: kopia
+  title: Kopia
+  category: pcs
+  developer: Yundera Team
+  view: system
+  webui-host: kopia-${DOMAIN}
+  webui-scheme: https
+  webui-path: /
+
+# Deliberately NO x-casaos block. CasaOS is removed from the platform (phase 3), so
+# there is no second grid to tile into — and CasaOS honours no uninstall guard, so a
+# block here would only re-expose a path that could `down --volumes` this project. The
+# maison stack still carries one for boxes mid-migration; a stack created after the
+# removal should not.

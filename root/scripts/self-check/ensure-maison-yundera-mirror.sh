@@ -4,6 +4,7 @@
 # Writes:
 #     /DATA/AppData/yundera/docker-compose.yml   copy of the template's own compose
 #     /DATA/AppData/yundera/.env                 copy of the unified .env
+#     /DATA/AppData/yundera/.icon.svg            copy of the template's own icon
 #     /DATA/AppData/yundera/.casaos-mirror       provenance marker
 #
 # WHY: Maison already tiles the stack — it finds it over the Docker socket via the
@@ -107,11 +108,27 @@ else
     rm -f "$TMP_ENV"
 fi
 
+# --- tile icon: the template's own icon.svg, as the file Maison renders from ---
+# Promoting this stack to managed (the whole point of this script) is also what makes
+# its tile read `.icon.<ext>` from here in preference to the compose's `icon:` URL —
+# scripts/tools/deploy-stack.sh step 1b carries the full rationale, and does the same
+# for the maison and kopia stacks. Shipping the file is what stops the Settings
+# tile depending on jsDelivr. Only ONE extension to consider here, unlike there: the
+# asset is a known file, root/icon.svg, vendored from settings-center-app's
+# public/YunderaPCS-setting_iconV2.svg — the same bytes that URL serves.
+#
+# It does NOT participate in the render check below: a compose render is unaffected
+# by a sibling image file.
+if [ -f "$YND_ROOT/icon.svg" ] && ! cmp -s "$YND_ROOT/icon.svg" "$DST_DIR/.icon.svg"; then
+    cp "$YND_ROOT/icon.svg" "$DST_DIR/.icon.svg"
+    log_info "Updated $DST_DIR/.icon.svg from $YND_ROOT/icon.svg"
+fi
+
 echo "mirrored by ensure-maison-yundera-mirror.sh" > "$MARKER"
 
 # /DATA is owned by pcs:pcs (uid/gid 1000); keep the mirror readable by the maison
 # container (PUID/PGID 1000), as ensure-maison-app-mirror.sh does for CasaOS apps.
-chown 1000:1000 "$DST_COMPOSE" "$DST_ENV" "$MARKER" 2>/dev/null || true
+chown 1000:1000 "$DST_COMPOSE" "$DST_ENV" "$DST_DIR/.icon.svg" "$MARKER" 2>/dev/null || true
 
 # --- verification: both directories must render the same stack ---
 # This is the property the promotion rests on: Maison may `compose up` from the

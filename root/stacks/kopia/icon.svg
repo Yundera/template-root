@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Kopia tile icon. Authored for this stack rather than vendored: the Yundera
+     AppStore ships no asset for it, and upstream's own mark is not ours to put on a
+     platform tile the owner is meant to read as "their backups". Drawn
+     in the Yundera Brand & Style Guide palette taken from the official mark
+     (root/dex-theme/themes/yundera/icon-yundera.svg): plate #ffffff on a #e3edf5
+     hairline, archive body #dcebf9 outlined in #294056, and the blue-to-pink
+     gradient (#27b4e1 -> #ee2a7b) arcing over it the way the brand cloud does.
+     Reads as "the archive, kept safe". Replace freely once a designed asset exists. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 720">
+  <defs>
+    <linearGradient id="ynd-kopia-arc" x1="113.8" y1="260.4" x2="606.2" y2="88" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#27b4e1"/>
+      <stop offset=".41983" stop-color="#8870ae"/>
+      <stop offset=".69027" stop-color="#bf4a92"/>
+      <stop offset="1" stop-color="#ee2a7b"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="712" height="712" rx="160" fill="#ffffff" stroke="#e3edf5" stroke-width="8"/>
+  <!-- protective arc, echoing the cloud outline of the Yundera mark -->
+  <path d="M113.8,260.4 A262,262 0 0 1 606.2,260.4" fill="none" stroke="url(#ynd-kopia-arc)"
+        stroke-width="30" stroke-linecap="round"/>
+  <!-- archive stack: one cylinder body, two snapshot rings -->
+  <g fill="none" stroke="#294056" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M210,340 L210,540 A150,44 0 0 0 510,540 L510,340" fill="#dcebf9"/>
+    <ellipse cx="360" cy="340" rx="150" ry="44" fill="#dcebf9"/>
+    <path d="M210,410 A150,44 0 0 0 510,410"/>
+    <path d="M210,475 A150,44 0 0 0 510,475"/>
+  </g>
+</svg>

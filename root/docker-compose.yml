@@ -615,6 +615,12 @@ x-compose-app:
   schema_version: 2
   id: yundera
   title: Settings
+  # FALLBACK ONLY. The tile renders from root/icon.svg, vendored beside this file
+  # (the same asset this URL serves) and copied to /DATA/AppData/yundera/.icon.svg by
+  # ensure-maison-yundera-mirror.sh: Maison prefers
+  # that file over the URL for any managed app (>= 1.1.18), which is what stops the
+  # Settings tile going blank on an offline box or a moved repo path. Re-vendor from
+  # settings-center-app's public/ if the asset changes there.
   icon: https://cdn.jsdelivr.net/gh/Yundera/settings-center-app@main/public/YunderaPCS-setting_iconV2.svg
   category: pcs
   developer: Yundera Team

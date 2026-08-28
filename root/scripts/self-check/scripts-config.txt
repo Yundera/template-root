@@ -99,6 +99,20 @@ ensure-user-compose-stack-up.sh
 ensure-backup-credentials.sh
 ensure-backup-config.sh
 
+# The kopia stack — the resident backup engine, plus kopia's own web UI behind an
+# AppShield gate — deployed as its own stack alongside maison. MUST stay after
+# ensure-backup-config.sh: it reads the engine's hostname out of the repository.config
+# that script writes, and a box that ran this first would bake in the synthetic fallback
+# hostname instead; the UI's entrypoint reads the password and credentials that script
+# writes as well. Nothing depends on it succeeding — Maison falls back to starting a
+# one-shot engine container per command when the stack is absent or down, which is the
+# behaviour that predates it.
+#
+# It also attaches its gate to the `pcs` network, which the yundera stack owns — so it
+# must stay after ensure-user-compose-stack-up.sh, as ensure-maison-stack.sh does. It
+# is above that one only because the ordering it is pinned to is the backup config's.
+ensure-kopia-stack.sh
+
 # Auxiliary stack — Maison (doc/maison-migration.md). MUST stay after
 # ensure-user-compose-stack-up.sh: it attaches to the `pcs` network, which the
 # yundera stack owns and creates.

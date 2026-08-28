@@ -113,7 +113,7 @@ services:
   # The dashboard itself. Named `maison-app` so the gate above can own the public
   # name `maison` — see the naming note there.
   maison-app:
-    image: ghcr.io/yundera/maison:1.1.19
+    image: ghcr.io/yundera/maison:1.1.21
     container_name: maison-app
     hostname: maison-app
     restart: unless-stopped
@@ -162,6 +162,23 @@ services:
       # protected because its own compose says so, via `x-compose-app.view:
       # system` (this file's block at the bottom, and the yundera stack's). See
       # the note there for what that withholds.
+
+      # The resident engine container Maison runs `docker exec` in instead of starting a
+      # throwaway one per command. It lives in the `kopia` stack, not this one — the
+      # repository, its password and its credentials belong to ensure-backup-config.sh
+      # and Maison is only a consumer, so a Maison image bump must not be able to
+      # restart the engine mid-backup.
+      #
+      # NAMED HERE BECAUSE THE DEFAULT IS WRONG NOW. Maison's built-in default is
+      # `backup-engine` (internal/config/config.go), the name the stack carried before
+      # the UI was added and the whole thing became "kopia, the app". Without this key a
+      # box silently falls back to one-shot containers — six to seven seconds per engine
+      # command, which is what made the store's Install button look dead.
+      #
+      # Either order is safe: a Maison that has this key and a box with no kopia stack
+      # falls back, and so does a kopia stack with an older Maison that does not read it.
+      # VERSION-COUPLED nonetheless — the key exists from Maison 1.1.21, the pin above.
+      BACKUP_ENGINE_CONTAINER: "kopia-engine"
 
       # Where the HOST's /proc is readable, for the Resources page.
       #
@@ -242,11 +259,17 @@ x-compose-app:
   # stack is neither grouped nor protected, which is why the image pin above and
   # this block move together. Restart is deliberately still offered.
   view: system
-  # NOT renamed with the rest of the rebrand: the icon lives in the Yundera/AppStore
-  # repo, which still ships it under Apps/CasaDash/. Repoint both icon: fields to
-  # Apps/Maison/icon.png only once that rename has landed on that repo's `main` —
-  # jsDelivr serves the branch tip, so flipping it early 404s every tile.
-  icon: https://cdn.jsdelivr.net/gh/Yundera/AppStore@main/Apps/CasaDash/icon.png
+  # FALLBACK ONLY. What the tile actually renders is stacks/maison/icon.png, shipped
+  # beside this file and deployed to /DATA/AppData/maison/.icon.png by
+  # scripts/tools/deploy-stack.sh — Maison prefers that file over this URL for any
+  # managed app (>= 1.1.18). This field is what a box with no copy yet falls back to.
+  #
+  # THE URL MOVED, WHICH IS WHY THE FILE EXISTS. It pointed at Apps/CasaDash/icon.png
+  # until the AppStore repo renamed that folder to Apps/CasaOS/; jsDelivr serves the
+  # branch tip, so the old path started 404ing and this tile has been rendering
+  # iconless ever since. Repointed to the live path — and the shipped file is a copy
+  # of those same bytes, so a rename cannot break the tile again.
+  icon: https://cdn.jsdelivr.net/gh/Yundera/AppStore@main/Apps/CasaOS/icon.png
   webui-host: maison-${DOMAIN}
   webui-scheme: https
   webui-path: /
@@ -277,8 +300,10 @@ x-casaos:
   author: Yundera Team
   category: pcs
   hostname: maison-${DOMAIN}
-  # Still Apps/CasaDash/ — see the note on x-compose-app's icon above.
-  icon: https://cdn.jsdelivr.net/gh/Yundera/AppStore@main/Apps/CasaDash/icon.png
+  # Repointed off the renamed Apps/CasaDash/ path — see the note on x-compose-app's
+  # icon above. CasaOS has no local-file mechanism, so for ITS grid this URL is not a
+  # fallback but the only source.
+  icon: https://cdn.jsdelivr.net/gh/Yundera/AppStore@main/Apps/CasaOS/icon.png
   index: /
   is_uncontrolled: true
   port_map: ""

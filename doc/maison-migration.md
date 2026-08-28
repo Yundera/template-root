@@ -62,10 +62,16 @@ entries correctly, so the box converges on that same cycle and every later one i
 Fresh provisioning is unaffected: `pcs-init.sh` downloads the new tree before the first
 self-check, so its config never lists the old names.
 
-Still on the old name deliberately: the tile icon, which the compose file fetches from
-`Yundera/AppStore@main/Apps/CasaDash/icon.png`. That rename belongs to the AppStore repo, and
-jsDelivr serves the branch tip — repointing at `Apps/Maison/` before that lands 404s every
-tile.
+The tile icon no longer rides on that name at all. It used to be fetched from
+`Yundera/AppStore@main/Apps/CasaDash/icon.png` and was left on the old name deliberately —
+that rename belongs to the AppStore repo, jsDelivr serves the branch tip, and repointing
+early would 404 every tile. The repo renamed the folder to `Apps/CasaOS/` anyway, which
+404'd the tile exactly as feared. Fixed at the source instead: the icon now ships **with the
+template** as `stacks/maison/icon.png`, deployed to `/DATA/AppData/maison/.icon.png` by
+`scripts/tools/deploy-stack.sh` (step 1b), and Maison (>= 1.1.18) renders a managed app's tile from that
+file in preference to any URL. The `icon:` field survives as an offline fallback, repointed
+to the live `Apps/CasaOS/` path. Same treatment for the `yundera` and `kopia`
+stacks — no platform tile depends on a store CDN any more.
 
 ---
 

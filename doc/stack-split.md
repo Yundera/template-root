@@ -67,6 +67,7 @@ The stack definition, and the `rsync -a --delete` target of
 | `log/yundera.log` | self-check log |
 | `migration-markers/` | one-shot migration markers |
 | `stacks/maison/docker-compose.yml` | the Maison stack, already split out in phase 1 |
+| `icon.svg`, `stacks/*/icon.*` | tile icons, shipped as files so no tile depends on a store CDN; deployed as `<app-dir>/.icon.<ext>` by `scripts/tools/deploy-stack.sh` (step 1b) and `ensure-maison-yundera-mirror.sh` |
 | `.ignore` | rsync exclusions |
 
 ### Root B — `/DATA/AppData/yundera/`
@@ -90,9 +91,11 @@ the next container start minted a new one, signing every user out.
 
 ### The mirror
 
-`/DATA/AppData/yundera/{docker-compose.yml,.env}` are **copies**, written by
+`/DATA/AppData/yundera/{docker-compose.yml,.env,.icon.svg}` are **copies**, written by
 `ensure-maison-yundera-mirror.sh` so that Maison renders the stack as an app
-(`maison-migration.md` §1.2b). Root B is therefore a data directory *and* a synthetic app
+(`maison-migration.md` §1.2b). `.icon.svg` is what the Settings tile draws: for a managed
+app Maison prefers `.icon.<ext>` in the app folder over the compose's `icon:` URL, so
+promoting the stack to managed is also what lets its icon stop being a CDN fetch. Root B is therefore a data directory *and* a synthetic app
 folder at the same time. The split is the moment this stops being a copy and starts being
 the real thing.
 
