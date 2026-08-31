@@ -373,7 +373,11 @@ networks:
 # URL: since Maison 1.1.18 a managed app's tile prefers `.icon.<ext>` in its own
 # folder, and the Yundera AppStore ships no asset for this stack, so a speculative URL
 # would 404 on every tile render rather than falling back. Swap the file, not this
-# block, when a designed one exists.
+# block, if the mark ever changes.
+#
+# It carries UPSTREAM'S mark (kopia/kopia icons/kopia-app-1024.svg, Apache-2.0) on the
+# Yundera plate — this tile opens kopia's own UI, so the logo a user scans the grid for
+# is kopia's. See the header comment in stacks/kopia/icon.svg.
 x-compose-app:
   schema_version: 2
   id: kopia

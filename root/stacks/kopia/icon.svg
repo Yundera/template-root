@@ -1,30 +1,35 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Kopia tile icon. Authored for this stack rather than vendored: the Yundera
-     AppStore ships no asset for it, and upstream's own mark is not ours to put on a
-     platform tile the owner is meant to read as "their backups". Drawn
-     in the Yundera Brand & Style Guide palette taken from the official mark
-     (root/dex-theme/themes/yundera/icon-yundera.svg): plate #ffffff on a #e3edf5
-     hairline, archive body #dcebf9 outlined in #294056, and the blue-to-pink
-     gradient (#27b4e1 -> #ee2a7b) arcing over it the way the brand cloud does.
-     Reads as "the archive, kept safe". Replace freely once a designed asset exists. -->
+<!-- Kopia tile icon: upstream's own cloud-and-arrow mark, on the Yundera plate.
+
+     THE MARK IS UPSTREAM'S, taken verbatim from kopia/kopia icons/kopia-app-1024.svg
+     (Apache-2.0, same licence as the project itself) — the single path below and the
+     #2f80ff -> #5c91ff gradient are theirs, unmodified. An earlier version of this file
+     avoided it and drew a generic archive instead, on the reasoning that upstream's
+     brand had no business on a platform tile. That was the wrong call: this tile opens
+     kopia's own web UI, so the thing a user is looking for on the System grid IS the
+     kopia logo, and anything else reads as a Yundera feature that happens to be nearby.
+     Every store app tiles with its project's real mark; this is no different.
+
+     THE PLATE IS OURS: 720x720, white with an #e3edf5 hairline and rx=160, matching
+     root/icon.svg and the Yundera Brand & Style Guide, so the System grid stays one
+     family rather than a row of borrowed app icons at different corner radii. Upstream's
+     own plate (a 185-radius white rect inside a 1024 box) is the half replaced here.
+
+     The mark's bounding box in upstream's 1024 space is 706.83 x 446.63 centred on
+     (510.66, 502.65); the transform scales it to ~470px wide and centres it on the plate.
+     Sizes down legibly — checked at 64px, the tile size Maison renders in the grid.
+
+     To refresh from upstream: take the `Shape 1` path and the gradient stops out of
+     icons/kopia-app-1024.svg and drop them in below; nothing else here depends on it. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 720">
   <defs>
-    <linearGradient id="ynd-kopia-arc" x1="113.8" y1="260.4" x2="606.2" y2="88" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#27b4e1"/>
-      <stop offset=".41983" stop-color="#8870ae"/>
-      <stop offset=".69027" stop-color="#bf4a92"/>
-      <stop offset="1" stop-color="#ee2a7b"/>
+    <linearGradient id="ynd-kopia-cloud" x1="157.25" y1="502.65" x2="864.08" y2="502.65" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2f80ff"/>
+      <stop offset="1" stop-color="#5c91ff"/>
     </linearGradient>
   </defs>
   <rect x="4" y="4" width="712" height="712" rx="160" fill="#ffffff" stroke="#e3edf5" stroke-width="8"/>
-  <!-- protective arc, echoing the cloud outline of the Yundera mark -->
-  <path d="M113.8,260.4 A262,262 0 0 1 606.2,260.4" fill="none" stroke="url(#ynd-kopia-arc)"
-        stroke-width="30" stroke-linecap="round"/>
-  <!-- archive stack: one cylinder body, two snapshot rings -->
-  <g fill="none" stroke="#294056" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M210,340 L210,540 A150,44 0 0 0 510,540 L510,340" fill="#dcebf9"/>
-    <ellipse cx="360" cy="340" rx="150" ry="44" fill="#dcebf9"/>
-    <path d="M210,410 A150,44 0 0 0 510,410"/>
-    <path d="M210,475 A150,44 0 0 0 510,475"/>
+  <g transform="translate(360,360) scale(0.665) translate(-510.66,-502.65)">
+    <path fill="url(#ynd-kopia-cloud)" d="m 384.25012,390.83953 c 115.45173,-214.82252 413.93672,-85.929 388.59367,105.97913 123.89942,17.18583 123.89942,226.2797 -14.07945,226.2797 -33.79076,2.86436 -141.31427,2.86436 -141.31427,2.86436 v -91.6576 L 676.58392,571.29049 575.73104,387.97528 467.8904,571.29049 l 61.9497,63.01463 v 91.6576 H 274.43016 c -132.34712,0 -171.76968,-220.55113 -16.8954,-257.78697 -5.63178,-51.55744 53.50205,-103.11487 123.89944,-77.33617 z"/>
   </g>
 </svg>
