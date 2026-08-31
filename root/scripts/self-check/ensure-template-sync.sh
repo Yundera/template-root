@@ -77,16 +77,25 @@ UPDATE_URL=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get UPDATE_URL "$ENV_
 
 echo "→ Using update URL: $UPDATE_URL"
 
-# Handle local development mode
-if [ "$UPDATE_URL" = "local" ]; then
-    echo "→ Local mode: running migrations..."
+# Handle the two "do not download" modes.
+#
+#   local    a developer is testing hand-placed scripts on this box
+#   frozen   the owner opted out of automated updates
+#            (scripts/tools/feature-platform-updates.sh writes this one)
+#
+# Identical behaviour, deliberately distinct values: collapsing them would leave
+# support unable to tell a dev box from a user's choice, since the file would
+# look the same either way. Migrations still run in both — markers make them
+# one-shot, and a box that skips them would drift from its own on-disk template.
+if [ "$UPDATE_URL" = "local" ] || [ "$UPDATE_URL" = "frozen" ]; then
+    echo "→ ${UPDATE_URL} mode: skipping download, running migrations..."
     
     # Run migrations from local template
     if ! run_migrations "$YND_ROOT"; then
         exit 1
     fi
     
-    echo "✓ Template sync completed successfully (local mode)"
+    echo "✓ Template sync completed successfully (${UPDATE_URL} mode)"
     exit 0
 fi
 
