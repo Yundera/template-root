@@ -62,6 +62,18 @@ USERS_DB="$AUTH_ROOT/users_database.yml"
 ONBOARDING_ROOT="/DATA/AppData/yundera/onboarding"
 COMPLETED_MARKER="$ONBOARDING_ROOT/completed"
 
+# Maison's first-run gate. While this file exists, Maison replaces its dashboard
+# with an interstitial pointing at the admin app's wizard, so an owner who lands
+# on the box's root domain is not walked straight past onboarding. Its PRESENCE
+# is the whole state — Maison reads it and nothing else.
+#
+# ensure-maison-stack.sh is what actually decides whether it should be there: it
+# reconciles the file against `status` below on every self-check, so a box
+# claimed from the terminal, restored from a backup or migrated from another host
+# converges on its own. The removal in `run` is only a fast path, so the gate
+# clears the moment the wizard succeeds instead of at the next tick.
+MAISON_ONBOARDING="/DATA/AppData/maison/onboarding.json"
+
 USER_MGR="$YND_ROOT/scripts/tools/authelia-user-manager.sh"
 ENV_MGR="$YND_ROOT/scripts/tools/env-file-manager.sh"
 SELF_CHECK="$YND_ROOT/scripts/self-check"
@@ -156,6 +168,11 @@ cmd_run() {
     printf 'completed at %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$COMPLETED_MARKER"
     chmod 644 "$COMPLETED_MARKER"
 
+    # Open Maison's gate immediately rather than at the next self-check: the owner
+    # is being sent back there right now. Best-effort — the reconcile in
+    # ensure-maison-stack.sh is the authority and will remove it anyway.
+    rm -f "$MAISON_ONBOARDING" 2>/dev/null || true
+
     # Pass the claim's JSON straight through (it carries the generated password
     # when there is one) with the marker state folded in.
     printf '%s' "$claim_out" | yq -o=json -I=0 '. + {"completed": true}'
@@ -217,6 +234,18 @@ cmd_reset() {
     if [ -x "$SELF_CHECK/ensure-dex.sh" ]; then
         "$SELF_CHECK/ensure-dex.sh" >/dev/null 2>&1 \
             || echo "WARNING: ensure-dex.sh failed; the Local Account connector goes away at the next self-check" >&2
+    fi
+
+    # Re-arm Maison's gate for the same reason, and through the same script that
+    # owns it — this box is unclaimed again, so its dashboard must send the next
+    # arrival back to the wizard. Not written directly from here: the file's URL
+    # is built from the deployment's domain, which ensure-maison-stack.sh already
+    # resolves. Redeploying the stack is a heavier step than the two above; it is
+    # affordable because reset is a terminal-only command, and it is what makes a
+    # reset box identical to one a self-check just reconciled.
+    if [ -x "$SELF_CHECK/ensure-maison-stack.sh" ]; then
+        "$SELF_CHECK/ensure-maison-stack.sh" >/dev/null 2>&1 \
+            || echo "WARNING: ensure-maison-stack.sh failed; Maison re-gates at the next self-check" >&2
     fi
 
     if is_claimed; then
