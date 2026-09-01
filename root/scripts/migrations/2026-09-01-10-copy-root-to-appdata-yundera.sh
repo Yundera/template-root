@@ -16,10 +16,21 @@
 # that has no counterpart in Root A (`auth/` with the local account, `dex/`,
 # `data/certs`, `admin/gate-data`, `perf/`, `onboarding/`,
 # `.provisioning-in-progress`). A mirroring sync would delete all of it. The only
-# names that collide are `docker-compose.yml` / `.env` / `auth/` — the first two
-# are the mirror copies `ensure-maison-yundera-mirror.sh` rewrites from Root A on
-# every cycle anyway, and `auth/` only gains `configuration.yml.tmpl` (inert:
-# Authelia reads `/config/configuration.yml`, which `ensure-authelia.sh` renders).
+# names that collide are `docker-compose.yml` / `.env` / `auth/`.
+#
+# THE FIRST TWO ARE EXCLUDED, and must stay excluded. They are not ours: they are
+# written into Root B by `ensure-maison-yundera-mirror.sh`, which stamps them with
+# a `.casaos-mirror` provenance marker and REFUSES to touch a compose that lacks
+# it — to that script, a compose present without the marker means a third party
+# owns the folder. The marker exists only in Root B, so an rsync of Root A can
+# never carry it, and seeding the compose here plants an unattributable file that
+# fails the mirror on every box where it has not already run once — i.e. on every
+# fresh install, which is exactly how this broke demo provisioning on 2026-09-01.
+# Root B still ends up with both files: the mirror writes them later in the same
+# self-check cycle, and the cutover migration places them for real at the flip.
+#
+# `auth/` only gains `configuration.yml.tmpl` (inert: Authelia reads
+# `/config/configuration.yml`, which `ensure-authelia.sh` renders).
 #
 # ONE-SHOT, SO ROOT B'S TREE FREEZES AT TODAY'S VERSION. That is intentional and
 # harmless: nothing executes from Root B until the flip, and the flip's own
@@ -81,7 +92,7 @@ if [ -n "${AVAIL_KB:-}" ] && [ "$AVAIL_KB" -lt $(( SRC_KB * 12 / 10 )) ]; then
 fi
 
 echo "Copying $OLD_ROOT -> $NEW_ROOT (${SRC_KB}KB, additive, no --delete)"
-if ! rsync -a "$OLD_ROOT/" "$NEW_ROOT/"; then
+if ! rsync -a --exclude=/docker-compose.yml --exclude=/.env "$OLD_ROOT/" "$NEW_ROOT/"; then
     echo "Warning: copy failed, leaving $NEW_ROOT as-is and deferring to a later cycle"
     exit 0
 fi
@@ -90,7 +101,10 @@ fi
 # intact (.pcs.secret.env is 600 and stays 600). Only files present in Root A are
 # required in Root B - a box that never had .self-check-cron-disabled is fine.
 missing=0
-for rel in .pcs.env .pcs.secret.env .ynd.user.env .env docker-compose.yml \
+# `.env` and `docker-compose.yml` are deliberately absent from this list: they are
+# excluded from the copy above, so requiring them here would defer the migration
+# forever on a box where the mirror has not yet run.
+for rel in .pcs.env .pcs.secret.env .ynd.user.env \
            scripts/self-check.sh scripts/self-check-reboot.sh migration-markers; do
     if [ -e "$OLD_ROOT/$rel" ] && [ ! -e "$NEW_ROOT/$rel" ]; then
         echo "Warning: $rel did not reach $NEW_ROOT"
