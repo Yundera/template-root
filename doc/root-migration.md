@@ -26,7 +26,8 @@ The template tree. Written by exactly two things, both targeting Root A only:
 ### Root B — `/DATA/AppData/yundera/`
 
 Runtime state, deliberately outside the rsync tree — `admin-session-key` was destroyed on
-every template update until `2026-08-02-13-move-admin-session-key.sh` moved it here.
+every template update until the compose bind moved to `admin/` here. (That key is itself
+gone now: the AppShield gate owns admin sessions, and the app persists no key.)
 
 ```
 auth/          Authelia: users_database.yml, db.sqlite, secrets/, oidc/, clients.d/

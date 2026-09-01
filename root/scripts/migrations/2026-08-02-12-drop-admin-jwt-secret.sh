@@ -13,9 +13,13 @@
 # but ensure-env-vars-valid.sh wrote it with a plain `>` redirect, which keeps
 # whatever mode the file already had. Hosts provisioned before this carry it at
 # 755 — world-readable, while its three sources and every derived copy
-# (tools/deploy-stack.sh) are 600. The ensure script now creates it 600, but that
-# only fixes it on the next self-check tick; do it here so the window closes with
-# the template push that introduces the fix.
+# (tools/deploy-stack.sh) are 600. ensure-env-vars-valid.sh now recreates the file
+# at 600 on every tick, and it runs LATER in the same tick than migrations do
+# (scripts-config.txt: ensure-template-sync.sh #5, ensure-env-vars-valid.sh #17),
+# so this half is belt-and-braces — it just narrows the window within the cycle.
+# The JWT_SECRET delete below is the load-bearing part: .env is regenerated from
+# .pcs.secret.env verbatim, so the key survives every tick until the source is
+# cleaned, and nothing re-mints it.
 #
 # Best-effort throughout. A migration failure aborts template sync, and neither
 # of these is worth blocking an update over — the ensure script re-asserts the

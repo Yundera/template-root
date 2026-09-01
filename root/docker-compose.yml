@@ -208,9 +208,9 @@ services:
       # .ignore, so every template update deleted it and the next container start
       # minted a new one, signing every user out. Exactly what persisting the key was
       # supposed to prevent. Keeping it here, beside dex/ and auth/, puts it outside
-      # the synced tree. Docker creates the dir on first up; migrations/
-      # 2026-08-02-13-move-admin-session-key.sh carried the old key across and is
-      # now historical — nothing reads that key.
+      # the synced tree. Docker creates the dir on first up. A migration used to
+      # carry the old key across; it was dropped on 2026-09-01, because nothing
+      # reads that key any more.
       - type: bind
         source: /DATA/AppData/yundera/admin
         target: /app/data

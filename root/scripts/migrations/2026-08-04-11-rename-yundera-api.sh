@@ -8,15 +8,19 @@
 # admin app alike. The old name baked one operator's brand into every PCS for a
 # value that is not operator-specific.
 #
-# Leaves YUNDERA_API in place as rollback ballast, exactly as
-# 2026-05-15-14-add-yundera-api.sh left YUNDERA_USER_API. Every consumer reads
+# Leaves YUNDERA_API in place as rollback ballast. Every consumer reads
 # OPERATOR_API first and falls back to the old name, so both orders work.
 #
-# Ordering note: ensure-env-vars-valid.sh has already regenerated the unified
-# .env by the time migrations run, so .env still lacks OPERATOR_API on this
-# tick. That is why the admin service in docker-compose.yml interpolates
-# ${OPERATOR_API:-${YUNDERA_API:-}} — the container gets the right URL on this
-# tick from the old key, and from the new one on every tick after.
+# The predecessor rename (YUNDERA_USER_API -> YUNDERA_API, migration
+# 2026-05-15-14) was deleted on 2026-09-01: it had been on stable since
+# 2026-05-15, so every box has its marker.
+#
+# Ordering note: migrations run from ensure-template-sync.sh (#5 in
+# scripts-config.txt), before ensure-env-vars-valid.sh (#17) regenerates the
+# unified .env from .pcs.env — so OPERATOR_API does reach .env on this same tick.
+# The admin service in docker-compose.yml still interpolates
+# ${OPERATOR_API:-${YUNDERA_API:-}}, which covers any host where this migration
+# has not run yet; keep it until neither name can be the only one present.
 
 set -euo pipefail
 

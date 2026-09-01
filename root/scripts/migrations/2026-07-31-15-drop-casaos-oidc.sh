@@ -13,9 +13,11 @@
 #     connector secret; nothing reads it after this template push),
 #   - /DATA/AppData/yundera/casaos-oidc-bridge/ (the bridge's ES256 signing key).
 #
-# The running container itself is NOT this script's job: ensure-casaos-stack.sh
-# ups the `casaos` project through deploy-stack.sh with --remove-orphans later in
-# the same self-check cycle, which tears it down.
+# The running container itself is NOT this script's job: the `casaos` project —
+# which on a not-yet-migrated host still declares casaos-oidc-bridge alongside
+# casaos — is torn down by 2026-08-02-14-remove-casaos-stack.sh, which sorts
+# after this one in the same migration run. (ensure-casaos-stack.sh used to do it
+# via --remove-orphans; that script no longer exists.)
 #
 # Best-effort throughout. A migration failure aborts template sync, and none of
 # this is worth blocking an update over — worst case a stale secret and an unused
