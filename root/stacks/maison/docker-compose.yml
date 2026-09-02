@@ -113,7 +113,7 @@ services:
   # The dashboard itself. Named `maison-app` so the gate above can own the public
   # name `maison` — see the naming note there.
   maison-app:
-    image: ghcr.io/yundera/maison:1.1.22
+    image: ghcr.io/yundera/maison:1.1.23
     container_name: maison-app
     hostname: maison-app
     restart: unless-stopped
@@ -175,7 +175,7 @@ services:
       #
       # VERSION-COUPLED with the image pin above, in one direction: compose-relative
       # assets need a Maison that resolves them (resolveAssets,
-      # internal/appstore/appstore.go), which is 1.1.21 — the pin. An older image
+      # internal/appstore/appstore.go), which is 1.1.21, at or below the pin above. An older image
       # browsing this branch drops every asset it cannot resolve and renders the grid
       # iconless. The pin and this URL move together; do not roll one back alone.
       APPSTORE_URL: "${APPSTORE_URL:-https://github.com/Yundera/AppStore/archive/refs/heads/maison.zip}"
@@ -199,8 +199,50 @@ services:
       #
       # Either order is safe: a Maison that has this key and a box with no kopia stack
       # falls back, and so does a kopia stack with an older Maison that does not read it.
-      # VERSION-COUPLED nonetheless — the key exists from Maison 1.1.21, the pin above.
+      # VERSION-COUPLED nonetheless — the key exists from Maison 1.1.21, at or below the pin above.
       BACKUP_ENGINE_CONTAINER: "kopia-engine"
+
+      # --- Outbound mail --------------------------------------------------
+      # Maison sends exactly two things: an alert when a backup run's health
+      # CHANGES (one mail into failure, one on recovery — never one per run), and
+      # the backup repository's encryption key. The key is the only copy that
+      # exists off the box; without it a restore is impossible, for the owner and
+      # for Yundera alike, so it is mailed once automatically on the first boot
+      # where a relay answers and again whenever the settings page's button is
+      # pressed. See Maison's docs/backup.md "Notifications".
+      #
+      # THE HOST IS THE SWITCH. Maison has no default relay on purpose — a
+      # standalone install has no sibling `smtp` container and must stay silent
+      # rather than dial a guess — so without this key the button reports "no mail
+      # server configured" and the automatic send never happens, which is exactly
+      # what every box did before this block existed.
+      #
+      # `smtp` is the mail-gateway container in the yundera stack, on this same
+      # `pcs` network. It advertises neither STARTTLS nor AUTH, so the security is
+      # stated rather than negotiated; Maison's default is opportunistic and would
+      # also work, but saying `none` documents the relay instead of relying on it
+      # to keep not offering TLS.
+      #
+      # CAVEAT, ACCEPTED DELIBERATELY: mail-gateway forwards over HTTPS to
+      # mesh-router-backend, which relays via SendGrid — so the key traverses
+      # Yundera infrastructure in plaintext. Maison's own docs say so plainly. The
+      # trade is against the likelier failure, which is an owner who never took a
+      # copy at all and finds out the day the disk dies; the dashboard also
+      # DISPLAYS the key on demand, which leaks nothing, and offers that first.
+      #
+      # FROM/TO are left unset: Maison falls back to noreply@${APP_DOMAIN} and to
+      # ${APP_EMAIL} from .env.app, which ensure-maison-stack.sh rewrites on every
+      # self-check. Naming them here would freeze the recipient of a box that
+      # later changes owner. Set SMTP_TO in .pcs.env only to divert the mail
+      # somewhere other than the owner.
+      #
+      # VERSION-COUPLED: these keys exist from Maison 1.1.23, the pin above. An
+      # older image ignores them and behaves exactly as before — no mail — so the
+      # two can move in either order.
+      SMTP_HOST: "smtp"
+      SMTP_PORT: "587"
+      SMTP_SECURITY: "none"
+      SMTP_TO: "${SMTP_TO:-}"
 
       # Where the HOST's /proc is readable, for the Resources page.
       #
