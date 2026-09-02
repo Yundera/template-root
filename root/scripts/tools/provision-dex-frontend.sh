@@ -56,8 +56,28 @@ done
 # Same trap for the theme, in the other direction: this one IS a directory, and
 # Docker would have created it as one too, so only a stale file needs clearing.
 [ -d "$DEX_FRONTEND/themes/yundera" ] || rm -f "$DEX_FRONTEND/themes/yundera"
-rm -rf "$DEX_FRONTEND/themes/yundera"
-cp -rf "$THEME_SRC/themes/yundera" "$DEX_FRONTEND/themes/" 2>/dev/null || true
+mkdir -p "$DEX_FRONTEND/themes/yundera"
+
+# Refresh the theme's CONTENTS in place. Do NOT `rm -rf` the directory itself:
+# compose bind-mounts THIS directory into the dex container, and a bind mount
+# follows the inode, not the path. Deleting and re-creating it leaves the
+# running container mounted on the deleted inode — visible in the container's
+# /proc/self/mountinfo as ".../themes/yundera//deleted" — so every theme/*
+# asset 404s and the login page renders with static/main.css only: no
+# wallpaper, no card, no logo, browser-default serif type.
+#
+# `docker restart dex` does NOT re-resolve a bind source, so ensure-dex.sh's
+# restart at the end of its run does not repair this; only a force-recreate
+# does. Since this tool runs before every stack-up, the old form re-broke the
+# theme on each self-check. Observed on holyhorse + yunderalabs 2026-09-02.
+#
+# Emptying the directory and copying into it keeps the inode the container is
+# holding, so a running dex picks the new files up with no restart at all.
+find "$DEX_FRONTEND/themes/yundera" -mindepth 1 -delete 2>/dev/null || true
+if ! cp -rf "$THEME_SRC/themes/yundera/." "$DEX_FRONTEND/themes/yundera/"; then
+    echo "WARN: could not provision $DEX_FRONTEND/themes/yundera"
+    RC=1
+fi
 
 echo "Provisioned custom Dex frontend at $DEX_FRONTEND"
 exit "$RC"
