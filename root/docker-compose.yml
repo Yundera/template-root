@@ -243,7 +243,7 @@ services:
   # Establishes WireGuard VPN tunnel to the provider for NAT traversal
   # =============================================================================
   mesh-router-tunnel:
-    image: ghcr.io/yundera/mesh-router-tunnel:1.2.10
+    image: ghcr.io/yundera/mesh-router-tunnel:1.3.0
     container_name: mesh-router-tunnel
     hostname: mesh-router-tunnel
     restart: unless-stopped
@@ -271,7 +271,7 @@ services:
   # Registers public IP with backend for direct routing (bypasses VPN)
   # =============================================================================
   mesh-router-agent:
-    image: ghcr.io/yundera/mesh-router-agent:1.1.0
+    image: ghcr.io/yundera/mesh-router-agent:1.1.1
     container_name: mesh-router-agent
     hostname: mesh-router-agent
     restart: unless-stopped
@@ -516,7 +516,7 @@ services:
   # this is invisible. See: packages/mesh-router-root/mesh-router-auth/README.md
   # =============================================================================
   auth-registrar:
-    image: ghcr.io/yundera/mesh-auth:1.1.5
+    image: ghcr.io/yundera/mesh-auth:1.1.6
     container_name: auth-registrar
     hostname: auth-registrar
     restart: unless-stopped
