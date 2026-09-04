@@ -55,6 +55,71 @@ ENV_MGR="$YND_ROOT/scripts/tools/env-file-manager.sh"
 # Single image for both hashes: argon2 (user password) + pbkdf2 (client secret).
 AUTHELIA_IMAGE="authelia/authelia:4.39"
 
+# Retry budget for the two hash computations. Deliberately smaller than
+# ensure-user-compose-pulled.sh's (10 attempts, up to 300s) — these are two
+# sub-second container runs on the critical path of a cold provision, not a
+# multi-gigabyte pull.
+HASH_MAX_ATTEMPTS=5
+HASH_INITIAL_BACKOFF=5
+HASH_MAX_BACKOFF=60
+
+# Digest produced by the last successful authelia_hash call. Returned this way
+# rather than on stdout so the retry logging below can use log_warn like the
+# rest of the script instead of having to dodge a command substitution.
+AUTHELIA_HASH_RESULT=""
+
+# authelia_hash <crypto hash generate args...>
+#
+# Wraps `docker run "$AUTHELIA_IMAGE"` in a retry. On a cold provision this is
+# the FIRST docker run on a box whose daemon ensure-docker-installed.sh finished
+# installing seconds earlier, and $AUTHELIA_IMAGE is the ONLY Docker Hub pull in
+# the entire provision (every other image is ghcr.io) — two good reasons for a
+# one-off failure here, and a failure here fails the whole PCS creation. The
+# neighbouring docker-dependent scripts (ensure-user-compose-pulled.sh,
+# ensure-user-compose-stack-up.sh) have always retried for exactly this reason;
+# this one did not, and on 2026-09-03 a single `docker run` exiting 125 threw
+# away an otherwise-complete demo provision.
+#
+# stderr is captured and logged, never discarded. Exit 125 means Docker itself
+# refused to start the container, and the reason exists only on stderr — routing
+# it to /dev/null (while `set -o pipefail` aborted the script through the `| awk`
+# before the caller's emptiness guard could report anything) is what made that
+# failure impossible to diagnose after the box was recycled.
+authelia_hash() {
+    local attempt=1
+    local backoff="$HASH_INITIAL_BACKOFF"
+    local out rc digest
+
+    AUTHELIA_HASH_RESULT=""
+
+    while [ "$attempt" -le "$HASH_MAX_ATTEMPTS" ]; do
+        rc=0
+        out="$(docker run --rm "$AUTHELIA_IMAGE" authelia crypto hash generate "$@" 2>&1)" || rc=$?
+
+        if [ "$rc" -eq 0 ]; then
+            digest="$(printf '%s\n' "$out" | awk '/^Digest:/{print $2}')"
+            if [ -n "$digest" ]; then
+                AUTHELIA_HASH_RESULT="$digest"
+                return 0
+            fi
+            # Ran fine but emitted no Digest line: an output-format change, which
+            # no amount of retrying fixes. Still logged in full before we give up.
+            log_warn "$AUTHELIA_IMAGE ran but produced no Digest line (attempt $attempt/$HASH_MAX_ATTEMPTS): $out"
+        else
+            log_warn "docker run $AUTHELIA_IMAGE exited $rc (attempt $attempt/$HASH_MAX_ATTEMPTS): $out"
+        fi
+
+        if [ "$attempt" -lt "$HASH_MAX_ATTEMPTS" ]; then
+            sleep "$backoff"
+            backoff=$((backoff * 2))
+            [ "$backoff" -gt "$HASH_MAX_BACKOFF" ] && backoff="$HASH_MAX_BACKOFF"
+        fi
+        attempt=$((attempt + 1))
+    done
+
+    return 1
+}
+
 mkdir -p "$SECRETS_DIR" "$OIDC_DIR"
 chmod 700 "$SECRETS_DIR"
 
@@ -98,13 +163,11 @@ fi
 
 # pbkdf2 hash of the client secret, cached (generate-once alongside the secret).
 if [ ! -f "$DEX_HASH_FILE" ]; then
-    DEX_SECRET_HASH="$(docker run --rm "$AUTHELIA_IMAGE" \
-        authelia crypto hash generate pbkdf2 --password "$AUTHELIA_DEX_SECRET" 2>/dev/null \
-        | awk '/^Digest:/{print $2}')"
-    if [ -z "$DEX_SECRET_HASH" ]; then
-        log_error "Failed to pbkdf2-hash AUTHELIA_DEX_SECRET via $AUTHELIA_IMAGE"
+    if ! authelia_hash pbkdf2 --password "$AUTHELIA_DEX_SECRET"; then
+        log_error "Failed to pbkdf2-hash AUTHELIA_DEX_SECRET via $AUTHELIA_IMAGE after $HASH_MAX_ATTEMPTS attempts"
         exit 1
     fi
+    DEX_SECRET_HASH="$AUTHELIA_HASH_RESULT"
     printf '%s' "$DEX_SECRET_HASH" > "$DEX_HASH_FILE"
     chmod 600 "$DEX_HASH_FILE"
 fi
@@ -265,13 +328,11 @@ else
     # secret — ensure-maison-app-mirror.sh injects it into every installed app as
     # default_pwd / PCS_DEFAULT_PASSWORD / APP_DEFAULT_PASSWORD — so making it
     # the PCS login password put the owner's credential in every app's env.
-    THROWAWAY_HASH="$(docker run --rm "$AUTHELIA_IMAGE" \
-        authelia crypto hash generate argon2 --random --random.length 64 2>/dev/null \
-        | awk '/^Digest:/{print $2}')"
-    if [ -z "$THROWAWAY_HASH" ]; then
-        log_error "Failed to generate the unclaimed-account placeholder hash via $AUTHELIA_IMAGE"
+    if ! authelia_hash argon2 --random --random.length 64; then
+        log_error "Failed to generate the unclaimed-account placeholder hash via $AUTHELIA_IMAGE after $HASH_MAX_ATTEMPTS attempts"
         exit 1
     fi
+    THROWAWAY_HASH="$AUTHELIA_HASH_RESULT"
 
     TMP="$(mktemp)"
     cat > "$TMP" <<EOF
