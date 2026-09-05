@@ -113,7 +113,7 @@ services:
   # The dashboard itself. Named `maison-app` so the gate above can own the public
   # name `maison` — see the naming note there.
   maison-app:
-    image: ghcr.io/yundera/maison:1.1.24
+    image: ghcr.io/yundera/maison:1.1.25
     container_name: maison-app
     hostname: maison-app
     restart: unless-stopped
@@ -165,20 +165,19 @@ services:
       # source list in the dashboard Maison persists it, and a persisted list takes
       # precedence over this variable from then on (internal/server/server.go).
       #
-      # DEFAULT IS THE `maison` BRANCH, NOT `main`. Same apps; the branch is the
-      # conformance pass for a Maison-run box — assets moved to compose-relative
-      # paths, and each app's compose parameterised (${APP_NET:-pcs},
-      # ${DATA_ROOT:-/DATA}) instead of hardcoding this platform's values. That
-      # matters because Maison reads an app's compose READ-ONLY; unlike CasaOS it no
-      # longer rewrites it on install, so an app that hardcodes `pcs` and /DATA only
-      # works by coincidence of those being what a PCS happens to use.
+      # DEFAULT IS `main`. It used to be the `maison` branch — the conformance pass
+      # for a Maison-run box: assets moved to compose-relative paths, and each app's
+      # compose parameterised (${APP_NET:-pcs}, ${DATA_ROOT:-/DATA}) instead of
+      # hardcoding this platform's values. That work is now merged into `main` and
+      # the branch has been DELETED, so pointing here at `maison.zip` fetches a 404
+      # and the box browses an empty catalog. Do not restore that URL.
       #
       # VERSION-COUPLED with the image pin above, in one direction: compose-relative
       # assets need a Maison that resolves them (resolveAssets,
       # internal/appstore/appstore.go), which is 1.1.21, at or below the pin above. An older image
-      # browsing this branch drops every asset it cannot resolve and renders the grid
+      # browsing this store drops every asset it cannot resolve and renders the grid
       # iconless. The pin and this URL move together; do not roll one back alone.
-      APPSTORE_URL: "${APPSTORE_URL:-https://github.com/Yundera/AppStore/archive/refs/heads/maison.zip}"
+      APPSTORE_URL: "${APPSTORE_URL:-https://github.com/Yundera/AppStore/archive/refs/heads/main.zip}"
 
       # NO PROTECTED_APPS. It was removed from Maison at 1.1.5: an app is now
       # protected because its own compose says so, via `x-compose-app.view:
