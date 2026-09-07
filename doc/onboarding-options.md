@@ -1,15 +1,29 @@
 # PCS onboarding options — mapping toggles to features
 
-Status: **host side implemented; dashboard side not started.** The three features in
-"Shipping now" now exist as `scripts/tools/feature-*.sh` and are callable over SSH today.
-What is missing is the TypeScript that calls them and the wizard that renders them.
-Everything under "Not toggles yet" is blocked on work that is described here but not
-scheduled.
+Status: **implemented.** The three features in "Shipping now" exist as
+`scripts/tools/feature-*.sh`, and `settings-center-app` now drives them from a
+**"Yundera Features" panel** (`panels/features/FeaturesPanel.tsx`, backed by
+`backend/server/Features/Features.ts` and `api/admin/features.ts`). Everything under
+"Not toggles yet" is still blocked on work that is described here but not scheduled.
+
+> ### Correction: this is a page, not an onboarding step
+>
+> This document was written assuming the toggles would be collected by the first-start
+> **wizard**, and says so throughout. **That was dropped.** They ship as an admin-app page
+> instead, reachable at any time, and the onboarding wizard was left as it was — it still
+> does one thing: claim the local account.
+>
+> The reasoning still holds everywhere it is about *what* to offer and *what to refuse*;
+> read "wizard" as "the Features panel" below. One consequence is worth stating: because
+> the page is not a one-shot flow, the guards below cannot rely on being asked in order.
+> They are enforced server-side in `api/admin/features.ts`, not only rendered.
+>
+> The two-phase idea at the end of this document — a pre-install choice screen, then
+> per-app declared setup steps — is unaffected and still unbuilt.
 
 Companion to [`pcs-onboarding.md`](./pcs-onboarding.md), which covers claiming the local
-account — the one onboarding step that already exists. This document covers everything the
-wizard offers *in addition* to that: the opt-outs for the parts of a PCS that are not
-self-hosted.
+account. That is the whole of onboarding. This document covers the opt-outs for the parts
+of a PCS that are not self-hosted, which live in the admin app alongside it.
 
 ---
 
@@ -49,14 +63,14 @@ by self-check scripts, not by the presence of a container.
 
 | Onboarding option | Mechanism | Where it lives | Status |
 |---|---|---|---|
-| Yundera support key | `ENSURE_SUPPORT_KEY` | `.pcs.env` | **script done** — `feature-support-key.sh`; needs UI |
-| Yundera Login | `YUNDERA_LOGIN_ENABLED` | `.pcs.env` | **script done** — `feature-yundera-login.sh`; needs UI |
-| Automated platform updates | `UPDATE_URL` | `.pcs.env` | **script done** — `feature-platform-updates.sh`; needs UI |
+| Yundera support key | `ENSURE_SUPPORT_KEY` | `.pcs.env` | **done** — `feature-support-key.sh` + Features panel |
+| Yundera Login | `YUNDERA_LOGIN_ENABLED` | `.pcs.env` | **done** — `feature-yundera-login.sh` + Features panel |
+| Automated platform updates | `UPDATE_URL` | `.pcs.env` | **done** — `feature-platform-updates.sh` + Features panel |
 | sslip.io / nip.io access | Maison `usersettings.Domains` | Maison state | not a host flag — see below |
 | nsl.sh domain | stack presence (`nsl-provider/`) | — | blocked on the stack split |
 | Mail (password reset) | stack presence, *currently bundled with nsl.sh* | — | blocked on the split **and** on a BYO-SMTP mode |
 | Automated app updates | Maison scheduler | Maison state | the feature does not exist yet |
-| "Opt out of everything" | writes the individual flags | — | ships with whatever the others do |
+| "Opt out of everything" | writes the individual flags | — | not built — only three of seven are real |
 
 ---
 
@@ -84,7 +98,7 @@ parses them with the existing `run()` helper.
 **These are root admin scripts, and they do not police the caller.** No lock states, no
 refusals, no interlocks. Anyone who can run them already has root and can edit `.pcs.env` by
 hand anyway, so a guard in the script buys nothing and costs the duplication it takes to
-evaluate one. Policy belongs one level up — see *Guards belong in the wizard* below.
+evaluate one. Policy belongs one level up — see *Guards belong above the scripts* below.
 
 ### What a script does that writing the env cannot
 
@@ -102,20 +116,22 @@ failures — so an early `exit 0` in a gated script is safe. Both existing flags
 this way, and `.pcs.env` is in `root/.ignore`, so a flag survives
 `ensure-template-sync.sh`'s `rsync -a --delete`.
 
-### Guards belong in the wizard, not the scripts
+### Guards belong above the scripts, not in them
 
-Two situations are genuinely dangerous, and both are UI requirements rather than script
-behaviour. The scripts will happily do either; nothing stops a root shell, and nothing
-should.
+Two situations are genuinely dangerous, and neither is script behaviour. The scripts will
+happily do either; nothing stops a root shell, and nothing should.
 
 | Do not offer | When | Why |
 |---|---|---|
 | Disabling **Yundera Login** | the PCS is unclaimed | Dex renders no Local Account connector until a local account exists, so this is the only interactive login — and it is how whoever is reading the wizard got in. Off leaves the support SSH key: a terminal, for someone using a browser. |
 | Disabling the **support key** | unclaimed *and* Yundera Login already off | that combination leaves no way into the box at all |
 
-The wizard already has the predicate it needs: `onboarding.sh status` reports `claimed`.
-Read it there and grey the toggle out with an explanation, rather than re-deriving
-claimed-ness in three more places.
+The predicate is `claimed`, from `onboarding.sh status`. **As built, both guards live in
+`api/admin/features.ts`** (`guardDisable`), which refuses the write with a 409 — the route
+is reachable with a session and a curl, so a check that only greys out a switch is not a
+check. The panel renders the same reason next to the disabled switch, so the refusal is
+explained before the click rather than after it. Nothing re-derives claimed-ness: both read
+`onboarding.sh status`.
 
 Same reasoning that keeps `onboarding.sh reset` terminal-only — that script spells it out:
 unclaiming is a self-lockout button, acceptable at a root shell and unacceptable as a
@@ -130,7 +146,7 @@ control in a dashboard.
 | Flag | `ENSURE_SUPPORT_KEY` in `.pcs.env` |
 | Polarity | absent / `true` / `1` / `yes` / `on` = ensure (default); `false` / `0` / `no` / `off` = opt out |
 | Enforced by | `scripts/self-check/ensure-support-key.sh:48` |
-| Already wired | `SupportEnsure.ts`, `api/admin/support-ensure.ts`, `SupportPanel.tsx` |
+| Wired to | `Features.ts` (the only writer), `api/admin/features.ts`, `api/admin/support-ensure.ts`, `FeaturesPanel.tsx`, `AccessPanel.tsx`, `SupportPanel.tsx` |
 
 The most complete of the three — this is the reference implementation the other two should
 copy.
@@ -159,7 +175,7 @@ can no longer act on.
 | Flag | `YUNDERA_LOGIN_ENABLED` in `.pcs.env` |
 | Polarity | absent = enabled (default); `0` / `false` / `no` / `off` = disabled |
 | Enforced by | `scripts/self-check/ensure-yundera-login.sh:86` |
-| Already wired | nothing — script only, no UI |
+| Wired to | `Features.ts`, `api/admin/features.ts`, `FeaturesPanel.tsx` |
 
 The script is already correct and fail-open: it writes a single drop-in,
 `dex/connectors.d/yundera.yaml`, and removes it on any doubt. `disable` needs only to write
@@ -172,8 +188,9 @@ the flag and re-run the script, which re-renders Dex itself via `rerender_dex()`
 > browser. Worse in combination: **support key off + Yundera Login off + unclaimed = an
 > unreachable box.**
 >
-> The script does not stop you, by design. See *Guards belong in the wizard* above — the
-> wizard reads `claimed` from `onboarding.sh status` and greys the toggle out there.
+> The script does not stop you, by design. See *Guards belong above the scripts* above —
+> `api/admin/features.ts` reads `claimed` from `onboarding.sh status` and refuses the write,
+> and the Features panel disables the switch with that reason next to it.
 
 ---
 
@@ -405,7 +422,16 @@ and the TS modules and API routes mirroring `SupportEnsure.ts` / `api/admin/supp
 
 Everything else waits on architecture that is described elsewhere.
 
-**On the wizard itself:** render the full list of seven as *information* — this is what
+**On the page itself:** render the full list of seven as *information* — this is what
 Yundera does for you, and here is what each part costs you — but put real toggles only on
-what works. Greyed-out switches read as broken, and four of them would be. An honest short
-list is the better first impression.
+what works. Greyed-out switches read as broken, and four of them would be. As built, the
+four render as cards with a "not yet optional" chip and no switch at all.
+
+**Also as built:** `api/admin/support-ensure.ts` writes through
+`feature-support-key.sh` too, rather than keeping its own copy of what "off" means.
+`ENSURE_SUPPORT_KEY` now has three surfaces — that route's two panels and the Features
+page — and one writer. `SupportEnsure.ts` is read-only, kept for the intent-vs-reality view
+the script does not provide.
+
+**Not built:** the "opt out of everything" preset. With three of seven real it would be
+closer to "opt out of what we can", which is not worth a button yet.
