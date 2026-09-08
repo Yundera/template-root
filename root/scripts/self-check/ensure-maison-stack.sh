@@ -42,14 +42,10 @@ else
     TZ="UTC"
 fi
 
-# --- legacy locations ---------------------------------------------------------
-# The stack was first deployed to the hidden /DATA/AppData/.casadash, which never left
-# staging. Everything now lives in the dotless deployment directory — the stack AND the
-# dashboard's own state (settings, store cache, .env.app) — so the old path is dead.
-rm -rf /DATA/AppData/.casadash
-
-# The 1.1.0 rebrand moved that dotless directory from casadash to maison, and with it
-# the compose project name (`name:` inside the stack file) and both container names.
+# --- legacy location ----------------------------------------------------------
+# The 1.1.0 rebrand moved the deployment directory from /DATA/AppData/casadash to
+# /DATA/AppData/maison, and with it the compose project name (`name:` inside the
+# stack file) and both container names.
 # A PCS provisioned before the rebrand therefore has a live `casadash` project that
 # THIS script would otherwise never touch again: `docker compose ... -d` on the new
 # project cannot see it, --remove-orphans only reaches orphans of its own project, and

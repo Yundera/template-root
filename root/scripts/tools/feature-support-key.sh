@@ -47,7 +47,6 @@ remove_key() {
     local api url pubkey fp home ak tmp line lfp
 
     api="$(env_get OPERATOR_API)"
-    [ -n "$api" ] || api="$(env_get YUNDERA_API)"
     [ -n "$api" ] || api="https://app.yundera.com/service/pcs"
     url="${api%/}/support/ssh-key"
 

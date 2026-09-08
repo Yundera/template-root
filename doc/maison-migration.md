@@ -421,8 +421,9 @@ Consequences, in the order they will be noticed:
   simply no longer an identity source for anything else on the PCS.
 
 `ensure-casaos-stack.sh` ups the project with `--remove-orphans`, so the bridge container is
-torn down on the cycle that applies this template. `scripts/migrations/2026-07-31-15-drop-casaos-oidc.sh`
-sweeps `BRIDGE_SECRET` and `/DATA/AppData/yundera/casaos-oidc-bridge/`.
+torn down on the cycle that applies this template. `BRIDGE_SECRET` and
+`/DATA/AppData/yundera/casaos-oidc-bridge/` were swept by a one-shot migration
+(`2026-07-31-15-drop-casaos-oidc.sh`), retired 2026-09-08 once the fleet had applied it.
 
 **What this unblocks.** Phase 3's blocker was identity, and identity no longer lives in
 CasaOS. Deleting the `casaos` stack is now a routing-and-installer question, not an auth one.

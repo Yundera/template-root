@@ -113,3 +113,38 @@ Migrations that run on every template sync:
 - Validating and repairing system state
 - Generating derived configuration from environment
 - Cleanup tasks that should run periodically
+
+## Retiring a Migration
+
+A one-shot migration is dead weight once it can no longer do anything. Delete it when **both**
+hold:
+
+1. **Every box carries its marker** — the fleet has applied it. Markers live in
+   `/DATA/AppData/casaos/apps/yundera/migration-markers/`, and they are never pruned, so an
+   old marker for an already-deleted migration is normal and harmless.
+2. **A fresh install cannot produce the state it repairs.** A migration that fixes something
+   the current template still creates is not spent, however old it is — it is a bug fix that
+   belongs in the `ensure-*` script instead.
+
+The audit, per box:
+
+```bash
+ls /DATA/AppData/casaos/apps/yundera/migration-markers/
+grep -E '^(OPERATOR_API|DEFAULT_SERVICE_HOST)=' /DATA/AppData/casaos/apps/yundera/.pcs.env
+```
+
+Deleting a migration is not the same as reverting it: the state it produced stays on every box
+that ran it, and the `ensure-*` scripts are what keep that state true from then on. Check the
+comments that reference it — the convention is to keep the explanation where the behaviour is
+(the ensure script, the compose file, `doc/`) and to say the migration was *retired*, with the
+date, rather than to delete the paragraph.
+
+**Retired so far:**
+
+| Migration | Shipped | Retired |
+|---|---|---|
+| `2026-05-15-14-add-yundera-api.sh` | 2026-05-15 | 2026-09-01 |
+| `2026-08-02-13-move-admin-session-key.sh` | 2026-08-02 | 2026-09-01 |
+| `2026-07-31-15-drop-casaos-oidc.sh` | 2026-07-31 | 2026-09-08 |
+| `2026-08-02-12-drop-admin-jwt-secret.sh` | 2026-08-02 | 2026-09-08 |
+| `2026-08-04-11-rename-yundera-api.sh` | 2026-08-04 | 2026-09-08 — the `YUNDERA_API` compat reads went with it |

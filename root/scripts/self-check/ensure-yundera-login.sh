@@ -96,8 +96,6 @@ esac
 # so none of them is an error: no inputs, no connector, exit 0.
 DOMAIN="$("$ENV_MGR" get DOMAIN "$USER_ENV")"
 OPERATOR_API="$("$ENV_MGR" get OPERATOR_API "$PCS_ENV")"
-# Pre-rename name — see migrations/2026-08-04-11-rename-yundera-api.sh.
-[ -n "$OPERATOR_API" ] || OPERATOR_API="$("$ENV_MGR" get YUNDERA_API "$PCS_ENV")"
 USER_JWT="$("$ENV_MGR" get USER_JWT "$SECRET_ENV")"
 
 if [ -z "$DOMAIN" ]; then

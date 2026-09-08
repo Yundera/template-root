@@ -55,11 +55,6 @@ esac
 
 OPERATOR_API=$("$ENV_MANAGER" get OPERATOR_API "$PCS_ENV_FILE" 2>/dev/null || echo "")
 if [ -z "$OPERATOR_API" ]; then
-    # Pre-rename name; 2026-08-04-11-rename-yundera-api.sh copies it forward,
-    # but this script can run before that migration on a host that is mid-sync.
-    OPERATOR_API=$("$ENV_MANAGER" get YUNDERA_API "$PCS_ENV_FILE" 2>/dev/null || echo "")
-fi
-if [ -z "$OPERATOR_API" ]; then
     OPERATOR_API="https://app.yundera.com/service/pcs"
 fi
 # URL construction mirrors SupportKey.ts in settings-center-app — keep

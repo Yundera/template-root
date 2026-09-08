@@ -38,33 +38,6 @@ STACK_DIR="/DATA/AppData/kopia"
 # the engine is never restarted from here.
 UI_CONTAINER="kopia-app"
 
-# --- legacy location ---------------------------------------------------------
-#
-# The stack shipped for a few staging cycles as `backup-engine`, deployed to
-# /DATA/AppData/backup-engine with a single container of the same name. The project
-# name, the container and the directory all changed when the UI was added and the whole
-# thing became "kopia, the app". A box that ran the old template therefore has a live
-# `backup-engine` project that NOTHING else would ever touch again: `docker compose up`
-# on the new project cannot see it, --remove-orphans only reaches orphans of its own
-# project, and the old directory is outside the template tree that rsync --delete
-# prunes. It would keep running forever, holding the old container name.
-#
-# Nothing of value is in there: the container held no state, and the repository, its
-# caches and its logs all live under /DATA/AppDataShared/backup. So take it down and
-# remove the directory outright — unlike the maison rebrand, there is nothing to move.
-LEGACY_DIR="/DATA/AppData/backup-engine"
-if [ -d "$LEGACY_DIR" ]; then
-    if [ -f "$LEGACY_DIR/docker-compose.yml" ] && docker compose version >/dev/null 2>&1; then
-        log_info "Removing the legacy backup-engine stack (replaced by kopia)"
-        # No --volumes: the stack declared none, and this must not become a path that
-        # wipes one a future template adds.
-        docker compose --project-directory "$LEGACY_DIR" \
-            -f "$LEGACY_DIR/docker-compose.yml" down --remove-orphans \
-            || log_warn "Legacy backup-engine teardown failed; continuing"
-    fi
-    rm -rf "$LEGACY_DIR"
-fi
-
 env_get() {
     "$YND_ROOT/scripts/tools/env-file-manager.sh" get "$1" "$2" 2>/dev/null || true
 }

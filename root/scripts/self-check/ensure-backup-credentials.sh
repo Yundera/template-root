@@ -84,9 +84,6 @@ fi
 
 OPERATOR_API="$(env_get OPERATOR_API "$PCS_ENV")"
 if [ -z "$OPERATOR_API" ]; then
-    OPERATOR_API="$(env_get YUNDERA_API "$PCS_ENV")"   # pre-rename name
-fi
-if [ -z "$OPERATOR_API" ]; then
     OPERATOR_API="https://app.yundera.com/service/pcs"
 fi
 

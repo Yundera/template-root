@@ -24,8 +24,8 @@
 #
 # The `casaos` connector (and the BRIDGE_SECRET it consumed) is gone: Authelia is
 # the PCS-local credential now, and casaos-oidc-bridge died with it. The stale
-# BRIDGE_SECRET and /DATA/AppData/yundera/casaos-oidc-bridge are swept by
-# scripts/migrations/2026-07-31-15-drop-casaos-oidc.sh.
+# BRIDGE_SECRET and /DATA/AppData/yundera/casaos-oidc-bridge were swept off the
+# fleet by a one-shot migration, retired 2026-09-08 (see migrations/README.md).
 #
 # Storage layout (host /DATA/AppData/yundera/):
 #   dex/config.yaml          rendered Dex config (re-rendered each run)

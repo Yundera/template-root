@@ -68,7 +68,8 @@ fi
 # session cookie — are now signed with a key the app persists itself at
 # /app/data/admin-session-key (src/backend/auth/sessionKey.ts), precisely so a
 # container restart does not sign everyone out. Nothing reads JWT_SECRET.
-# Existing hosts are cleaned by migrations/2026-08-02-12-drop-admin-jwt-secret.sh.
+# Existing hosts were cleaned by a one-shot migration, retired 2026-09-08
+# (see scripts/migrations/README.md).
 
 # Re-read env files to include any newly set defaults
 read_env_file "$PCS_ENV_FILE"

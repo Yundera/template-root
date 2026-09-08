@@ -19,11 +19,6 @@ PCS_ENV_FILE="$YND_ROOT/.pcs.env"
 # Read Yundera API base from PCS env file or use default
 OPERATOR_API=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get OPERATOR_API "$PCS_ENV_FILE")
 
-# Pre-rename name — see 2026-08-04-11-rename-yundera-api.sh.
-if [ -z "$OPERATOR_API" ]; then
-    OPERATOR_API=$("$YND_ROOT/scripts/tools/env-file-manager.sh" get YUNDERA_API "$PCS_ENV_FILE")
-fi
-
 if [ -z "$OPERATOR_API" ]; then
     OPERATOR_API="https://app.yundera.com/service/pcs"
     echo "Using default OPERATOR_API: $OPERATOR_API"

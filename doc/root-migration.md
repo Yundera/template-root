@@ -38,7 +38,7 @@ data/caddy/    Caddy state
 admin/gate-data/   AppShield gate sessions
 perf/data      mesh-router-perf
 onboarding/completed
-casaos-oidc-bridge/   (stable only — swept by 2026-07-31-15-drop-casaos-oidc.sh)
+casaos-oidc-bridge/   (gone — swept off the fleet by a one-shot migration, retired 2026-09-08)
 .provisioning-in-progress
 ```
 
