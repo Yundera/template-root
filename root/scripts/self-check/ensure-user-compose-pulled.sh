@@ -12,7 +12,7 @@
 # so a single reset doesn't poison N concurrent streams at once.
 set -e
 
-COMPOSE_DIR="/DATA/AppData/casaos/apps/yundera"
+COMPOSE_DIR="/DATA/AppData/yundera"
 COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
 
 MAX_ATTEMPTS=10

@@ -25,7 +25,7 @@
 # A missing source (dex-theme/ absent from the template) is not an error — Dex
 # just keeps its stock UI.
 
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 THEME_SRC="$YND_ROOT/dex-theme"
 DEX_FRONTEND="/DATA/AppData/yundera/dex-frontend"
 

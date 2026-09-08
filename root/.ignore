@@ -1,3 +1,29 @@
+# rsync exclude patterns for ensure-template-sync.sh (`--exclude-from`).
+#
+# Everything NOT listed here is replaced from the template on every sync, and
+# anything in the destination that the template does not have is DELETED
+# (`rsync -a --delete`). Excluded paths are exempt from both: they are neither
+# transferred nor deleted.
+#
+# THIS FILE IS THE ONLY THING STANDING BETWEEN `--delete` AND THE PCS'S LIVE
+# STATE. Since the root move (2026-09-08) the destination is
+# /DATA/AppData/yundera, which is not just the template tree — it is also where
+# Authelia's user database, Dex's sqlite store, the TLS certs and the admin
+# gate's sessions live. Before the move those sat safely outside the synced
+# directory. Now a missing line here is a data-loss bug, which is why
+# ensure-template-sync.sh dry-runs the delete list and refuses to proceed if a
+# protected path is in it.
+#
+# `+ ` lines are INCLUDES and must come before the exclude they carve out of.
+# Note the `/auth/**` form: excluding `/auth/` itself would stop rsync
+# descending into the directory at all, and the include below could never match.
+
+# --- the template's own file inside a protected directory --------------------
+# Rendered by ensure-authelia.sh into auth/configuration.yml; the template is
+# the only thing in auth/ we own, and it must keep being updated.
++ /auth/configuration.yml.tmpl
+
+# --- per-host state that predates the root move ------------------------------
 .env
 .pcs.env
 .pcs.secret.env
@@ -5,3 +31,37 @@
 log/*.log
 *.backup
 migration-markers/
+
+# Written to the stack root by the PCS-to-PCS migration's stop_source step
+# (settings-center-app Migration/steps/stopSource.ts) to keep the source's cron
+# down. A sync landing mid-migration used to delete it and silently re-arm the
+# cron on a box that was being migrated away from.
+.self-check-cron-disabled
+
+# --- runtime state now living inside the synced directory --------------------
+# Authelia: users_database.yml, db.sqlite, secrets/, oidc/, clients.d/. Losing
+# it drops the PCS back to UNCLAIMED — the owner's only local credential.
+/auth/**
+# Dex: dex.db, the rendered config, and connectors.d/ (which nothing
+# regenerates — see ensure-dex.sh).
+/dex/
+# The rendered Dex theme and the two template files the dex container
+# bind-mounts as FILES. Docker recreates a missing bind source as a directory,
+# which makes dex permanently unstartable.
+/dex-frontend/
+# mesh-router-agent's certs and Caddy's state.
+/data/
+# The admin app's /app/data and the AppShield gate's sessions.
+/admin/
+# mesh-router-perf's store.
+/perf/
+# The onboarding `completed` marker.
+/onboarding/
+# Set while a box is provisioning; self-check.sh refuses to run while it exists.
+.provisioning-in-progress
+# The tile icon Maison renders this stack from, placed at the flip.
+.icon.svg
+# Provenance marker from the retired mirrors. Kept so that a box rolled back to
+# a template that still runs one finds its own marker and reclaims the folder
+# instead of refusing to touch it.
+.casaos-mirror

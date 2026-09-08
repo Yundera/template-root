@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SCRIPT_DIR="/DATA/AppData/casaos/apps/yundera/scripts"
+SCRIPT_DIR="/DATA/AppData/yundera/scripts"
 count=0
 
 # Make all script files executable and owned

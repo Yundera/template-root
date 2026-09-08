@@ -27,7 +27,7 @@ fi
 
 IPV6_INTERFACE="ens19"
 NETPLAN_CONFIG="/etc/netplan/50-cloud-init.yaml"
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 ENV_FILE="$YND_ROOT/.pcs.env"
 USER_ENV_FILE="$YND_ROOT/.ynd.user.env"
 ENV_MGR="$YND_ROOT/scripts/tools/env-file-manager.sh"

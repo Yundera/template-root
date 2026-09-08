@@ -120,13 +120,22 @@ ensure-kopia-stack.sh
 # ensure-casaos-stack.sh is gone — CasaOS is removed (phase 3). Its container is
 # torn down on existing hosts by migrations/2026-08-02-14-remove-casaos-stack.sh.
 ensure-maison-stack.sh
-# STAYS for now, despite phase 3's outline saying to delete it: the app compose
-# files still live under /DATA/AppData/casaos/apps/<app>, and this mirror is what
-# makes them visible and manageable in Maison. It can only go once phase 2 has
-# MOVED each app out of that tree (one writer per app) on the fleet — a data
-# migration, not a template edit.
-ensure-maison-app-mirror.sh
-# The yundera stack's own mirror. Separate from the app mirror above because its
-# .env comes from the unified .env rather than a per-app one. Must stay after
-# ensure-env-vars-valid.sh (it copies that .env).
-ensure-maison-yundera-mirror.sh
+
+# BOTH MIRRORS ARE GONE (2026-09-08). ensure-maison-app-mirror.sh projected each
+# app's compose + a generated .env from /DATA/AppData/casaos/apps/<app> into
+# /DATA/AppData/<app>, and ensure-maison-yundera-mirror.sh did the same for this
+# stack. Their output is now the real thing at both paths, so there is nothing
+# left to project:
+#   - apps: CasaOS stopped writing casaos/apps/<app> when it was removed
+#     (2026-08-02), so the mirror had been copying a frozen tree ever since. The
+#     copy is complete and was asserted render-identical on every box, every
+#     night, for months. Maison owns /DATA/AppData/<app> now, and re-applies the
+#     deployment's variables into each app's .env on every start (Maison's
+#     docs/app-env.md) — which is the only moment they take effect, and the
+#     reason the nightly rewrite was redundant.
+#   - the yundera stack: after the root move its compose and .env ARE
+#     /DATA/AppData/yundera/{docker-compose.yml,.env}, so Maison's
+#     stat(AppsDir/<project>/docker-compose.yml) is satisfied directly.
+# The old files under /DATA/AppData/casaos/ are left in place as dead data, and
+# so are the .casaos-mirror markers — a box rolled back to a template that still
+# has a mirror needs its marker to reclaim ownership rather than refuse.

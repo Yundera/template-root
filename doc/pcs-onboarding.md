@@ -230,7 +230,7 @@ a pure "has this file been written yet?" test, so removing the file re-arms it)
 and `ensure-dex.sh`.
 
 ```bash
-sudo /DATA/AppData/casaos/apps/yundera/scripts/tools/onboarding.sh reset --confirm
+sudo /DATA/AppData/yundera/scripts/tools/onboarding.sh reset --confirm
 ```
 
 `--confirm` is mandatory: this disables **every** local account on the PCS. The
@@ -303,7 +303,7 @@ this entire chain:
 
 ```bash
 ssh admin@<host>
-sudo /DATA/AppData/casaos/apps/yundera/scripts/tools/authelia-user-manager.sh claim <username>
+sudo /DATA/AppData/yundera/scripts/tools/authelia-user-manager.sh claim <username>
 ```
 
 The **Yundera support key** guarantees that access on managed boxes:

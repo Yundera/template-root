@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 SECRET_ENV_FILE="$YND_ROOT/.pcs.secret.env"
 USER_ENV_FILE="$YND_ROOT/.ynd.user.env"
 PCS_ENV_FILE="$YND_ROOT/.pcs.env"

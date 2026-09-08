@@ -5,7 +5,7 @@
 # idempotent: containers already at the desired state are left alone.
 set -eo pipefail
 
-COMPOSE_DIR="/DATA/AppData/casaos/apps/yundera"
+COMPOSE_DIR="/DATA/AppData/yundera"
 COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
 LOG_FILE="$COMPOSE_DIR/log/yundera.log"
 

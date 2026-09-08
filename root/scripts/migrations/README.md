@@ -56,7 +56,7 @@ echo "Warning: Warning message"
 set -euo pipefail
 
 MIGRATION_NAME="$(basename "$0")"
-MARKER_FILE="/DATA/AppData/casaos/apps/yundera/migration-markers/$(basename "$0" .sh).marker"
+MARKER_FILE="/DATA/AppData/yundera/migration-markers/$(basename "$0" .sh).marker"
 
 echo "Starting migration: $MIGRATION_NAME"
 
@@ -120,7 +120,7 @@ A one-shot migration is dead weight once it can no longer do anything. Delete it
 hold:
 
 1. **Every box carries its marker** — the fleet has applied it. Markers live in
-   `/DATA/AppData/casaos/apps/yundera/migration-markers/`, and they are never pruned, so an
+   `/DATA/AppData/yundera/migration-markers/`, and they are never pruned, so an
    old marker for an already-deleted migration is normal and harmless.
 2. **A fresh install cannot produce the state it repairs.** A migration that fixes something
    the current template still creates is not spent, however old it is — it is a bug fix that
@@ -129,8 +129,8 @@ hold:
 The audit, per box:
 
 ```bash
-ls /DATA/AppData/casaos/apps/yundera/migration-markers/
-grep -E '^(OPERATOR_API|DEFAULT_SERVICE_HOST)=' /DATA/AppData/casaos/apps/yundera/.pcs.env
+ls /DATA/AppData/yundera/migration-markers/
+grep -E '^(OPERATOR_API|DEFAULT_SERVICE_HOST)=' /DATA/AppData/yundera/.pcs.env
 ```
 
 Deleting a migration is not the same as reverting it: the state it produced stays on every box

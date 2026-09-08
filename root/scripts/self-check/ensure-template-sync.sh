@@ -8,7 +8,7 @@ set -e
 # Check for root privileges
 [ "$EUID" -eq 0 ] || { echo "✗ This script must be run as root"; exit 1; }
 
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 
 # Install required tools
 "$YND_ROOT/scripts/tools/ensure-packages.sh" wget curl apt-utils unzip rsync
@@ -17,7 +17,13 @@ YND_ROOT="/DATA/AppData/casaos/apps/yundera"
 DEFAULT_TEMPLATE_URL="https://github.com/Yundera/template-root/archive/refs/heads/stable.zip"
 ENV_FILE="$YND_ROOT/.pcs.env"
 TEMP_DIR=$(mktemp -d)
-BACKUP_DIR="/tmp/root-backup-$(date +%s)"
+# Pre-sync copies of the stack root. On /DATA so they survive the reboot that
+# usually follows an update, and kept rather than deleted on success — see the
+# note at the `cp -a` below.
+BACKUP_ROOT="/DATA/AppData/.yundera-backups"
+BACKUP_KEEP=3
+BACKUP_DIR="$BACKUP_ROOT/root-backup-$(date +%s)"
+mkdir -p "$BACKUP_ROOT"
 
 # Cleanup function
 cleanup() {
@@ -133,8 +139,15 @@ if ! run_migrations "$TEMPLATE_ROOT"; then
     exit 1
 fi
 
-# Create backup if root directory exists
-[ -d "$YND_ROOT" ] && cp -r "$YND_ROOT" "$BACKUP_DIR"
+# Create backup if root directory exists.
+#
+# ON /DATA, NOT /tmp, AND KEPT. This used to write to /tmp/root-backup-<epoch>
+# and delete it the moment rsync exited 0 — so a sync that succeeded while
+# removing the wrong subtree left nothing to recover from, and /tmp is cleared
+# by the reboot that usually follows. Since the root move the destination holds
+# the local account and Dex's store, so the copy is worth its disk. Only the
+# most recent BACKUP_KEEP are retained.
+[ -d "$YND_ROOT" ] && cp -a "$YND_ROOT" "$BACKUP_DIR"
 
 # Build rsync command with proper exclusions
 RSYNC_OPTS=("-a" "--delete")
@@ -154,6 +167,37 @@ RSYNC_OPTS+=("--exclude-from=$TEMPLATE_ROOT/.ignore")
 echo "→ Syncing files..."
 mkdir -p "$YND_ROOT"
 
+# ---------------------------------------------------------------------------
+# DELETE GUARD — dry-run first, and refuse to sync if `--delete` would touch
+# anything that is not ours to delete.
+#
+# Since the root move, $YND_ROOT is both the template tree AND the stack's live
+# state: auth/ (the owner's only local credential), dex/, data/certs, admin/.
+# All of it is protected by .ignore — and the whole protection is one file that
+# a future edit can silently break. `--delete` gives no warning and no second
+# chance, so this converts "a pattern went missing" from total loss into a
+# refusal to sync.
+#
+# Deliberately a hard exit rather than a filtered sync: if the exclude list is
+# wrong we do not know what else it is wrong about, and a PCS running last
+# week's template is a far better outcome than one missing its user database.
+# ---------------------------------------------------------------------------
+PROTECTED_RE='^(auth|dex|dex-frontend|data|admin|perf|onboarding|log|migration-markers)(/|$)|^\.(env|pcs\.env|pcs\.secret\.env|ynd\.user\.env|provisioning-in-progress|self-check-cron-disabled|icon\.svg|casaos-mirror)$'
+DEL_LIST=$(rsync "${RSYNC_OPTS[@]}" --dry-run --itemize-changes \
+               "$TEMPLATE_ROOT/" "$YND_ROOT/" 2>/dev/null \
+           | sed -n 's/^\*deleting  *//p' || true)
+
+if [ -n "$DEL_LIST" ]; then
+    OFFENDING=$(printf '%s\n' "$DEL_LIST" | grep -E "$PROTECTED_RE" || true)
+    if [ -n "$OFFENDING" ]; then
+        echo "✗ REFUSING SYNC: --delete would remove protected state under $YND_ROOT"
+        printf '%s\n' "$OFFENDING" | sed 's/^/    /'
+        echo "  Check $TEMPLATE_ROOT/.ignore — every path above should be excluded."
+        rm -rf "$BACKUP_DIR"
+        exit 1
+    fi
+fi
+
 # Set exec bits on the SOURCE before syncing. The chmod at the end of this
 # script leaves a window in which the newly-synced scripts are on disk but not
 # executable — and this rsync runs *inside* the self-check loop, which is
@@ -171,7 +215,11 @@ if rsync "${RSYNC_OPTS[@]}" "$TEMPLATE_ROOT/" "$YND_ROOT/" >/dev/null; then
     sync
     sleep 2
     sync
-    rm -rf "$BACKUP_DIR"
+    # Keep this backup and prune the oldest. `ls -1d` sorts the epoch-suffixed
+    # names lexically, which for a fixed-width epoch is chronological.
+    ls -1d "${BACKUP_ROOT}"/root-backup-* 2>/dev/null \
+        | head -n -"$BACKUP_KEEP" \
+        | xargs -r rm -rf
 else
     rsync_exit_code=$?
     echo "✗ Template sync failed with exit code $rsync_exit_code"

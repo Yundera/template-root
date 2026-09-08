@@ -22,7 +22,7 @@
 
 set -euo pipefail
 
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 PCS_ENV="$YND_ROOT/.pcs.env"
 
 log() { echo "[pcs-init $(date -u +%H:%M:%S)] $*"; }
@@ -45,7 +45,35 @@ if ! flock -n 200; then
     die "another pcs-init.sh is already running on this host (lock: $LOCK_FILE) — refusing to run concurrently"
 fi
 
-# 1. Validate orchestrator-staged env file.
+# 1. Relocate the orchestrator-staged env files, then validate.
+#
+# THE ORCHESTRATOR STILL STAGES AT THE OLD ROOT, and does not need to change:
+# runHostBootstrap.ts scp's .pcs.env / .pcs.secret.env to
+# /DATA/AppData/casaos/apps/yundera before invoking this script. The root move
+# (doc/root-migration.md) changed where the template lives, not where a create
+# drops its seed — and pinning the orchestrator to the new path would break
+# every host that self-syncs against a template channel still on the old one.
+#
+# So the move happens here, at the first thing that runs on the box. It is also
+# the ONLY thing that populates the new root on a fresh host: this script
+# deliberately skips migrations (see the header), so the cutover migration —
+# which does this same relocation for existing boxes — never runs on a create.
+#
+# `mv` rather than copy: two roots holding two divergent .pcs.env is the exact
+# failure the root move exists to end, and env-file-manager.sh writes via an
+# atomic rename, so a stale second copy would never be updated and would look
+# authoritative to anyone reading it. Modes are preserved (.pcs.secret.env is
+# 600). Idempotent: a re-run finds nothing left to move.
+LEGACY_ROOT="/DATA/AppData/casaos/apps/yundera"
+mkdir -p "$YND_ROOT"
+for f in .pcs.env .pcs.secret.env; do
+    if [ -f "$LEGACY_ROOT/$f" ] && [ ! -f "$YND_ROOT/$f" ]; then
+        mv "$LEGACY_ROOT/$f" "$YND_ROOT/$f" \
+            || die "could not move $LEGACY_ROOT/$f to $YND_ROOT/$f"
+        log "moved staged $f into $YND_ROOT"
+    fi
+done
+
 [ -f "$PCS_ENV" ] || die ".pcs.env missing at $PCS_ENV — orchestrator did not stage env files"
 UPDATE_URL=$(grep '^UPDATE_URL=' "$PCS_ENV" | cut -d= -f2- || true)
 [ -n "$UPDATE_URL" ] || die "UPDATE_URL missing from $PCS_ENV"

@@ -2,7 +2,7 @@
 
 set -e
 
-SCRIPT_DIR="/DATA/AppData/casaos/apps/yundera/scripts"
+SCRIPT_DIR="/DATA/AppData/yundera/scripts"
 source "${SCRIPT_DIR}/library/common.sh"
 
 # Check if at least one argument is provided

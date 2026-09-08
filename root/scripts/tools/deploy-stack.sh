@@ -2,7 +2,7 @@
 # deploy-stack.sh <stack-name> <dest-dir> [EXTRA_KEY=value ...]
 #
 # Deploys one of the auxiliary compose stacks shipped under
-# /DATA/AppData/casaos/apps/yundera/stacks/<stack-name>/ (currently `casaos` and
+# /DATA/AppData/yundera/stacks/<stack-name>/ (currently `casaos` and
 # `maison` — see doc/maison-migration.md) to its own project directory:
 #
 #   1. copy stacks/<stack-name>/docker-compose.yml -> <dest-dir>/docker-compose.yml
@@ -30,7 +30,7 @@
 # are common enough that a single transient failure must not fail the self-check.
 set -euo pipefail
 
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 source "$YND_ROOT/scripts/library/log.sh"
 
 STACK_NAME="${1:?usage: deploy-stack.sh <stack-name> <dest-dir> [KEY=value ...]}"
@@ -111,7 +111,7 @@ chmod 600 "$TMP_ENV"
     echo "# AUTO-GENERATED FILE - DO NOT EDIT"
     echo "# Written by scripts/tools/deploy-stack.sh for the '$STACK_NAME' stack."
     echo "# Regenerated on every self-check; edit the sources instead:"
-    echo "#   /DATA/AppData/casaos/apps/yundera/{.pcs.env,.pcs.secret.env,.ynd.user.env}"
+    echo "#   /DATA/AppData/yundera/{.pcs.env,.pcs.secret.env,.ynd.user.env}"
     echo ""
     cat "$UNIFIED_ENV"
     if [ "$#" -gt 0 ]; then

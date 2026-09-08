@@ -36,7 +36,7 @@
 
 set -euo pipefail
 
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 source "$YND_ROOT/scripts/library/log.sh"
 
 AUTH_ROOT="/DATA/AppData/yundera/auth"
@@ -325,9 +325,10 @@ else
     #      Hence a PLACEHOLDER key, which `claim` renames to the user's choice.
     #
     # DEFAULT_PWD is deliberately NOT used here any more. It is an app-seed
-    # secret — ensure-maison-app-mirror.sh injects it into every installed app as
-    # default_pwd / PCS_DEFAULT_PASSWORD / APP_DEFAULT_PASSWORD — so making it
-    # the PCS login password put the owner's credential in every app's env.
+    # secret — it reaches every installed app as APP_DEFAULT_PASSWORD (and the
+    # deprecated default_pwd / PCS_DEFAULT_PASSWORD) through the .env.app
+    # ensure-maison-stack.sh writes for Maison — so making it the PCS login
+    # password put the owner's credential in every app's env.
     if ! authelia_hash argon2 --random --random.length 64; then
         log_error "Failed to generate the unclaimed-account placeholder hash via $AUTHELIA_IMAGE after $HASH_MAX_ATTEMPTS attempts"
         exit 1

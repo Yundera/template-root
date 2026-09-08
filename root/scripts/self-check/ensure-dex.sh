@@ -56,7 +56,7 @@
 
 set -euo pipefail
 
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 source "$YND_ROOT/scripts/library/log.sh"
 
 DEX_ROOT="/DATA/AppData/yundera/dex"
@@ -256,7 +256,7 @@ shopt -u nullglob
 # re-asserts it every tick and provisioning aborts without it:
 #
 #     ssh admin@<host>
-#     sudo /DATA/AppData/casaos/apps/yundera/scripts/tools/authelia-user-manager.sh claim <username>
+#     sudo /DATA/AppData/yundera/scripts/tools/authelia-user-manager.sh claim <username>
 # ---------------------------------------------------------------------------
 if [ "$CONNECTOR_COUNT" -eq 0 ]; then
     log_warn "Dex rendered with NO connectors — interactive login is impossible on this PCS."

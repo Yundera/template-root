@@ -38,7 +38,7 @@ if [ "${PCS_SELF_CHECK_LOCK_HELD:-0}" != "1" ]; then
     fi
 fi
 
-SCRIPT_DIR="/DATA/AppData/casaos/apps/yundera/scripts"
+SCRIPT_DIR="/DATA/AppData/yundera/scripts"
 source "${SCRIPT_DIR}/library/common.sh"
 
 log "=== Self-check starting ==="

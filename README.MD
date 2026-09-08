@@ -5,7 +5,7 @@ This folder contains the template system for Yundera Personal Cloud Server (PCS)
 ## Folder Structure
 
 ```
-root/                        # Files installed to /DATA/AppData/casaos/apps/yundera
+root/                        # Files installed to /DATA/AppData/yundera
 ├── .pcs.env                 # PCS configuration environment variables
 ├── .pcs.secret.env          # Secret environment variables (JWT, passwords, etc.)
 ├── .ynd.user.env            # User-specific environment variables
@@ -48,7 +48,7 @@ Utility scripts invoked by other parts of the system or operators: `os-init.sh`,
 - **`.pcs.secret.env`**: Secret environment variables (JWT tokens, passwords, signatures)
 - **`.ynd.user.env`**: User-specific data (UID, domain, email, username, public IP)
 
-`ensure-env-vars-valid.sh` assembles these into the unified `/DATA/AppData/casaos/apps/yundera/.env`, which every stack and mirror script reads on each self-check tick. Always mutate them via `tools/env-file-manager.sh` — never raw `sed`/`grep`.
+`ensure-env-vars-valid.sh` assembles these into the unified `/DATA/AppData/yundera/.env`, which every stack and mirror script reads on each self-check tick. Always mutate them via `tools/env-file-manager.sh` — never raw `sed`/`grep`.
 
 ### Environment Variables
 
@@ -89,7 +89,7 @@ The `UPDATE_URL` variable must be a direct zip file URL for downloading template
 This folder is designed to be:
 
 1. Fetched from jsDelivr by the orchestrator on first install (via `pcs-init.sh`).
-2. Deployed to `/DATA/AppData/casaos/apps/yundera/` on each PCS host.
+2. Deployed to `/DATA/AppData/yundera/` on each PCS host.
 3. Kept current by ongoing self-check + template-sync runs (no operator action required).
 
 ## Update Process
@@ -107,7 +107,7 @@ The template tree is intentionally mutable after first install — every self-ch
 All triggers run the same three-step sequence at the end of `scripts-config.txt`:
 
 1. **`self-check/ensure-template-sync.sh`** (RUNS FIRST)
-   Downloads `UPDATE_URL`, runs **migrations from the new tree** first, then rsyncs over `/DATA/AppData/casaos/apps/yundera/` (honouring `root/.ignore`). A failed migration aborts the sync and restores the previous tree from backup.
+   Downloads `UPDATE_URL`, runs **migrations from the new tree** first, then rsyncs over `/DATA/AppData/yundera/` (honouring `root/.ignore`). A failed migration aborts the sync and restores the previous tree from backup.
 
 2. **`self-check/ensure-user-compose-pulled.sh`**
    `docker compose pull` for the user stack — fetches image versions pinned by the new template.

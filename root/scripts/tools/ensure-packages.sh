@@ -13,7 +13,7 @@ set -e
 
 export DEBIAN_FRONTEND=noninteractive
 
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 
 if [ $# -eq 0 ]; then
     echo "Usage: ensure-packages.sh <package1> [package2] ..."

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Default log file path
-DEFAULT_LOG_FILE="/DATA/AppData/casaos/apps/yundera/log/yundera.log"
+DEFAULT_LOG_FILE="/DATA/AppData/yundera/log/yundera.log"
 
 # Set log file (can be overridden by calling scripts)
 LOG_FILE="${LOG_FILE:-$DEFAULT_LOG_FILE}"

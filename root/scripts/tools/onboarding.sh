@@ -49,13 +49,13 @@
 #
 # MARKER LOCATION IS LOAD-BEARING. /DATA/AppData/yundera/ is user data: backed up,
 # and carried across by the migration pipeline. It must NOT go under
-# /DATA/AppData/casaos/apps/yundera/ — ensure-template-sync.sh rsyncs that tree
+# /DATA/AppData/yundera/ — ensure-template-sync.sh rsyncs that tree
 # from the template on every update and root/.ignore preserves only the env files,
 # logs, *.backup and migration-markers/. A marker there vanishes overnight.
 
 set -euo pipefail
 
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 AUTH_ROOT="/DATA/AppData/yundera/auth"
 USERS_DB="$AUTH_ROOT/users_database.yml"
 

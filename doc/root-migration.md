@@ -1,8 +1,23 @@
 # Moving the template root: `casaos/apps/yundera` → `AppData/yundera`
 
-Status: **planned, not implemented.** Companion to [`maison-migration.md`](./maison-migration.md)
-(which removed CasaOS) and [`stack-split.md`](./stack-split.md) (which is a later, larger
-proposal this does not depend on).
+Status: **implemented 2026-09-08**, by
+`scripts/migrations/2026-09-08-12-move-root-to-maison.sh`. Companion to
+[`maison-migration.md`](./maison-migration.md) (which removed CasaOS) and
+[`stack-split.md`](./stack-split.md) (which is a later, larger proposal this does not
+depend on).
+
+Everything below describes the design and the reasoning; it was written before the change
+shipped, so "today" in the next section means *before* the move. What actually shipped
+differs from the plan in three places, all recorded inline where they occur:
+
+- **The cutover's idempotency guard is the marker, not "does Root B have a tree".** The
+  2026-09-01 prep migration put a tree in Root B on every box in the fleet, so the guard as
+  originally written would have made the flip a silent no-op fleet-wide.
+- **`.ignore` excludes `/auth/**`, not `/auth/`**, with `+ /auth/configuration.yml.tmpl`
+  ahead of it. rsync does not descend into an excluded directory, so excluding `auth/`
+  outright would have stopped the Authelia template ever being updated again.
+- **Root A is left in place permanently**, not as a deferred cleanup. It becomes static data
+  nobody reads; there is no follow-up phase that deletes it.
 
 This document covers one change: the template tree stops living under CasaOS's app folder
 and moves to Maison's flat layout, alongside the runtime state that is already there.
@@ -134,8 +149,8 @@ last so it sorts after the stable-era migrations, which still operate on Root A.
 1. Bail out cleanly if Root B already carries the template tree (idempotent re-run).
 2. Copy the non-recomputable set A → B: the three env files (preserving mode — `.pcs.secret.env`
    is 600), `.env`, `migration-markers/`, `log/*.log`, `*.backup`, `.self-check-cron-disabled`.
-3. Copy `migration-markers/` **before** anything else reads it, so the 12 stable-era migrations
-   are not replayed.
+3. Copy `migration-markers/` **before** anything else reads it, so the stable-era migrations
+   (three, after the 2026-09-08 retirement pass) are not replayed.
 4. Seed Root B with the full template tree from `$TEMPLATE_ROOT` — **required**, see the
    cutover sequence below.
 5. Place `.icon.svg` (the job `ensure-maison-yundera-mirror.sh` used to do).
@@ -235,11 +250,20 @@ Keeping it would copy a stale Root A over the live Root B.
 
 Remove the script, its `scripts-config.txt` entry, and the `.casaos-mirror` marker.
 
-### `scripts/self-check/ensure-maison-app-mirror.sh` — keep
+### `scripts/self-check/ensure-maison-app-mirror.sh` — deleted too
 
-Store apps still live under `/DATA/AppData/casaos/apps/<app>`, and this mirror is what makes
-them manageable in Maison. Only its `$YND_ROOT` / `$YUNDERA_ENV` sources move to Root B. It
-can go once `maison-migration.md` phase 2 moves each app out of that tree.
+This section used to say "keep, until phase 2 moves each app out of that tree". It went in the
+same push, because the move it was waiting for turned out to have already happened: CasaOS
+stopped writing `casaos/apps/<app>` when it was removed on 2026-08-02, so from that day the
+mirror was copying a frozen tree into `/DATA/AppData/<app>` and asserting, nightly, on every
+box, that the copy rendered identically to it. The copy is the migration, and it was complete.
+Nothing on disk was moved or deleted: the old files stay where they are, unread.
+
+Maison keeps each app's `.env` current on its own — it re-applies every `.env.app` key on
+install and on **every start** (Maison's `docs/app-env.md`), which is the only moment those
+values take effect. The mirror's nightly rewrite was not just redundant but harmful: it
+replaced the whole file, dropping the keys Maison computes (`DATA_ROOT`, `DATA_HOST_PATH`)
+until the app's next start.
 
 ### `root/docker-compose.yml`
 
@@ -316,5 +340,9 @@ Neither is required for this push; see the orchestrator/admin-app notes for deta
 - **`pcs-orchestrator`** — `pcs support` derives four absolute paths from a hardcoded Root A
   (`src/scripts/support.ts:76`); the `USER_JWT` rotation becomes a silent no-op after the flip.
   `HOST_BOOTSTRAP_REMOTE_FOLDER` needs no change, because `pcs-init.sh` relocates the seed files.
-- **`settings-center-app`** — ~15 hardcoded Root A literals. Until it ships a resolver, the
-  Health panel shows a frozen log and the support toggle writes to a dead `.pcs.env`.
+- **`settings-center-app`** — was 33 hardcoded Root A literals across 22 files. It now
+  resolves the root once, in `configuration/yndRoot.ts`, from the `COMPOSE_FOLDER_PATH` the
+  template's compose injects — so the flip is that one env var and no release of the image.
+  Shipped ahead of this change and correct on both layouts. The PCS-to-PCS migration steps
+  use the same function for paths on the *target*, which is right because `rsync.ts` copies
+  the whole of `/DATA` across: the target's tree is the source's tree.

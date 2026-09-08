@@ -49,7 +49,7 @@ against what the box can actually do.
 > **A container can be opted out of by not installing it. A self-check script cannot — the
 > host layer is never uninstalled.**
 
-`/DATA/AppData/casaos/apps/yundera/scripts/` runs from cron on every box forever, before
+`/DATA/AppData/yundera/scripts/` runs from cron on every box forever, before
 Maison exists and regardless of which stacks are deployed
 ([`stack-split.md`](./stack-split.md) keeps it that way deliberately). So anything enforced
 by an `ensure-*.sh` needs a real flag, and the stack split will not retire it.

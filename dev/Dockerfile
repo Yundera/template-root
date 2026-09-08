@@ -32,8 +32,8 @@ RUN ARCH=$(dpkg --print-architecture) && \
     chmod +x /usr/local/bin/yq
 
 # Create directory structure matching PCS
-RUN mkdir -p /DATA/AppData/casaos/apps/yundera \
-    && mkdir -p /DATA/AppData/casaos/apps/yundera/migration-markers \
-    && mkdir -p /DATA/AppData/casaos/apps/yundera/log
+RUN mkdir -p /DATA/AppData/yundera \
+    && mkdir -p /DATA/AppData/yundera/migration-markers \
+    && mkdir -p /DATA/AppData/yundera/log
 
-WORKDIR /DATA/AppData/casaos/apps/yundera
+WORKDIR /DATA/AppData/yundera

@@ -3,7 +3,7 @@
 
 set -e
 
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 
 # Install common tools
 "$YND_ROOT/scripts/tools/ensure-packages.sh" wget unzip rsync htop isc-dhcp-client apt-utils

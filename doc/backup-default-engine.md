@@ -49,8 +49,8 @@ So the provider is provisioned by default. What is not configured by default is 
 
 ```
 pcs-orchestrator ─ runHostBootstrap.ts:119
-  └─► /DATA/AppData/casaos/apps/yundera/.pcs.env          OPERATOR_API, (BACKUP_ENABLED if set)
-      /DATA/AppData/casaos/apps/yundera/.pcs.secret.env   USER_JWT   ◄── present from minute 0
+  └─► /DATA/AppData/yundera/.pcs.env          OPERATOR_API, (BACKUP_ENABLED if set)
+      /DATA/AppData/yundera/.pcs.secret.env   USER_JWT   ◄── present from minute 0
   └─► fetches pcs-init.sh (jsDelivr) → hands off to template-root
 
 self-check.sh — scripts-config.txt order, then @reboot + nightly

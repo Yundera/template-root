@@ -432,12 +432,20 @@ CasaOS. Deleting the `casaos` stack is now a routing-and-installer question, not
 
 ## Phase 2 — flip the default (outline)
 
-- Make Maison the installer: new apps land in `/DATA/AppData/<app>` and are managed by
+- ~~Make Maison the installer: new apps land in `/DATA/AppData/<app>` and are managed by
   Maison directly. CasaOS-installed apps are cut over one at a time by **moving**
   `casaos/apps/<app>` out of CasaOS's `AppsPath` so there is exactly one writer per app; the
-  mirror becomes the real thing.
-- **Re-point the migration pipeline's `start_user_apps` step** at the mirrored folders — it
-  still calls the deleted `ensure-casaos-apps-up-to-date.sh` and rolls migrations back today.
+  mirror becomes the real thing.~~ — **done 2026-09-08, without moving anything.** There was
+  no cutover left to perform: CasaOS stopped writing `casaos/apps/<app>` when it was removed
+  (phase 3, 2026-08-02), so the mirror had been copying a frozen tree ever since, and
+  asserting nightly on every box that the copy rendered identically. One writer per app was
+  already true. `ensure-maison-app-mirror.sh` was simply deleted, `/DATA/AppData/<app>` is the
+  app, and the old files are left in place as static data — no move, no rename, no deletion.
+- ~~**Re-point the migration pipeline's `start_user_apps` step** at the mirrored folders — it
+  still calls the deleted `ensure-casaos-apps-up-to-date.sh` and rolls migrations back today.~~
+  — **done 2026-09-08.** `settings-center-app`'s `Migration/steps/startUserApps.ts` now runs
+  its own `docker compose up -d` loop over `/DATA/AppData/*/`, skipping the stacks the target's
+  self-check owns, and keeps the `FAILED_APP:` contract the old script had.
 - ~~Point `DEFAULT_SERVICE_HOST` at the AppShield gate so the root domain lands on Maison.~~
   — **done** with the CasaOS removal below; it could not wait, since the old target stopped
   existing.
@@ -463,16 +471,13 @@ CasaOS. Deleting the `casaos` stack is now a routing-and-installer question, not
 - **`/DATA/AppData/casaos` stays.** It is CasaOS's AppData root and holds `apps/` —
   including `apps/yundera`, the template itself. Only the stack's own files were removed.
 
-Still outstanding, and blocked on phase 2's cutover rather than on CasaOS:
+All of it landed on 2026-09-08:
 
-- `ensure-maison-app-mirror.sh` **stays for now**, contrary to this outline's original plan.
-  App compose files still live under `/DATA/AppData/casaos/apps/<app>`, and the mirror is
-  what makes them visible and manageable in Maison. Deleting it requires first **moving**
-  each app out of that tree (one writer per app) across the fleet — a data migration, not a
-  template edit. Running containers are unaffected either way: compose derives the project
-  name from the directory basename, so a mirrored copy addresses the same project.
-- Dropping the `/DATA/AppData/casaos/apps` tree and the `.casaos-mirror` markers follows that
-  same move.
-- The migration pipeline's `start_user_apps` step still calls the deleted
-  `ensure-casaos-apps-up-to-date.sh` (see phase 2 above) — already broken before this change,
-  and now with no CasaOS to fall back on.
+- `ensure-maison-app-mirror.sh` is **deleted**. See phase 2 above for why the "data migration
+  across the fleet" it was waiting for turned out to be already done.
+- The `/DATA/AppData/casaos/apps` tree and the `.casaos-mirror` markers are **kept**, in place
+  and unread. Dropping them was considered and rejected: nothing reads them, they cost a few
+  KB, and leaving them is what makes a rollback to a template that still runs a mirror a
+  no-op instead of a repair job.
+- `start_user_apps` no longer calls `ensure-casaos-apps-up-to-date.sh`; it brings the apps up
+  itself.

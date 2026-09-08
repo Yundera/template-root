@@ -39,7 +39,7 @@ AUTH_ROOT="/DATA/AppData/yundera/auth"
 USERS_DB="$AUTH_ROOT/users_database.yml"
 LOCK_FILE="$AUTH_ROOT/.users-db.lock"
 
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 PCS_ENV="$YND_ROOT/.pcs.env"
 ENV_MGR="$YND_ROOT/scripts/tools/env-file-manager.sh"
 

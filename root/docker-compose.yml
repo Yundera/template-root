@@ -125,7 +125,10 @@ services:
     # shell it spawns, so they were reaching the web terminal too. Nothing from
     # .pcs.secret.env now enters this container.
     environment:
-      COMPOSE_FOLDER_PATH: "/DATA/AppData/casaos/apps/yundera/"
+      # The stack root on the HOST. The admin app builds every path it shells
+      # out with from this one value (settings-dashboard's configuration/yndRoot.ts),
+      # so the root move is this line and no release of that image.
+      COMPOSE_FOLDER_PATH: "/DATA/AppData/yundera/"
       # Identity comes from the `admin` gate in front of this container — and is
       # re-checked here rather than trusted: the app validates the gate's
       # per-request assertion with this shared secret and refuses every request
@@ -310,7 +313,7 @@ services:
       # generation, so the config always looked freshly built. Observed in the
       # field as an eight-week-old Caddyfile behind a correct-looking config.
       # The dir also cannot be the app root — .pcs.secret.env lives there.
-      - /DATA/AppData/casaos/apps/yundera/caddy:/etc/caddy:ro
+      - /DATA/AppData/yundera/caddy:/etc/caddy:ro
       - /DATA/AppData/yundera/data/certs:/certs:ro
       - /DATA/AppData/yundera/data/caddy/data:/data
       - /DATA/AppData/yundera/data/caddy/config:/config
@@ -611,11 +614,11 @@ x-compose-app:
   schema_version: 2
   id: yundera
   title: Settings
-  # FALLBACK ONLY. The tile renders from root/icon.svg, vendored beside this file
-  # (the same asset this URL serves) and copied to /DATA/AppData/yundera/.icon.svg by
-  # ensure-maison-yundera-mirror.sh: Maison prefers
-  # that file over the URL for any managed app (>= 1.1.18), which is what stops the
-  # Settings tile going blank on an offline box or a moved repo path. Re-vendor from
+  # FALLBACK ONLY. The tile renders from /DATA/AppData/yundera/.icon.svg — placed
+  # by the root-move migration from root/icon.svg, which is vendored beside this
+  # file and serves the same asset as this URL. Maison prefers that file over the
+  # URL for any managed app (>= 1.1.18), which is what stops the Settings tile
+  # going blank on an offline box or a moved repo path. Re-vendor from
   # settings-center-app's public/ if the asset changes there.
   icon: https://cdn.jsdelivr.net/gh/Yundera/settings-center-app@main/public/YunderaPCS-setting_iconV2.svg
   category: pcs
@@ -627,9 +630,11 @@ x-compose-app:
   # an older image ignores the key entirely, so the guard travels with the pin
   # in stacks/maison/docker-compose.yml. Restart is still offered.
   #
-  # It is read from the MIRROR at /DATA/AppData/yundera (ensure-maison-yundera-
-  # mirror.sh copies this file there), which is what makes the tile managed —
-  # and managed is exactly what makes a stray Uninstall click reachable.
+  # Since the root move this file IS /DATA/AppData/yundera/docker-compose.yml,
+  # so Maison's stat(AppsDir/<project>/docker-compose.yml) makes the tile managed
+  # directly — and managed is exactly what makes a stray Uninstall click
+  # reachable. (It used to be a copy placed by ensure-maison-yundera-mirror.sh,
+  # retired with the move.)
   view: system
   webui-host: admin-${DOMAIN}
   webui-scheme: https

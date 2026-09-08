@@ -77,19 +77,19 @@ wait_apt_lock 300 || echo "apt lock still held after 5min, proceeding anyway"
 apt_run apt-get install -y wget curl unzip
 
 # Create target directory
-mkdir -p /DATA/AppData/casaos/apps/yundera
+mkdir -p /DATA/AppData/yundera
 
 # Download the zip file
 wget "$URL" -O /tmp/yundera-template.zip
 
 # Extract, copy, and cleanup
 unzip -o /tmp/yundera-template.zip -d /tmp
-cp -r /tmp/template-root-*/root/* /DATA/AppData/casaos/apps/yundera/
+cp -r /tmp/template-root-*/root/* /DATA/AppData/yundera/
 rm /tmp/yundera-template.zip
 rm -rf /tmp/template-root-*
 
 echo "Template downloaded and extracted successfully"
 
 # Execute the init script
-chmod +x /DATA/AppData/casaos/apps/yundera/scripts/template-init.sh
-/DATA/AppData/casaos/apps/yundera/scripts/template-init.sh
+chmod +x /DATA/AppData/yundera/scripts/template-init.sh
+/DATA/AppData/yundera/scripts/template-init.sh

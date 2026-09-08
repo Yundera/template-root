@@ -9,9 +9,9 @@ if [ -f /.dockerenv ]; then
     exit 0
 fi
 
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 LOGROTATE_CONFIG="/etc/logrotate.d/yundera"
-LOG_FILE="/DATA/AppData/casaos/apps/yundera/log/yundera.log"
+LOG_FILE="/DATA/AppData/yundera/log/yundera.log"
 
 # Ensure logrotate is installed
 "$YND_ROOT/scripts/tools/ensure-packages.sh" logrotate
@@ -19,7 +19,7 @@ LOG_FILE="/DATA/AppData/casaos/apps/yundera/log/yundera.log"
 # Create logrotate configuration
 echo "→ Configuring logrotate for yundera..."
 cat > "$LOGROTATE_CONFIG" << 'EOF'
-/DATA/AppData/casaos/apps/yundera/log/yundera.log {
+/DATA/AppData/yundera/log/yundera.log {
     daily
     rotate 7
     compress

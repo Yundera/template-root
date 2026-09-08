@@ -10,7 +10,7 @@ export DEBIAN_FRONTEND=noninteractive
 # account; admin is the sudoer the settings-center-app SSHes in as for
 # `docker compose …` calls (DockerUpdate.ts, etc.) without per-command sudo.
 DOCKER_USERS=(pcs admin)
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 
 ensure_users_in_docker_group() {
     for u in "${DOCKER_USERS[@]}"; do

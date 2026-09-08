@@ -1,7 +1,7 @@
 #!/bin/bash
 # Common utility functions for scripts
 
-SCRIPT_DIR="/DATA/AppData/casaos/apps/yundera/scripts"
+SCRIPT_DIR="/DATA/AppData/yundera/scripts"
 
 # Source the common logging utilities
 source ${SCRIPT_DIR}/library/log.sh

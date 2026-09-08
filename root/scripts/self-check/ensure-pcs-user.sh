@@ -5,7 +5,7 @@ set -e
 # Ensure PCS User Script
 # This script ensures the 'pcs' user exists and has sudo privileges
 
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 
 USER_NAME="pcs"
 
@@ -15,7 +15,7 @@ USER_NAME="pcs"
 # Create user if it doesn't exist.
 #
 # Pin to UID 1000 when that UID is free. Yundera's app composes hardcode
-# PUID=1000 (see ensure-maison-app-mirror.sh), so file ownership on
+# PUID=1000 (Maison writes it into every app's .env), so file ownership on
 # /DATA only matches the in-container app user when `pcs` is 1000. On a
 # regular fresh PCS that's what `useradd` picks anyway (first user, smallest
 # free UID >= UID_MIN). On a *migration target* the orchestrator pre-creates
@@ -50,15 +50,15 @@ if ! groups "$USER_NAME" | grep -q "\bsudo\b"; then
 fi
 
 # Ensure basic folders exist
-mkdir -p /DATA/AppData/casaos/apps/yundera/scripts
-mkdir -p /DATA/AppData/casaos/apps/yundera/log
+mkdir -p /DATA/AppData/yundera/scripts
+mkdir -p /DATA/AppData/yundera/log
 mkdir -p /DATA/AppData/yundera/data/certs
 mkdir -p /DATA/AppData/yundera/data/caddy/data
 mkdir -p /DATA/AppData/yundera/data/caddy/config
 
-touch /DATA/AppData/casaos/apps/yundera/log/yundera.log
+touch /DATA/AppData/yundera/log/yundera.log
 
-chown -R pcs:pcs /DATA/AppData/casaos/apps/yundera/
+chown -R pcs:pcs /DATA/AppData/yundera/
 chown -R pcs:pcs /DATA/AppData/yundera/
 
 echo "✓ User '$USER_NAME' exist and has sudo privileges."

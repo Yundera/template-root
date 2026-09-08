@@ -22,7 +22,7 @@ set -e
 #     into /root only and never copied here, so it cannot persist on the
 #     handed-over PCS. clear-root-ssh-keys.sh drops it from /root at handover.
 
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 USER_NAME="admin"
 
 # Ensure sudo is installed

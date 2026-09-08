@@ -20,7 +20,7 @@
 
 set -euo pipefail
 
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 PCS_ENV="$YND_ROOT/.pcs.env"
 ENV_MGR="$YND_ROOT/scripts/tools/env-file-manager.sh"
 ENSURE="$YND_ROOT/scripts/self-check/ensure-yundera-login.sh"

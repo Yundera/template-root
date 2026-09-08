@@ -7,6 +7,32 @@ set -euo pipefail
 
 MIGRATIONS_DIR="${1:-}"
 
+# Where the one-shot markers live. Root B since the root move (2026-09-08); the
+# line below is what carries a box's history across it.
+#
+# BOOTSTRAP, AND WHY IT MATTERS MORE THAN IT LOOKS. An empty marker directory
+# does not mean "nothing has been applied" — it means "this is a tree that has
+# never run migrations". Read literally, an empty Root B would replay every
+# stable-era migration on every box at once, including
+# 2026-08-02-14-remove-casaos-stack.sh, which runs `docker compose down`. So the
+# first run under the new root inherits the old root's markers wholesale.
+#
+# The cutover migration copies them too, earlier in the same cycle; this is the
+# belt to that pair of braces, and it also covers a box whose flip is replayed
+# from a restored backup. `cp -a` preserves the timestamps, which is the only
+# thing anyone ever reads out of a marker after the fact.
+MARKER_DIR="/DATA/AppData/yundera/migration-markers"
+LEGACY_MARKER_DIR="/DATA/AppData/casaos/apps/yundera/migration-markers"
+
+if [ ! -d "$MARKER_DIR" ] && [ -d "$LEGACY_MARKER_DIR" ]; then
+    echo "→ Seeding $MARKER_DIR from $LEGACY_MARKER_DIR (root move)"
+    mkdir -p "$(dirname "$MARKER_DIR")"
+    cp -a "$LEGACY_MARKER_DIR" "$MARKER_DIR" || {
+        echo "✗ Could not seed the marker directory — refusing to run migrations against an empty history"
+        exit 1
+    }
+fi
+
 if [ -z "$MIGRATIONS_DIR" ]; then
     echo "Error: Usage: $0 <migrations_directory>"
     exit 1
@@ -44,7 +70,7 @@ while IFS= read -r -d '' migration_file; do
     # These migrations run on every sync without marker tracking
     if [[ "$migration_file" != *.always.sh ]]; then
         # Standard marker check for one-shot migrations
-        marker_file="/DATA/AppData/casaos/apps/yundera/migration-markers/$(basename "$migration_file" .sh).marker"
+        marker_file="$MARKER_DIR/$(basename "$migration_file" .sh).marker"
         mkdir -p "$(dirname "$marker_file")"
 
         if [ -f "$marker_file" ]; then

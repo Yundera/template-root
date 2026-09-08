@@ -24,7 +24,7 @@
 # the listening socket, so `RuntimeDirectory=sshd` (/run/sshd) is recreated on
 # every activation and a botched restart cannot strand a listener without it.
 
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 FAILED=0
 
 if [ -f /.dockerenv ]; then

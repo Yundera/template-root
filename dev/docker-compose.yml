@@ -29,10 +29,10 @@ services:
         echo '=== Setting up template-root test environment ==='
 
         # Create apps directory structure
-        mkdir -p /DATA/AppData/casaos/apps/yundera
+        mkdir -p /DATA/AppData/yundera
 
         # Copy template files to yundera directory
-        cp -r /tmp/template-root/* /DATA/AppData/casaos/apps/yundera/
+        cp -r /tmp/template-root/* /DATA/AppData/yundera/
 
         # Copy production apps (excluding yundera - that's the template-root itself)
         for app in /tmp/production-apps/*/; do
@@ -44,12 +44,12 @@ services:
         done
 
         # Copy env files
-        cp /tmp/.pcs.env /DATA/AppData/casaos/apps/yundera/.pcs.env
-        cp /tmp/.pcs.secret.env /DATA/AppData/casaos/apps/yundera/.pcs.secret.env
-        cp /tmp/.ynd.user.env /DATA/AppData/casaos/apps/yundera/.ynd.user.env
+        cp /tmp/.pcs.env /DATA/AppData/yundera/.pcs.env
+        cp /tmp/.pcs.secret.env /DATA/AppData/yundera/.pcs.secret.env
+        cp /tmp/.ynd.user.env /DATA/AppData/yundera/.ynd.user.env
 
         # Make scripts executable
-        chmod -R +x /DATA/AppData/casaos/apps/yundera/scripts/
+        chmod -R +x /DATA/AppData/yundera/scripts/
 
         echo '=== Template-root ready for testing ==='
         echo ''
@@ -58,14 +58,14 @@ services:
         echo ''
         echo 'Useful commands:'
         echo '  # Run the full self-check loop (two-pass over scripts-config.txt):'
-        echo '  bash /DATA/AppData/casaos/apps/yundera/scripts/self-check.sh'
+        echo '  bash /DATA/AppData/yundera/scripts/self-check.sh'
         echo ''
         echo '  # Force local-tree mode (skip download/rsync, run migrations in place):'
-        echo '  /DATA/AppData/casaos/apps/yundera/scripts/tools/env-file-manager.sh \'
-        echo '      set UPDATE_URL local /DATA/AppData/casaos/apps/yundera/.pcs.env'
+        echo '  /DATA/AppData/yundera/scripts/tools/env-file-manager.sh \'
+        echo '      set UPDATE_URL local /DATA/AppData/yundera/.pcs.env'
         echo ''
         echo '  # Test Dex provisioning (renders config, seeds break-glass admin):'
-        echo '  bash /DATA/AppData/casaos/apps/yundera/scripts/self-check/ensure-dex.sh'
+        echo '  bash /DATA/AppData/yundera/scripts/self-check/ensure-dex.sh'
         echo '  ls -la /DATA/AppData/yundera/dex/'
         echo '  cat /DATA/AppData/yundera/dex/config.yaml'
         echo ''

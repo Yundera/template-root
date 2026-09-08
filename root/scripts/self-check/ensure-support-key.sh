@@ -24,7 +24,7 @@
 
 set -euo pipefail
 
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 PCS_ENV_FILE="$YND_ROOT/.pcs.env"
 ENV_MANAGER="$YND_ROOT/scripts/tools/env-file-manager.sh"
 ADMIN_USER="admin"

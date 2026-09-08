@@ -6,7 +6,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 # Script to ensure Ubuntu is up to date
 
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 
 # Update package list
 [ -x "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_ROOT/scripts/tools/wait-for-apt-lock.sh"

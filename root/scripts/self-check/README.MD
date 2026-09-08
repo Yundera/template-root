@@ -11,7 +11,7 @@ Listed in execution order from `scripts-config.txt`. Four scripts marked **(prox
 | `ensure-pcs-user.sh` | Creates 'pcs' user with sudo privileges and required directory structure |
 | `ensure-script-executable.sh` | Makes all scripts executable and sets proper ownership to the pcs user |
 | `ensure-admin-user.sh` | Configures the admin user account inside the PCS |
-| `ensure-template-sync.sh` | Downloads `UPDATE_URL`, runs migrations from the new tree, then rsyncs over `/DATA/AppData/casaos/apps/yundera/` |
+| `ensure-template-sync.sh` | Downloads `UPDATE_URL`, runs migrations from the new tree, then rsyncs over `/DATA/AppData/yundera/` |
 | `ensure-yundera-user-data.sh` | Materialises user-specific state from `.ynd.user.env` |
 | `ensure-ubuntu-up-to-date.sh` | Updates package lists and displays available system upgrades |
 | `ensure-common-tools-installed.sh` | Installs essential system tools (htop, vim, etc.) |
@@ -56,34 +56,34 @@ No edits are needed in the orchestrator or `settings-center-app` — the admin a
 ### Log Location
 All yundera system logs are written to:
 ```
-/DATA/AppData/casaos/apps/yundera/log/yundera.log
+/DATA/AppData/yundera/log/yundera.log
 ```
 
 ### Viewing Logs
 ```bash
 # View current log
-cat /DATA/AppData/casaos/apps/yundera/log/yundera.log
+cat /DATA/AppData/yundera/log/yundera.log
 
 # Follow log in real-time
-tail -f /DATA/AppData/casaos/apps/yundera/log/yundera.log
+tail -f /DATA/AppData/yundera/log/yundera.log
 
 # View recent entries
-tail -100 /DATA/AppData/casaos/apps/yundera/log/yundera.log
+tail -100 /DATA/AppData/yundera/log/yundera.log
 ```
 
 ### Rotated Logs
 Logs are rotated daily with 7-day retention. Rotated logs are located at:
 ```
-/DATA/AppData/casaos/apps/yundera/log/yundera.log-YYYY-MM-DD      # Yesterday's log
-/DATA/AppData/casaos/apps/yundera/log/yundera.log-YYYY-MM-DD.gz   # Older compressed logs
+/DATA/AppData/yundera/log/yundera.log-YYYY-MM-DD      # Yesterday's log
+/DATA/AppData/yundera/log/yundera.log-YYYY-MM-DD.gz   # Older compressed logs
 ```
 
 To view all available logs:
 ```bash
-ls -la /DATA/AppData/casaos/apps/yundera/log/
+ls -la /DATA/AppData/yundera/log/
 ```
 
 To view a compressed rotated log:
 ```bash
-zcat /DATA/AppData/casaos/apps/yundera/log/yundera.log-2026-02-10.gz
+zcat /DATA/AppData/yundera/log/yundera.log-2026-02-10.gz
 ```

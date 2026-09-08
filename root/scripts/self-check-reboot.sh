@@ -40,7 +40,7 @@ if ! flock -n 200; then
     exit 0
 fi
 
-SCRIPT_DIR="/DATA/AppData/casaos/apps/yundera/scripts"
+SCRIPT_DIR="/DATA/AppData/yundera/scripts"
 source "${SCRIPT_DIR}/library/common.sh"
 
 # Run the core self-check with the lock-bypass flag so it doesn't try to

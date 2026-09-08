@@ -5,6 +5,12 @@ Status: **proposal**. Nothing here is implemented. Companion to
 Maison; this document takes the *platform stack* from one compose project to several,
 laid out the way Maison lays out every other app.
 
+> **Written before the root move.** Every `/DATA/AppData/casaos/apps/yundera/` path below is
+> now `/DATA/AppData/yundera/` — see [`root-migration.md`](./root-migration.md), shipped
+> 2026-09-08. That change already delivered this document's step 3 ("kill the mirror; make
+> `/DATA/AppData/yundera/` a real app folder"), so the starting point here is one step
+> further along than the text assumes.
+
 ---
 
 ## Why

@@ -22,7 +22,7 @@
 # auth-registrar / dex (yundera stack) being reachable by name on that network.
 set -euo pipefail
 
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 source "$YND_ROOT/scripts/library/log.sh"
 
 # The maison container talks to the Docker socket as a non-root user, so it needs

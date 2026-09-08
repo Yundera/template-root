@@ -24,7 +24,7 @@
 # attaches to the `pcs` network, which the yundera stack owns and creates.
 set -euo pipefail
 
-YND_ROOT="/DATA/AppData/casaos/apps/yundera"
+YND_ROOT="/DATA/AppData/yundera"
 source "$YND_ROOT/scripts/library/log.sh"
 # KOPIA_IMAGE, KOPIA_ENGINE_DIR and kopia_repo_hostname, shared with
 # ensure-backup-config.sh so the containers started here cannot disagree with the

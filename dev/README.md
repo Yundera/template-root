@@ -12,15 +12,15 @@ docker compose up -d --build
 docker exec -it template-root-test bash
 
 # Run an individual self-check or migration
-bash /DATA/AppData/casaos/apps/yundera/scripts/self-check/ensure-dex.sh
-bash /DATA/AppData/casaos/apps/yundera/scripts/migrations/YYYY-MM-DD-HH-name.sh
+bash /DATA/AppData/yundera/scripts/self-check/ensure-dex.sh
+bash /DATA/AppData/yundera/scripts/migrations/YYYY-MM-DD-HH-name.sh
 
 # Force the container to skip download/rsync and run migrations against the in-place tree
-/DATA/AppData/casaos/apps/yundera/scripts/tools/env-file-manager.sh \
-    set UPDATE_URL local /DATA/AppData/casaos/apps/yundera/.pcs.env
+/DATA/AppData/yundera/scripts/tools/env-file-manager.sh \
+    set UPDATE_URL local /DATA/AppData/yundera/.pcs.env
 
 # Run the full self-check loop (two-pass over scripts-config.txt)
-bash /DATA/AppData/casaos/apps/yundera/scripts/self-check.sh
+bash /DATA/AppData/yundera/scripts/self-check.sh
 
 # Inspect a generated app compose file
 yq '.services' /DATA/AppData/casaos/apps/<app-name>/docker-compose.yml
@@ -50,4 +50,4 @@ The apps are copied fresh each time the container starts, so you can safely test
 
 The container simulates a PCS environment:
 - `/DATA/AppData/casaos/apps/` - CasaOS apps directory (copied from production)
-- `/DATA/AppData/casaos/apps/yundera/` - Template-root scripts location
+- `/DATA/AppData/yundera/` - Template-root scripts location
