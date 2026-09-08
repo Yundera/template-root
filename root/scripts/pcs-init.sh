@@ -64,6 +64,12 @@ fi
 # atomic rename, so a stale second copy would never be updated and would look
 # authoritative to anyone reading it. Modes are preserved (.pcs.secret.env is
 # 600). Idempotent: a re-run finds nothing left to move.
+#
+# RETIRE THIS BLOCK when every orchestrator that provisions against this
+# template channel sets PCS_BOOTSTRAP_ROOT=/DATA/AppData/yundera (staging was
+# flipped 2026-09-08; production follows once stable carries the move). Until
+# then removing it breaks every create from an unflipped deployment, silently:
+# .pcs.env would simply not be where this script looks for it.
 LEGACY_ROOT="/DATA/AppData/casaos/apps/yundera"
 mkdir -p "$YND_ROOT"
 for f in .pcs.env .pcs.secret.env; do

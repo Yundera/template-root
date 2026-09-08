@@ -148,3 +148,5 @@ date, rather than to delete the paragraph.
 | `2026-07-31-15-drop-casaos-oidc.sh` | 2026-07-31 | 2026-09-08 |
 | `2026-08-02-12-drop-admin-jwt-secret.sh` | 2026-08-02 | 2026-09-08 |
 | `2026-08-04-11-rename-yundera-api.sh` | 2026-08-04 | 2026-09-08 — the `YUNDERA_API` compat reads went with it |
+| `2026-08-02-14-remove-casaos-stack.sh` | 2026-08-02 | 2026-09-08 — CasaOS torn down fleet-wide; `DEFAULT_SERVICE_HOST=maison` is the default for anything fresh |
+| `2026-09-01-10-copy-root-to-appdata-yundera.sh` | 2026-09-01 | 2026-09-08 — superseded by `2026-09-08-12-move-root-to-maison.sh`, which seeds Root B itself rather than relying on the prep copy |

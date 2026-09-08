@@ -9,9 +9,11 @@
 #   Root A  /DATA/AppData/casaos/apps/yundera   (from here on: stale, kept)
 #   Root B  /DATA/AppData/yundera               (from here on: authoritative)
 #
-# See doc/root-migration.md. This is the cutover; the 2026-09-01 migration was
-# its preparation and has already put a (now stale) copy of the tree in Root B
-# on every box.
+# See doc/root-migration.md. This is the cutover. A 2026-09-01 preparation
+# migration (retired in the same push as this one shipped) had already put a
+# copy of the tree in Root B on every box in the fleet, frozen at that date —
+# which is why the idempotency note below matters. This script does not depend
+# on that copy: it seeds everything itself.
 #
 # WHAT MAKES THIS SAFE IS THAT ROOT A IS NEVER TOUCHED. It is left complete and
 # stale, which is both the rollback path (point the cron back at it) and the

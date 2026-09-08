@@ -337,9 +337,29 @@ Test path is stable → latest in one hop, exercised in `dev/` and then on the t
 
 Neither is required for this push; see the orchestrator/admin-app notes for detail.
 
-- **`pcs-orchestrator`** — `pcs support` derives four absolute paths from a hardcoded Root A
-  (`src/scripts/support.ts:76`); the `USER_JWT` rotation becomes a silent no-op after the flip.
-  `HOST_BOOTSTRAP_REMOTE_FOLDER` needs no change, because `pcs-init.sh` relocates the seed files.
+- **`pcs-orchestrator`** — `pcs support` no longer hardcodes a root: `RESOLVE_YND_ROOT` in
+  `src/scripts/support.ts` asks the box which tree its nightly cron actually runs, and starts
+  returning the new root on its own after the flip. `HOST_BOOTSTRAP_REMOTE_FOLDER` is now the
+  `PCS_BOOTSTRAP_ROOT` config key (default: the old root), so each deployment stops creating
+  the legacy folder when its own template channel is past the move. Staging (`main`) was set
+  to `/DATA/AppData/yundera` on 2026-09-08; production follows when `stable` carries this.
+
+---
+
+## Compat still to retire
+
+Three code paths exist only to carry the fleet across the flip. Each names its own retirement
+condition in a comment where it lives; none can go in the push that ships the move.
+
+| Where | Goes when |
+|---|---|
+| `pcs-init.sh` — relocates the orchestrator-staged env files A → B | every deployment sets `PCS_BOOTSTRAP_ROOT` to the new root |
+| `run-migrations.sh` — seeds Root B's marker directory from Root A | every box carries `/DATA/AppData/yundera/migration-markers/` |
+| `ensure-self-check-at-reboot.sh` — strips the unmarked Root A `@reboot` entry | no box has one left: `sudo crontab -l \| grep casaos` |
+
+Retiring them is what makes `/DATA/AppData/casaos` genuinely dead rather than merely unused —
+at which point deleting it is bookkeeping. It is 2.5 MB, so there is no hurry; the reason to
+finish is that the path stops being something anyone has to reason about.
 - **`settings-center-app`** — was 33 hardcoded Root A literals across 22 files. It now
   resolves the root once, in `configuration/yndRoot.ts`, from the `COMPOSE_FOLDER_PATH` the
   template's compose injects — so the flip is that one env var and no release of the image.

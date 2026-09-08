@@ -21,6 +21,10 @@ MIGRATIONS_DIR="${1:-}"
 # belt to that pair of braces, and it also covers a box whose flip is replayed
 # from a restored backup. `cp -a` preserves the timestamps, which is the only
 # thing anyone ever reads out of a marker after the fact.
+#
+# RETIRE THIS BLOCK once every box in the fleet has flipped — i.e. carries
+# /DATA/AppData/yundera/migration-markers/. Not before: a box that reaches the
+# new root with an empty marker directory replays every migration in the tree.
 MARKER_DIR="/DATA/AppData/yundera/migration-markers"
 LEGACY_MARKER_DIR="/DATA/AppData/casaos/apps/yundera/migration-markers"
 

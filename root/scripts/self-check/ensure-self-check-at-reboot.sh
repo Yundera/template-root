@@ -13,6 +13,10 @@
 #
 # The un-marked legacy line is swept explicitly below: boxes that already carry
 # it were given it by the old code, which wrote no marker.
+#
+# RETIRE THE LEGACY SWEEP (not the marker pattern — that stays) once no box has
+# an @reboot entry pointing at the old root: `sudo crontab -l | grep casaos`.
+# The marker pattern alone cannot remove it, because the old code wrote no marker.
 
 set -e  # Exit on any error
 
