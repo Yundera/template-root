@@ -28,7 +28,13 @@
 .pcs.env
 .pcs.secret.env
 .ynd.user.env
-log/*.log
+# The WHOLE log directory, not `log/*.log`. logrotate is configured with
+# `dateext` (ensure-logrotate.sh), so yesterday's file is `yundera.log-2026-09-02`
+# and the compressed ones end `.gz` — neither matches `*.log`. Before the root
+# move that only meant every template sync quietly deleted the rotated logs,
+# defeating the 7-day retention; after it, the delete guard sees a protected
+# path in the delete list and refuses to sync at all. Seen on wisera, 2026-09-08.
+/log/**
 *.backup
 migration-markers/
 

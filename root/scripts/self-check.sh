@@ -75,6 +75,20 @@ OVERALL_FAILED=0
 read_scripts_config
 EXECUTED=("${SCRIPTS[@]}")
 for script_name in "${EXECUTED[@]}"; do
+    # A script that was in the config when this run STARTED but is not on disk
+    # when we reach it was deleted by this cycle's template sync — the mirror
+    # removal on 2026-09-08 made every box in the fleet report two of these and
+    # end with "Self-check completed with failures", for two scripts that were
+    # deliberately deleted. It is the same mid-run config swap this two-pass
+    # loop already exists to handle, so it is a skip, not a failure.
+    #
+    # ONLY in this pass. The second pass below re-reads the config from disk, so
+    # a missing script there means the SHIPPED config names something that does
+    # not exist — a real error, and still reported as one.
+    if [ ! -f "$SCRIPT_DIR/self-check/$script_name" ]; then
+        log "Skipping $script_name: listed when this run started, removed by the template sync during it"
+        continue
+    fi
     if ! execute_script_with_logging "$SCRIPT_DIR/self-check/$script_name"; then
         OVERALL_FAILED=1
     fi
