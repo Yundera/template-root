@@ -69,12 +69,26 @@ if [ -f "$MARKER_FILE" ]; then
     exit 0
 fi
 
-if [ ! -d "$OLD_ROOT" ]; then
-    # A fresh install: pcs-init.sh relocates the orchestrator's staged env files
-    # into Root B itself and there has never been a Root A. Nothing to move.
-    echo "No $OLD_ROOT on this host (fresh install) - nothing to move"
+# A FRESH INSTALL IS "ROOT A HOLDS NO TEMPLATE", NOT "ROOT A DOES NOT EXIST".
+#
+# `[ ! -d "$OLD_ROOT" ]` was the original test and it is wrong on a create made
+# by an orchestrator older than the one that reads PCS_BOOTSTRAP_ROOT: that
+# orchestrator scp's the staged env files into Root A (mkdir -p'ing it), then
+# pcs-init.sh MOVES them into Root B — leaving Root A behind as an empty
+# directory. The `-d` test then sent a brand-new box down the existing-box
+# branch, where step 5 demands a .ynd.user.env that ensure-yundera-user-data.sh
+# does not write until two scripts later in the same cycle. Every create failed.
+#
+# Test for the template instead. On a real pre-move box Root A has both of
+# these; on any create it has neither, whichever root the orchestrator staged
+# into. See also the ordering note in pcs-init.sh: a create DOES run migrations,
+# via the self-check that os-init.sh hands off to.
+if [ ! -f "$OLD_ROOT/docker-compose.yml" ] && [ ! -d "$OLD_ROOT/scripts" ]; then
+    # A fresh install: pcs-init.sh has already put the orchestrator's staged env
+    # files in Root B, and no template ever lived at Root A. Nothing to move.
+    echo "No template at $OLD_ROOT (fresh install) - nothing to move"
     mkdir -p "$(dirname "$NEW_MARKER_FILE")"
-    printf 'Migration completed at: %s\nMigration: %s\nDescription: fresh install, no Root A to move\n' \
+    printf 'Migration completed at: %s\nMigration: %s\nDescription: fresh install, no Root A template to move\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$MIGRATION_NAME" > "$NEW_MARKER_FILE"
     exit 0
 fi
@@ -173,11 +187,27 @@ fi
 #    incident.
 # ---------------------------------------------------------------------------
 fail=0
-for rel in .pcs.env .pcs.secret.env .ynd.user.env docker-compose.yml \
+
+# The tree the rest of THIS cycle executes from, plus the .pcs.env every ensure
+# script sources. Unconditional: without these the cycle cannot continue.
+for rel in .pcs.env docker-compose.yml \
            scripts/self-check.sh scripts/self-check-reboot.sh \
            scripts/library/log.sh scripts/tools/env-file-manager.sh; do
     if [ ! -e "$NEW_ROOT/$rel" ]; then
         echo "ERROR: $rel is missing from $NEW_ROOT"
+        fail=1
+    fi
+done
+
+# The rest of step 2's env files are checked ONLY where Root A had one to give.
+# This verifies the copy, which is all this migration is responsible for — it is
+# not a fitness test for Root B. .ynd.user.env in particular is written by
+# ensure-yundera-user-data.sh, which runs after ensure-template-sync.sh in
+# scripts-config.txt, so on any box that has not been through a full cycle it is
+# legitimately absent here and demanding it strands the box.
+for rel in .pcs.secret.env .ynd.user.env; do
+    if [ -f "$OLD_ROOT/$rel" ] && [ ! -e "$NEW_ROOT/$rel" ]; then
+        echo "ERROR: $rel is present in $OLD_ROOT but missing from $NEW_ROOT"
         fail=1
     fi
 done

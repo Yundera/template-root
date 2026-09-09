@@ -15,10 +15,18 @@
 # at create time, not bundled into the orchestrator image — see
 # packages/pcs-orchestrator/src/library/provisioning/runHostBootstrap.ts.
 #
-# Migrations are intentionally skipped here: this is a first-install path
-# with no prior template version to migrate from. Once the @reboot cron
+# Migrations are intentionally skipped BY THIS SCRIPT: this is a first-install
+# path with no prior template version to migrate from. Once the @reboot cron
 # (installed by ensure-self-check-at-reboot.sh during os-init.sh) is live,
 # subsequent ensure-template-sync.sh runs handle migrations on update.
+#
+# THAT IS NOT THE SAME AS "MIGRATIONS DO NOT RUN ON A CREATE". Step 8 execs
+# os-init.sh, which runs the full self-check stack — including
+# ensure-template-sync.sh, which runs run-migrations.sh. So every migration
+# executes on a fresh host too, against a box where the later ensure scripts
+# have not run yet. A migration that assumes state produced later in the same
+# cycle fails the create; 2026-09-08-12-move-root-to-maison.sh did exactly that
+# and wedged every demo rebuild. Write migrations to no-op on a fresh install.
 
 set -euo pipefail
 
@@ -55,9 +63,13 @@ fi
 # every host that self-syncs against a template channel still on the old one.
 #
 # So the move happens here, at the first thing that runs on the box. It is also
-# the ONLY thing that populates the new root on a fresh host: this script
-# deliberately skips migrations (see the header), so the cutover migration —
-# which does this same relocation for existing boxes — never runs on a create.
+# the ONLY thing that populates the new root on a fresh host before the
+# self-check starts. The cutover migration — which does this same relocation for
+# existing boxes — DOES still run later in the cycle (via os-init.sh, see the
+# header), so it has to recognise a fresh install and no-op. Note what this loop
+# leaves behind for it: a `mv` out of an existing LEGACY_ROOT empties that
+# directory but does not remove it, so "Root A exists" is not a usable signal
+# there. It tests for a template in Root A instead.
 #
 # `mv` rather than copy: two roots holding two divergent .pcs.env is the exact
 # failure the root move exists to end, and env-file-manager.sh writes via an

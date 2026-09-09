@@ -29,7 +29,18 @@
 set -euo pipefail
 
 MIGRATION_NAME="$(basename "$0")"
-MARKER_FILE="/DATA/AppData/casaos/apps/yundera/migration-markers/$(basename "$0" .sh).marker"
+# The NEW root (the 2026-09-08 move). This was the legacy root, and the
+# `mkdir -p` below therefore CREATED /DATA/AppData/casaos/apps/yundera on every
+# host it ran on — including fresh ones, where nothing else does any more now
+# that the orchestrator stages at PCS_BOOTSTRAP_ROOT. This migration sorts ahead
+# of 2026-09-08-12-move-root-to-maison.sh, so it manufactured exactly the Root A
+# that migration's old `[ -d ]` guard read as "this is a pre-move box".
+#
+# Repointing is a no-op for boxes that already ran it: run-migrations.sh seeds
+# the whole marker directory from the legacy root, and the runner's own marker
+# for this script has the same filename, so it is already present at the new
+# root on every box that has flipped.
+MARKER_FILE="/DATA/AppData/yundera/migration-markers/$(basename "$0" .sh).marker"
 
 OLD_NETWORK="dex-internal"
 
