@@ -17,6 +17,17 @@
 # `+ ` lines are INCLUDES and must come before the exclude they carve out of.
 # Note the `/auth/**` form: excluding `/auth/` itself would stop rsync
 # descending into the directory at all, and the include below could never match.
+# A templated config is easier to keep OUT of a protected directory than to carve
+# back out of one — which is why dex.config.yaml.tmpl sits at the tree root while
+# auth/configuration.yml.tmpl needs the include below.
+#
+# A LEADING `/` ANCHORS a pattern to the tree root; without it rsync matches the
+# name at any depth. Every entry here is anchored — `*.backup` is the one
+# deliberate exception, for the reason given at that line — so that a `.env` the
+# template one day ships under stacks/<x>/ is delivered rather than silently
+# skipped for the lifetime of the fleet. Anchoring also keeps this file aligned
+# with ensure-template-sync.sh's PROTECTED_RE, which anchors the same names with
+# `^`: the two are hand-kept in sync and nothing checks that they agree.
 
 # --- the template's own file inside a protected directory --------------------
 # Rendered by ensure-authelia.sh into auth/configuration.yml; the template is
@@ -24,10 +35,10 @@
 + /auth/configuration.yml.tmpl
 
 # --- per-host state that predates the root move ------------------------------
-.env
-.pcs.env
-.pcs.secret.env
-.ynd.user.env
+/.env
+/.pcs.env
+/.pcs.secret.env
+/.ynd.user.env
 # The WHOLE log directory, not `log/*.log`. logrotate is configured with
 # `dateext` (ensure-logrotate.sh), so yesterday's file is `yundera.log-2026-09-02`
 # and the compressed ones end `.gz` — neither matches `*.log`. Before the root
@@ -35,14 +46,24 @@
 # defeating the 7-day retention; after it, the delete guard sees a protected
 # path in the delete list and refuses to sync at all. Seen on wisera, 2026-09-08.
 /log/**
+# Operator and upgrade snapshots — e.g. docker-compose.yml.pre-1.5.0-alpha.backup,
+# still on wisera. Nothing in the template writes one any more, but the root move
+# deliberately carried them across (`cp -a "$OLD_ROOT"/*.backup`, see
+# migrations/2026-09-08-12-move-root-to-maison.sh), so they are somebody's rollback
+# copy. Left UNANCHORED on purpose: these are hand-made and can sit at any depth.
+#
+# This is NOT what protects Authelia's `users_database.yml.<stamp>.reset-backup`
+# snapshots — those end `-backup`, which `*.backup` does not match. `/auth/**`
+# covers them. And unlike every other entry here there is no PROTECTED_RE line for
+# this pattern, so if it is ever dropped the deletion is silent.
 *.backup
-migration-markers/
+/migration-markers/
 
 # Written to the stack root by the PCS-to-PCS migration's stop_source step
 # (settings-center-app Migration/steps/stopSource.ts) to keep the source's cron
 # down. A sync landing mid-migration used to delete it and silently re-arm the
 # cron on a box that was being migrated away from.
-.self-check-cron-disabled
+/.self-check-cron-disabled
 
 # --- runtime state now living inside the synced directory --------------------
 # Authelia: users_database.yml, db.sqlite, secrets/, oidc/, clients.d/. Losing
@@ -59,7 +80,15 @@ migration-markers/
 /data/
 # The admin app's /app/data and the AppShield gate's sessions.
 /admin/
-# mesh-router-perf's store.
+# mesh-router-perf's store. That service is gone from the stack: nothing writes
+# here any more and a box built today has no perf/ at all. The line survives only
+# because wisera still carries an empty one from May 2026.
+#
+# ITS PROTECTED_RE ENTRY WAS REMOVED AHEAD OF THIS LINE (2026-09-10), on purpose,
+# so retiring the directory later is a safe one-liner: delete this line and `perf/`
+# lands in the delete list with no guard to refuse it, taking the leftover with it
+# on that box's next sync. Until then the exclude keeps it out of the list
+# entirely, so removing the guard entry changes nothing today.
 /perf/
 # The onboarding `completed` marker.
 /onboarding/
@@ -72,10 +101,10 @@ migration-markers/
 # not needed.
 /onboarding.d/
 # Set while a box is provisioning; self-check.sh refuses to run while it exists.
-.provisioning-in-progress
+/.provisioning-in-progress
 # The tile icon Maison renders this stack from, placed at the flip.
-.icon.svg
+/.icon.svg
 # Provenance marker from the retired mirrors. Kept so that a box rolled back to
 # a template that still runs one finds its own marker and reclaims the folder
 # instead of refusing to touch it.
-.casaos-mirror
+/.casaos-mirror
