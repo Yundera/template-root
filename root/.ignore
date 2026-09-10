@@ -63,6 +63,14 @@ migration-markers/
 /perf/
 # The onboarding `completed` marker.
 /onboarding/
+# Deployment overrides for tools/onboarding.sh. Nothing in the template tree
+# creates this directory, so `--delete` used to remove it on the first sync
+# after a deployment wrote one — which is how every demo PCS silently lost its
+# onboarding skip overnight and served the first-run interstitial for the rest
+# of the day (2026-09-10). See pcs-onboarding.md "The onboarding hook"; before
+# the root move the override sat outside the synced directory and this line was
+# not needed.
+/onboarding.d/
 # Set while a box is provisioning; self-check.sh refuses to run while it exists.
 .provisioning-in-progress
 # The tile icon Maison renders this stack from, placed at the flip.

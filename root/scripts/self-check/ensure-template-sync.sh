@@ -182,7 +182,7 @@ mkdir -p "$YND_ROOT"
 # wrong we do not know what else it is wrong about, and a PCS running last
 # week's template is a far better outcome than one missing its user database.
 # ---------------------------------------------------------------------------
-PROTECTED_RE='^(auth|dex|dex-frontend|data|admin|perf|onboarding|log|migration-markers)(/|$)|^\.(env|pcs\.env|pcs\.secret\.env|ynd\.user\.env|provisioning-in-progress|self-check-cron-disabled|icon\.svg|casaos-mirror)$'
+PROTECTED_RE='^(auth|dex|dex-frontend|data|admin|perf|onboarding(\.d)?|log|migration-markers)(/|$)|^\.(env|pcs\.env|pcs\.secret\.env|ynd\.user\.env|provisioning-in-progress|self-check-cron-disabled|icon\.svg|casaos-mirror)$'
 DEL_LIST=$(rsync "${RSYNC_OPTS[@]}" --dry-run --itemize-changes \
                "$TEMPLATE_ROOT/" "$YND_ROOT/" 2>/dev/null \
            | sed -n 's/^\*deleting  *//p' || true)
