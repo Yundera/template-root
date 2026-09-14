@@ -17,13 +17,41 @@ YND_ROOT="/DATA/AppData/yundera"
 DEFAULT_TEMPLATE_URL="https://github.com/Yundera/template-root/archive/refs/heads/stable.zip"
 ENV_FILE="$YND_ROOT/.pcs.env"
 TEMP_DIR=$(mktemp -d)
-# Pre-sync copies of the stack root. On /DATA so they survive the reboot that
-# usually follows an update, and kept rather than deleted on success — see the
-# note at the `cp -a` below.
-BACKUP_ROOT="/DATA/AppData/.yundera-backups"
+# Pre-sync copies of the stack root. On the OS disk, under Debian's own namespace
+# for previous versions of system files — dpkg and apt keep theirs right beside
+# ours — so they survive the reboot that usually follows an update, and kept
+# rather than deleted on success. See the note at the `cp -a` below.
+#
+# NOT UNDER /DATA, AND THE REASONS ARE LOAD-BEARING. A copy carries the whole
+# root: .pcs.secret.env, auth/secrets/, auth/users_database.yml, dex.db and
+# data/certs/key.pem.
+#
+#   * Anywhere under /DATA outside AppData/ is inside Maison's user-data backup
+#     set — its exclusions are exactly `/AppData/`, `**/cache/`, `**/logs/`
+#     (maison internal/backup/kopia: UserDataExclusions) — so copies there would
+#     be shipped offsite every night: the secrets above, plus two live SQLite
+#     databases, which that set explicitly must not carry because an engine
+#     reading a file mid-write captures it mid-write.
+#   * Under /DATA/AppData/ the only thing keeping a directory of stack copies off
+#     the dashboard is Maison's "a dot in the name is not an app" convention — a
+#     rule owned by another component, on a name we do not control. This directory
+#     used to be /DATA/AppData/.yundera-backups, one letter away from the
+#     .backups/ Maison used to keep beside the apps (it has since moved into
+#     /DATA/AppData/maison/.backups/, so that particular near-collision is gone —
+#     the reason for leaving AppData/ is not);
+#     2026-09-14-10-move-root-backups-off-data.sh moves what is already there.
+#
+# /DATA is a directory on /, not a mountpoint, so this is the same filesystem as
+# $YND_ROOT and nothing about the copy or the restore changes. The root is ~6 MB,
+# so BACKUP_KEEP copies cost ~17 MB.
+BACKUP_ROOT="/var/backups/yundera"
 BACKUP_KEEP=3
 BACKUP_DIR="$BACKUP_ROOT/root-backup-$(date +%s)"
 mkdir -p "$BACKUP_ROOT"
+# 0700: the copies hold secrets, and unlike the files inside them (`cp -a`
+# preserves those modes) the directory itself is created here, under the
+# self-check's umask.
+chmod 700 "$BACKUP_ROOT"
 
 # Cleanup function
 cleanup() {
@@ -141,12 +169,13 @@ fi
 
 # Create backup if root directory exists.
 #
-# ON /DATA, NOT /tmp, AND KEPT. This used to write to /tmp/root-backup-<epoch>
+# PERSISTENT, NOT /tmp, AND KEPT. This used to write to /tmp/root-backup-<epoch>
 # and delete it the moment rsync exited 0 — so a sync that succeeded while
 # removing the wrong subtree left nothing to recover from, and /tmp is cleared
 # by the reboot that usually follows. Since the root move the destination holds
 # the local account and Dex's store, so the copy is worth its disk. Only the
-# most recent BACKUP_KEEP are retained.
+# most recent BACKUP_KEEP are retained. BACKUP_ROOT above carries why the
+# destination is on the OS disk rather than under /DATA.
 [ -d "$YND_ROOT" ] && cp -a "$YND_ROOT" "$BACKUP_DIR"
 
 # Build rsync command with proper exclusions
@@ -226,7 +255,12 @@ else
     echo "Debug info: Running rsync with verbose output for debugging:"
     rsync -av --delete --exclude-from="$TEMPLATE_ROOT/.ignore" "$TEMPLATE_ROOT/" "$YND_ROOT/" || true
     echo "Restoring backup..."
-    [ -d "$BACKUP_DIR" ] && { rm -rf "$YND_ROOT"; mv "$BACKUP_DIR" "$YND_ROOT"; }
+    # COPY, DO NOT MOVE. `mv` across a filesystem boundary is a real copy that
+    # consumes the source as it goes, so a failure halfway would leave the root
+    # incomplete AND the only pre-sync copy of it half-deleted. BACKUP_ROOT is on
+    # the same filesystem today, but nothing in this script enforces that, and a
+    # failed sync is exactly the moment to keep the copy rather than spend it.
+    [ -d "$BACKUP_DIR" ] && { rm -rf "$YND_ROOT"; cp -a "$BACKUP_DIR" "$YND_ROOT"; }
     exit $rsync_exit_code
 fi
 

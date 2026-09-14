@@ -202,6 +202,15 @@ unless `--delete-excluded` is passed, which it is not).
   removed the wrong subtree leaves no trace, and `/tmp` is cleared on the reboot that follows.
   Move it under `/DATA` and keep the last N.
 
+  > **Superseded 2026-09-14.** "Under `/DATA`" shipped as `/DATA/AppData/.yundera-backups` and
+  > has since moved to `/var/backups/yundera`
+  > (`scripts/migrations/2026-09-14-10-move-root-backups-off-data.sh`). Keeping copies of *this*
+  > root under `/DATA` was the mistake: post-move the tree holds `.pcs.secret.env`,
+  > `auth/secrets/`, `users_database.yml`, `dex.db` and `data/certs/key.pem`, so anywhere under
+  > `/DATA` outside `AppData/` puts them in Maison's nightly user-data set, and inside `AppData/`
+  > the only thing hiding them from the dashboard is Maison's dot-prefix convention. The
+  > "keep the last N" half stands (`BACKUP_KEEP=3`).
+
 ### `scripts/tools/run-migrations.sh`
 
 Marker directory → Root B, with a bootstrap at the top of the loop:

@@ -17,7 +17,7 @@ this proposal extends.
 
 On a provisioned PCS the backup settings page shows **"Yundera Backup Storage —
 connected"**, with credentials, a repository and a device identity — and the **active
-engine is still `local`**, writing archives to `/DATA/AppData/.backups/` on the same disk
+engine is still `local`**, writing archives to `/DATA/AppData/maison/.backups/` on the same disk
 it is meant to be protecting. The nightly schedule is off as well, so on most boxes nothing
 is running at all.
 
