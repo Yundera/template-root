@@ -7,7 +7,7 @@
 # already honours it.
 #
 # ONE VARIABLE COVERS BOTH TEMPLATE AND IMAGES. Every platform image is pinned to
-# an exact version inside the template itself (the compose files, plus KOPIA_IMAGE
+# an exact version inside the template itself (the compose files, plus ENGINE_IMAGE
 # in scripts/library/kopia.sh), so the template is the version manifest. Freeze it
 # and ensure-user-compose-pulled.sh keeps running but re-pulls the same tags.
 #

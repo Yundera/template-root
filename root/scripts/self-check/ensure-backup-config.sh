@@ -1,12 +1,19 @@
 #!/bin/bash
-# ensure-backup-config.sh - Turn the BACKUP_* credentials into a connected kopia
-# repository that Maison can use.
+# ensure-backup-config.sh - Turn the BACKUP_* credentials into a connected backup
+# repository that Maison can use, and declare the adapter that serves it.
 #
 # Phase 1 step 4b (BACKUP-STORAGE-PLAN.md §6, §14). Infra generates, Maison consumes:
-# this script owns the repository password, the repository configuration and the
-# storage credentials; Maison reads what it finds under
-# /DATA/AppDataShared/backup/kopia/ and shells out to the engine. Maison never sees
-# the JWT, never talks to the backup space API, and never generates the password.
+# this script owns the repository password, the repository configuration, the storage
+# credentials and the adapter descriptor; Maison reads what it finds under
+# /DATA/AppDataShared/backup/kopia/ and runs the adapter. Maison never sees the JWT,
+# never talks to the backup space API, and never generates the password.
+#
+# IT RUNS THE ADAPTER, NOT KOPIA. Every engine-specific step this used to carry — the
+# create-or-connect dance, kopia's storage flag names, the endpoint URL that has to be
+# reduced to a host[:port], the sed that blanks the credentials kopia persists into its
+# own config — now lives behind `maison-engine connect`, in the image that ships the
+# engine. What is left here is engine-neutral: fetch-time state, a generated password,
+# two markers, and a descriptor naming the image.
 #
 # MUST RUN AFTER ensure-backup-credentials.sh (which fetches BACKUP_*) and BEFORE
 # ensure-maison-stack.sh, so a box that is being provisioned for the first time finds
@@ -16,20 +23,24 @@
 # Enable/disable with BACKUP_ENABLED in .pcs.env (default: enabled), the same knob
 # ensure-backup-credentials.sh reads -- see "is it wanted here?" below.
 #
-# VERSION-COUPLED: this requires a Maison image that passes AWS_ACCESS_KEY_ID /
-# AWS_SECRET_ACCESS_KEY into the engine container (see "credentials" below). An older
-# image finds a configuration whose credentials are blank and fails its backups until
-# ensure-maison-stack.sh recreates the container with the pinned image, later in this
-# same self-check cycle.
+# VERSION-COUPLED: the descriptor this writes is read by Maison builds that carry
+# internal/backup/adapter. An older Maison ignores adapter.json entirely and keeps using
+# its compiled-in kopia engine against the same repository — which still works, because
+# the adapter writes the same snapshots with the same tags. The two are interchangeable
+# on one repository by design; that is what makes the cutover reversible.
 #
 #
 # WHY THE CREDENTIALS ARE NOT IN repository.config
 # ------------------------------------------------
-# `kopia repository connect` writes the S3 access key and secret into
-# repository.config and there is no flag to stop it (--no-persist-credentials governs
-# the repository *password*, not the storage credentials). We blank the two fields
-# afterwards and hand kopia the credentials through the environment instead, which it
-# accepts for every ordinary operation and does not write back.
+# This is now the ADAPTER's doing, and is recorded here because it is the reason this
+# script writes credentials.env as a separate file at all rather than handing the key to
+# `connect` once and forgetting it.
+#
+# `kopia repository connect` writes the S3 access key and secret into repository.config
+# and there is no flag to stop it (--no-persist-credentials governs the repository
+# *password*, not the storage credentials). The adapter blanks the two fields afterwards
+# and reads the credentials out of credentials.env on every invocation instead, which
+# kopia accepts for every ordinary operation and does not write back.
 #
 # The reason is rotation. Keys expire every 90 days, and the alternative — re-running
 # `repository connect` to install a new one — rewrites the whole configuration file,
@@ -42,7 +53,9 @@
 # visible until the storage bill grows.
 #
 # So: repository.config is written exactly ONCE, and rotation rewrites nothing but
-# credentials.env. Identity cannot drift because nothing touches the file again.
+# credentials.env. Identity cannot drift because nothing touches the file again — and
+# the adapter enforces that from its side too: `connect` returns immediately when a
+# configuration already exists rather than rewriting it.
 #
 #
 # THE REBUILT BOX
@@ -66,19 +79,19 @@ UNIFIED_ENV="$YND_ROOT/.env"
 PCS_ENV="$YND_ROOT/.pcs.env"
 ENV_MGR="$YND_ROOT/scripts/tools/env-file-manager.sh"
 
-ENGINE="kopia"
+# ENGINE_ID, ENGINE_IMAGE, ENGINE_BINARY and the two repository.config readers come from
+# the library below; it is sourced early because ENGINE_DIR is derived from ENGINE_ID.
+source "$YND_ROOT/scripts/library/kopia.sh"
+
+ENGINE="$ENGINE_ID"
 ENGINE_DIR="/DATA/AppDataShared/backup/$ENGINE"
 CONFIG_FILE="$ENGINE_DIR/repository.config"
 PASSWORD_FILE="$ENGINE_DIR/repository.password"
 CREDENTIALS_FILE="$ENGINE_DIR/credentials.env"
 STATE_FILE="$ENGINE_DIR/state.json"
+ADAPTER_FILE="$ENGINE_DIR/adapter.json"
 REFRESH_MARKER="$ENGINE_DIR/needs-credentials"
 RECOVERY_MARKER="$ENGINE_DIR/needs-recovery"
-
-# The image pin, shared with ensure-kopia-stack.sh — which declares the resident engine
-# container Maison execs into and the web UI beside it, both of which must run the same
-# build this script creates the repository with.
-source "$YND_ROOT/scripts/library/kopia.sh"
 
 env_get() { "$ENV_MGR" get "$1" "$2" 2>/dev/null || echo ""; }
 
@@ -227,70 +240,108 @@ EOF
 chmod 644 "$STATE_FILE"
 chown "$PUID:$PGID" "$STATE_FILE" 2>/dev/null || true
 
+# --- adapter.json ---------------------------------------------------------------
+#
+# The descriptor is how Maison learns this engine exists at all. Maison scans
+# AppDataShared/backup/*/adapter.json and registers one adapter per file; a directory
+# without one is not an engine as far as Maison is concerned, and a box that has never
+# been provisioned simply has no engines but the built-in local one.
+#
+# THE IMAGE IS NAMED HERE AND NOWHERE ELSE, and that is the line that keeps an adapter
+# from being a remote-execution surface: what Maison runs as root with every app's data
+# in scope is named by the deployment, never by a user. Which repository an engine points
+# at stays an ordinary user setting.
+#
+# It is written only after a successful connect or status, so a box whose repository has
+# never opened does not advertise an engine that cannot work.
+#
+# `container` names the resident engine for `docker exec`, which is worth six or seven
+# seconds of container start per command. It is written unconditionally: the container
+# may not be up yet — ensure-kopia-stack.sh runs after this script — and Maison verifies
+# it against `hostname` before using it, falling back to a one-shot container when they
+# disagree or when it is absent. A wrong or missing container costs latency, never
+# correctness.
+#
+# `hostname` is read from repository.config rather than recomputed. Two sides deriving an
+# identity independently is how one repository ends up holding two lineages that never
+# see each other — invisible until a restore comes back empty.
+write_adapter_descriptor() {
+    local hostname storage network
+    hostname="$(kopia_repo_hostname)"
+    storage="$(kopia_repo_storage_type)"
+    # A repository on a local filesystem needs no network and must not be given one. Only
+    # the one-shot path can honour this; the resident container's network is fixed when
+    # the stack deploys it (see ensure-kopia-stack.sh).
+    network="default"
+    [ "$storage" = "filesystem" ] && network="none"
+
+    cat > "$ADAPTER_FILE" <<EOF
+{
+  "engineId": "$ENGINE_ID",
+  "image": "$ENGINE_IMAGE",
+  "container": "kopia-engine",
+  "entrypoint": "$ENGINE_BINARY",
+  "hostname": "$hostname",
+  "network": "$network"
+}
+EOF
+    chmod 644 "$ADAPTER_FILE"
+    chown "$PUID:$PGID" "$ADAPTER_FILE" 2>/dev/null || true
+}
+
 # --- engine invocation --------------------------------------------------------
 #
-# Secrets are passed by NAME (-e VAR), so their values never appear in argv and
-# therefore never in another process's `ps`.
-export AWS_ACCESS_KEY_ID="$ACCESS_KEY_ID"
-export AWS_SECRET_ACCESS_KEY="$SECRET_ACCESS_KEY"
-
-# KOPIA_CACHE_DIRECTORY and KOPIA_LOG_DIR are overridden by ENVIRONMENT, not by flag.
-# The kopia image bakes KOPIA_CACHE_DIRECTORY=/app/cache and KOPIA_LOG_DIR=/app/logs
-# into itself, and those outrank --cache-directory and --log-dir on the command line.
-# /app belongs to root, so running as PUID the engine cannot create either and every
-# command fails with "unable to create cache directory: mkdir /app/cache: permission
-# denied" before it ever reaches the repository. Maison's engine runner overrides the
-# same two variables for the same reason.
-kopia_run() {
+# The adapter is run one-shot, before any engine container exists — this script is what
+# creates the repository those containers then serve.
+#
+# NO SECRETS ARE PASSED. The adapter reads repository.password and credentials.env out of
+# --repo-dir, which it has mounted, so there is nothing to export and nothing to leak
+# into another process's `ps`. It also sets the engine's cache and log directories
+# itself: the kopia image bakes KOPIA_CACHE_DIRECTORY=/app/cache and KOPIA_LOG_DIR=/app/logs
+# into its own environment and those outrank the command line, which the adapter knows
+# and this script no longer has to.
+#
+# PUID:PGID, not root. Everything here touches the engine directory and the storage
+# behind it, both of which belong to that user. Reading an app's private data needs root
+# and capabilities; creating a repository does not.
+engine_run() {
     docker run --rm \
         --user "$PUID:$PGID" \
         -v /DATA:/DATA \
-        -e KOPIA_CACHE_DIRECTORY="$ENGINE_DIR/cache" \
-        -e KOPIA_LOG_DIR="$ENGINE_DIR/logs" \
-        -e KOPIA_PASSWORD -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
-        "$KOPIA_IMAGE" "$@" \
-        --config-file="$CONFIG_FILE" 2>&1
+        "$ENGINE_IMAGE" "$@" \
+        --repo-dir="$ENGINE_DIR" 2>&1
 }
 
-# The storage arguments every create/connect shares. --override-hostname pins the
-# identity to the device id: stable for the life of the box, unaffected by a domain
-# change, and never re-derived. --cache-directory is a connect-time flag: kopia
-# persists it into the configuration and rejects it on every other command.
-# kopia's --endpoint is a host[:port], NOT a URL: given one it fails with "Endpoint url
-# cannot have fully qualified paths". The credential API returns a URL on purpose —
-# the contract is engine-independent and rclone, restic and the AWS SDK all want the
-# scheme — so the conversion belongs here, in the one place that knows what kopia
-# parses.
-KOPIA_ENDPOINT="$BACKUP_ENDPOINT"
-USE_TLS=1
-case "$BACKUP_ENDPOINT" in
-    https://*) KOPIA_ENDPOINT="${BACKUP_ENDPOINT#https://}" ;;
-    http://*)  KOPIA_ENDPOINT="${BACKUP_ENDPOINT#http://}"; USE_TLS=0 ;;
-esac
-KOPIA_ENDPOINT="${KOPIA_ENDPOINT%/}"
-
-STORAGE_ARGS=(
-    "--bucket=$BACKUP_BUCKET"
-    "--endpoint=$KOPIA_ENDPOINT"
-    "--region=$BACKUP_REGION"
-    "--prefix=$BACKUP_PREFIX"
-    "--override-hostname=$BACKUP_DEVICE_ID"
-    "--override-username=pcs"
-)
-if [ "$USE_TLS" = "0" ]; then
-    # Only reachable with a local S3 (MinIO) standing in for the real space.
-    STORAGE_ARGS+=("--disable-tls")
-fi
-
-# Blank the credentials kopia persisted, leaving the environment as their only source.
-# Non-fatal: a kopia release that reformats its configuration leaves the credentials
-# in place, which still works — it merely costs the rotation property this buys.
-blank_persisted_credentials() {
-    sed -i 's/"accessKeyID": *"[^"]*"/"accessKeyID": ""/; s/"secretAccessKey": *"[^"]*"/"secretAccessKey": ""/' \
-        "$CONFIG_FILE" 2>/dev/null || true
-    if grep -q "\"accessKeyID\": \"$ACCESS_KEY_ID\"" "$CONFIG_FILE" 2>/dev/null; then
-        log_warn "Could not blank the persisted credentials in repository.config - rotation will need a reconnect"
+# engine_detail reduces the adapter's output to something worth putting in a log line.
+#
+# stdout is NDJSON and stderr is plain text, and engine_run merges them — so a FAILING
+# verb leaves its human-readable reason as the only non-JSON line, which is exactly what
+# a support log wants. `status` is the awkward case: it exits 0 and reports the reason
+# inside its result, so there is no plain line and the JSON is truncated instead.
+#
+# Deliberately not parsed: this runs before any JSON tooling is guaranteed on the host,
+# and the value is a log line, never a decision. Everything the script branches on is an
+# exit code or a grep for one fixed field.
+engine_detail() {
+    local plain
+    plain="$(printf '%s' "$1" | grep -v '^{' | tail -2 || true)"
+    if [ -n "$plain" ]; then
+        printf '%s' "$plain"
+    else
+        # Everything after `"detail":"`, capped. Taking the HEAD of the envelope instead
+        # would spend the budget on field names and cut the reason off the end, which is
+        # exactly where the reason lives.
+        printf '%s' "$1" | sed -n 's/.*"detail":"//p' | tail -1 | cut -c1-300
     fi
+}
+
+# engine_connected reports whether `status` says the repository answered.
+#
+# The adapter distinguishes "no repository configured" from "configured and unreachable"
+# and exits 0 for both — status must answer on a box that has never been provisioned —
+# so the answer is in the payload rather than in the exit code.
+engine_connected() {
+    printf '%s' "$1" | grep -q '"connected":true'
 }
 
 # --- connect, or create once --------------------------------------------------
@@ -299,8 +350,9 @@ if [ -f "$CONFIG_FILE" ] && [ -f "$PASSWORD_FILE" ]; then
     # Steady state. The configuration is already correct and must not be rewritten;
     # rotation happened above when credentials.env was replaced. Prove the repository
     # is reachable and stop.
-    export KOPIA_PASSWORD="$(cat "$PASSWORD_FILE")"
-    if OUT="$(kopia_run repository status)"; then
+    OUT="$(engine_run status)"
+    if engine_connected "$OUT"; then
+        write_adapter_descriptor
         log_success "Backup repository is connected (space $BACKUP_SPACE_ID, writable ${BACKUP_WRITABLE:-true})"
         exit 0
     fi
@@ -327,62 +379,79 @@ if [ -f "$CONFIG_FILE" ] && [ -f "$PASSWORD_FILE" ]; then
     # invents is a new silent outage, so the strings are gone.
     touch "$REFRESH_MARKER"
     chown "$PUID:$PGID" "$REFRESH_MARKER" 2>/dev/null || true
-    log_warn "Backup repository unreachable - requesting a fresh credential on the next cycle: $(echo "$OUT" | tail -2)"
+    log_warn "Backup repository unreachable - requesting a fresh credential on the next cycle: $(engine_detail "$OUT")"
     exit 0
 fi
 
-if [ -f "$PASSWORD_FILE" ] && [ ! -f "$CONFIG_FILE" ]; then
-    # We hold the password but not the configuration — a restored password file, or a
-    # configuration deleted by hand. Connecting is safe and does not initialise
-    # anything.
-    export KOPIA_PASSWORD="$(cat "$PASSWORD_FILE")"
-    if OUT="$(kopia_run repository connect s3 "${STORAGE_ARGS[@]}")"; then
-        blank_persisted_credentials
-        chown "$PUID:$PGID" "$CONFIG_FILE" 2>/dev/null || true
-        log_success "Reconnected the backup repository (space $BACKUP_SPACE_ID)"
-        exit 0
-    fi
-    log_error "Could not connect the backup repository: $(echo "$OUT" | tail -2)"
-    exit 1
+# Not connected yet. The adapter's `connect` is create-or-connect and idempotent, and it
+# refuses to rewrite a configuration that already exists — so the three cases this used
+# to branch on (config present, password only, neither) collapse into one call. What
+# still has to happen here is minting the password, because only the host can decide to
+# generate one and it has to survive the create failing.
+if [ ! -f "$PASSWORD_FILE" ]; then
+    # No password on this box. Either the space is empty and we are the first box to
+    # attach, or this box was rebuilt and the password is only in the user's mailbox.
+    # `connect` is what tells the two apart.
+    NEW_PASSWORD="$(openssl rand -base64 33 | tr -d '\n')"
+
+    # THE PASSWORD IS WRITTEN BEFORE THE CONNECT, NOT AFTER.
+    #
+    # Creating a repository initialises it and then connects to it, and the second half
+    # can fail on its own — a cache directory it cannot write, a network blip. The format
+    # blob is already in storage at that point, encrypted with the password we are
+    # holding, so discarding it on failure abandons a repository nobody can ever open
+    # again AND leaves storage non-empty, which makes every later run mistake the debris
+    # for the user's real backups and refuse to touch the space forever.
+    #
+    # Writing first inverts the failure: the next run finds a password, takes the same
+    # path, and finishes the job. The file is removed again only in the one case where we
+    # learn the repository was never ours.
+    umask 077
+    printf '%s' "$NEW_PASSWORD" > "$PASSWORD_FILE"
+    chmod 600 "$PASSWORD_FILE"
+    chown "$PUID:$PGID" "$PASSWORD_FILE" 2>/dev/null || true
+    MINTED_PASSWORD=1
 fi
 
-# No password on this box. Either the space is empty and we are the first box to
-# attach, or this box was rebuilt and the password is only in the user's mailbox.
-# `repository create` is what tells the two apart, so the password is held in memory
-# until it succeeds and is written only then.
-NEW_PASSWORD="$(openssl rand -base64 33 | tr -d '\n')"
-export KOPIA_PASSWORD="$NEW_PASSWORD"
+# --endpoint takes the URL as the credential API returned it. Reducing it to the
+# host[:port] kopia actually parses is the adapter's job now, because only the adapter
+# knows what its engine parses — this script used to carry that conversion, and it was
+# the clearest piece of engine-specific knowledge left on the host.
+set +e
+OUT="$(engine_run connect \
+    --bucket="$BACKUP_BUCKET" \
+    --endpoint="$BACKUP_ENDPOINT" \
+    --region="$BACKUP_REGION" \
+    --prefix="$BACKUP_PREFIX" \
+    --hostname="$BACKUP_DEVICE_ID" \
+    --username=pcs)"
+RC=$?
+set -e
 
-# THE PASSWORD IS WRITTEN BEFORE THE CREATE, NOT AFTER.
-#
-# `repository create` initialises the repository and then connects to it, and the
-# second half can fail on its own — a cache directory it cannot write, a network blip.
-# The format blob is already in storage at that point, encrypted with the password we
-# are holding, so discarding it on failure abandons a repository nobody can ever open
-# again AND leaves storage non-empty, which makes every later run mistake the debris
-# for the user's real backups and refuse to touch the space forever.
-#
-# Writing first inverts the failure: the next run finds a password, takes the connect
-# path, and finishes the job. The file is removed again only in the one case where we
-# learn the repository was never ours.
-umask 077
-printf '%s' "$NEW_PASSWORD" > "$PASSWORD_FILE"
-chmod 600 "$PASSWORD_FILE"
-chown "$PUID:$PGID" "$PASSWORD_FILE" 2>/dev/null || true
-
-if OUT="$(kopia_run repository create s3 "${STORAGE_ARGS[@]}")"; then
-    blank_persisted_credentials
+if [ "$RC" -eq 0 ]; then
     chown "$PUID:$PGID" "$CONFIG_FILE" 2>/dev/null || true
-    log_success "Created the backup repository for space $BACKUP_SPACE_ID"
-    log_warn "The repository password exists ONLY on this box until the user is mailed a copy"
+    write_adapter_descriptor
+    if [ "${MINTED_PASSWORD:-0}" = "1" ]; then
+        log_success "Created the backup repository for space $BACKUP_SPACE_ID"
+        log_warn "The repository password exists ONLY on this box until the user is mailed a copy"
+    else
+        log_success "Connected the backup repository (space $BACKUP_SPACE_ID)"
+    fi
     exit 0
 fi
 
-if echo "$OUT" | grep -qi "found existing data"; then
-    # Not our repository: the password we just minted opens nothing. Remove it, or the
-    # next run takes the connect path and fails with "invalid password" instead of
-    # reporting the recoverable truth.
-    rm -f "$PASSWORD_FILE"
+# 13 is the adapter's "this storage already holds a repository I have no password for".
+# It is its own exit code precisely so this branch cannot be reached by matching an error
+# string: the only safe response is to stop, and a retry that initialised a second
+# repository under the same prefix would strand the first one's snapshots behind a key
+# nobody has.
+if [ "$RC" -eq 13 ]; then
+    if [ "${MINTED_PASSWORD:-0}" = "1" ]; then
+        # Not our repository: the password we just minted opens nothing. Remove it, or
+        # the next run tries to connect with it and fails with "invalid password"
+        # instead of reporting the recoverable truth.
+        rm -f "$PASSWORD_FILE"
+    fi
     # THE REBUILT BOX. Stop before doing damage.
     cat > "$RECOVERY_MARKER" <<EOF
 {
@@ -399,9 +468,11 @@ EOF
     exit 0
 fi
 
-# Anything else: the repository may or may not have been initialised, and the password
-# on disk is the only one that could open it if it was. Keep it and let the next run's
-# connect path settle the question.
-log_error "Could not create the backup repository: $(echo "$OUT" | tail -3)"
-log_info "Keeping the generated password - the next cycle will try to connect with it"
+# Anything else: the repository may or may not have been initialised, and the password on
+# disk is the only one that could open it if it was. Keep it and let the next run settle
+# the question.
+log_error "Could not connect the backup repository: $(engine_detail "$OUT")"
+if [ "${MINTED_PASSWORD:-0}" = "1" ]; then
+    log_info "Keeping the generated password - the next cycle will try again with it"
+fi
 exit 1

@@ -39,13 +39,22 @@
 # never needs restarting. Merging them would mean a UI restart could kill a backup
 # mid-run, and the engine's whole value is that it is boring.
 #
-# THE ENGINE IS OPTIONAL, AND THAT IS LOAD-BEARING
+# ONE IMAGE, AND IT IS THE ADAPTER
 #
-# If this stack is missing, stopped, or mid-upgrade, Maison silently falls back to
-# starting a one-shot container per command — the behaviour that predates it. Boxes
-# whose repository is on a local filesystem keep using one-shot containers regardless,
-# because those get `--network none`, which a long-lived container cannot offer. Losing
-# this stack costs latency and the UI, never a backup.
+# Both containers run ghcr.io/yundera/maison-kopia-engine — kopia's own image plus the
+# `maison-engine` binary that speaks Maison's backup adapter protocol. The UI still runs
+# `kopia server` out of it, because /bin/kopia is still in there, which is also what
+# keeps the UI and the engine on the same kopia build by construction instead of by two
+# pins agreeing. Bumping kopia is a change to the adapter's Dockerfile and nothing here.
+#
+# THE ENGINE IS OPTIONAL, AND WHAT THAT NOW MEANS
+#
+# If this stack is missing or stopped, Maison starts a one-shot adapter container per
+# command instead — six to seven seconds slower, correct in every other respect. What it
+# no longer does is fall back when the container is present but the ENGINE cannot be
+# reached: that is reported as an incident, because a backup that quietly lands somewhere
+# other than where the user was told is worse than one that stops. See
+# maison/docs/backup.md § The engine adapter.
 #
 # NOTHING BUT THE GATE IS ON THE `pcs` NETWORK, and that is a rule rather than
 # tidiness. Two reasons, and either alone would be enough:
@@ -173,7 +182,7 @@ services:
   # Maison does not attempt to reimplement.
   # ===========================================================================
   kopia-app:
-    image: ${KOPIA_IMAGE}
+    image: ${ENGINE_IMAGE}
     container_name: kopia-app
     restart: unless-stopped
 
@@ -286,7 +295,7 @@ services:
   # THE ENGINE — the container Maison runs `docker exec` in. No listener, no UI.
   # ===========================================================================
   kopia-engine:
-    image: ${KOPIA_IMAGE}
+    image: ${ENGINE_IMAGE}
     container_name: kopia-engine
     # MUST match the `hostname` in /DATA/AppDataShared/backup/kopia/repository.config,
     # which ensure-backup-config.sh writes once and never rewrites. kopia files
@@ -374,10 +383,23 @@ networks:
   # top-level name is claimable by any third-party compose file, and the security
   # property is "nothing else is on it".
   #
-  # NOT `internal: true`, unlike that auth network — the whole job is reaching an
-  # offsite bucket.
+  # `internal` is normally false: the whole job is reaching an offsite bucket.
+  #
+  # It flips to true when the repository is on a LOCAL FILESYSTEM, which needs no network
+  # at all. That case used to get its isolation by accident — Maison ran those commands
+  # in one-shot containers with `--network none`, because a resident container could not
+  # offer it — and removing the one-shot fallback would have quietly handed them a bridge.
+  # ensure-kopia-stack.sh reads the storage type out of repository.config and passes the
+  # answer in.
+  #
+  # `internal: true` rather than `network_mode: none` because compose cannot switch a
+  # service between `networks:` and `network_mode:` from a variable, and because the
+  # property that matters is the one the header states: these containers reach a bucket,
+  # never a peer. On an internal network the only reachable peers are the two other
+  # members of this stack. The gate keeps its outbound route through `pcs`.
   engine:
     name: kopia-engine
+    internal: ${ENGINE_NETWORK_INTERNAL:-false}
 
   # Created and owned by the `yundera` stack — this project only attaches to it, and
   # only with the gate. ensure-kopia-stack.sh therefore runs after
@@ -394,7 +416,7 @@ networks:
 # with the platform rather than the user's apps, makes Maison refuse to stop or
 # uninstall it, and makes the nightly backup skip it — which matters more here than
 # anywhere else, since this stack is what performs that backup. Stopping it from the
-# apps grid would silently drop every box back to one-shot engine containers.
+# apps grid would drop every box back to one-shot engine containers.
 #
 # It tiles like any store app otherwise: an icon, and an Open button that goes to the
 # GATE (`kopia-${DOMAIN}`) — the only authenticated way in, and the value that must

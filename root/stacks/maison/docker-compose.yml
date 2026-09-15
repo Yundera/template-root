@@ -85,6 +85,23 @@ services:
       # Gate session lifetime: 30 days (matches the AppShield default; pinned
       # explicitly so the PCS-wide 30-day session policy is visible here).
       SESSION_DURATION_HOURS: "720"
+      # The PWA surface, and ONLY that. Kept as tight as the admin gate's list in
+      # ../../docker-compose.yml: everything else, Maison's own assets included, is
+      # fetched by a browser that already has a session.
+      #
+      # These two are the exception because the browser does NOT use the session for
+      # them. A web app manifest is fetched with credentials omitted unless the link
+      # tag says otherwise, and Chrome downloads the icons a manifest names through
+      # the browser process, where credentials are not reliably attached. Without a
+      # bypass those requests get this gate's 302 to the login page, the manifest
+      # resolves to HTML, and the app is silently not installable — with nothing in
+      # any log to say why. Maison's index.html also sets crossorigin="use-credentials"
+      # on the manifest link, so the two halves cover each other.
+      #
+      # What this exposes is the app's name and its icon, both of which the login page
+      # already shows. Bypassed requests still have every identity header stripped
+      # (AppShield router.go), so this cannot be used to forge a user.
+      ALLOWED_PATHS: "manifest.webmanifest,icons"
       # Trust the mesh-router CA *on top of* the image's baked-in roots. Required
       # by the extra_hosts pin below: once this gate resolves auth-${DOMAIN}
       # on-box, its back-channel TLS terminates at this PCS's own Caddy, which

@@ -13,9 +13,13 @@
 # it: the repository, its password and its credentials belong to ensure-backup-config.sh,
 # and this stack is what reads them. Maison is a consumer.
 #
-# NOTHING DEPENDS ON THIS SUCCEEDING. If the stack is absent or down, Maison falls back
-# to a one-shot container per command — slower, and exactly the behaviour that predates
-# this script. So this exits 0 on every path that is merely "not applicable here".
+# NOTHING DEPENDS ON THIS SUCCEEDING. If the stack is absent or down, Maison starts a
+# one-shot adapter container per command instead — slower, correct in every other
+# respect. So this exits 0 on every path that is merely "not applicable here".
+#
+# That is NOT a fallback for an engine that is reachable but broken: Maison reports that
+# as an incident rather than quietly doing the work somewhere else. What survives here is
+# only "the resident container is absent", which costs latency.
 #
 # ORDERING: must run AFTER ensure-backup-config.sh, which writes the repository.config
 # this reads the engine's hostname out of. A box provisioned before that file exists
@@ -26,9 +30,9 @@ set -euo pipefail
 
 YND_ROOT="/DATA/AppData/yundera"
 source "$YND_ROOT/scripts/library/log.sh"
-# KOPIA_IMAGE, KOPIA_ENGINE_DIR and kopia_repo_hostname, shared with
-# ensure-backup-config.sh so the containers started here cannot disagree with the
-# repository that script created.
+# ENGINE_IMAGE, KOPIA_ENGINE_DIR, kopia_repo_hostname and kopia_repo_storage_type,
+# shared with ensure-backup-config.sh so the containers started here cannot disagree with
+# the repository that script created.
 source "$YND_ROOT/scripts/library/kopia.sh"
 
 PCS_ENV="$YND_ROOT/.pcs.env"
@@ -69,8 +73,9 @@ esac
 #
 # Without one the engine would sit idle holding capabilities for nothing, and the UI
 # would not start at all — its entrypoint reads the repository password and the storage
-# credentials from files that do not exist yet. Maison's fallback covers the gap, and
-# the next self-check after the repository is configured brings the stack up.
+# credentials from files that do not exist yet. Maison runs one-shot adapter containers
+# meanwhile, and the next self-check after the repository is configured brings the stack
+# up.
 # Deliberately checked by file rather than by asking Maison: this script must not depend
 # on the dashboard being up.
 if [ ! -f "$KOPIA_ENGINE_DIR/repository.config" ]; then
@@ -93,11 +98,25 @@ fi
 # computed here — two sides computing it independently is how one repository ends up
 # split into two lineages that never see each other.
 KOPIA_HOSTNAME="$(kopia_repo_hostname)"
-log_info "Kopia stack: $KOPIA_IMAGE as $KOPIA_HOSTNAME"
+
+# A repository on a local filesystem needs no network and must not be given one. It used
+# to get that isolation by accident, because Maison ran those commands in one-shot
+# containers with `--network none`; with the engine resident, the stack has to decide it
+# at deploy time instead. Read from repository.config rather than inferred from whether
+# BACKUP_* is set — the file is what the engine actually connected to.
+STORAGE_TYPE="$(kopia_repo_storage_type)"
+ENGINE_NETWORK_INTERNAL="false"
+if [ "$STORAGE_TYPE" = "filesystem" ]; then
+    ENGINE_NETWORK_INTERNAL="true"
+    log_info "Repository is on a local filesystem - the engine network stays internal"
+fi
+
+log_info "Kopia stack: $ENGINE_IMAGE as $KOPIA_HOSTNAME"
 
 "$YND_ROOT/scripts/tools/deploy-stack.sh" kopia "$STACK_DIR" \
     "TZ=$TZ" \
-    "KOPIA_IMAGE=$KOPIA_IMAGE" \
+    "ENGINE_IMAGE=$ENGINE_IMAGE" \
+    "ENGINE_NETWORK_INTERNAL=$ENGINE_NETWORK_INTERNAL" \
     "KOPIA_HOSTNAME=$KOPIA_HOSTNAME"
 
 # --- credential rotation ------------------------------------------------------
@@ -109,7 +128,8 @@ log_info "Kopia stack: $KOPIA_IMAGE as $KOPIA_HOSTNAME"
 # nothing else would ever restart it: deploy-stack.sh's `up -d` is a no-op when the
 # compose file and .env are unchanged, and a rotation changes neither.
 #
-# The engine needs none of this — Maison passes credentials into every exec.
+# The engine needs none of this: the adapter reads credentials.env on every invocation,
+# which is what makes a rotation take effect on the next backup rather than on a restart.
 #
 # mtime is the signal, which is only meaningful because ensure-backup-config.sh now
 # leaves credentials.env alone when the contents have not changed. If that ever goes
