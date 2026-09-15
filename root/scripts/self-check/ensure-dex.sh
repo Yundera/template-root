@@ -6,14 +6,15 @@
 #     and re-emits the connector secrets),
 #   - read the Dex<->Authelia connector secret (AUTHELIA_DEX_SECRET, minted by
 #     ensure-authelia.sh) so the Local Account connector renders,
+#   - mint DEX_SESSION_KEY, the AES key for Dex's own session cookie,
 #   - concatenate any drop-in connectors from dex/connectors.d/*.yaml,
 #   - own the sqlite data dir so the dex container (uid 1001) can write dex.db,
 #   - restart dex so a re-rendered config is picked up.
 #
-# Dex is a pure BROKER: it holds no local credential of its own. The local
-# account lives in Authelia (the "Local Account" connector, see
-# ensure-authelia.sh); the old enablePasswordDB break-glass admin has been
-# removed. Interactive login is therefore always federated to a connector.
+# Dex is a pure BROKER: it holds no local credential of its own. Interactive
+# login is always federated to a connector — see doc/auth-history.md for how the
+# stack got that shape, and for the connector ids that are retired but still
+# reserved.
 #
 # Dex reads exactly ONE config file — it has no include/conf.d mechanism of its
 # own (verified against v2.45.1: `cobra.ExactArgs(1)`, single ReadFile +
@@ -21,11 +22,6 @@
 # it is the ONLY way a connector gets added: "Yundera Login" is written by
 # ensure-yundera-login.sh, and only "Local Account" is still rendered inline
 # here (it is the one connector whose secret this script already holds).
-#
-# The `casaos` connector (and the BRIDGE_SECRET it consumed) is gone: Authelia is
-# the PCS-local credential now, and casaos-oidc-bridge died with it. The stale
-# BRIDGE_SECRET and /DATA/AppData/yundera/casaos-oidc-bridge were swept off the
-# fleet by a one-shot migration, retired 2026-09-08 (see migrations/README.md).
 #
 # Storage layout (host /DATA/AppData/yundera/):
 #   dex/config.yaml          rendered Dex config (re-rendered each run)
@@ -58,6 +54,7 @@ set -euo pipefail
 
 YND_ROOT="/DATA/AppData/yundera"
 source "$YND_ROOT/scripts/library/log.sh"
+source "$YND_ROOT/scripts/library/secrets.sh"
 
 DEX_ROOT="/DATA/AppData/yundera/dex"
 TEMPLATE="$YND_ROOT/dex.config.yaml.tmpl"
@@ -94,13 +91,18 @@ fi
 TMP="$(mktemp)"
 chmod 600 "$TMP"
 # Encrypts Dex's own session cookie (see the `sessions:` block in the template).
-# Minted by ensure-dex-session-key.sh, which scripts-config.txt orders before
-# this script. Empty is tolerated: Dex starts and sessions still work, the cookie
-# is simply not encrypted — so a missing key degrades rather than breaking login.
-DEX_SESSION_KEY="$("$ENV_MGR" get DEX_SESSION_KEY "$SECRET_ENV")"
-if [ -z "$DEX_SESSION_KEY" ]; then
-    log_warn "DEX_SESSION_KEY not set yet; Dex session cookies will be unencrypted until ensure-dex-session-key.sh has run"
-fi
+#
+# AES, and Dex accepts ONLY 16, 24 or 32 BYTES (AES-128/192/256). That is a byte
+# length, not a string format: `openssl rand -hex 32` is 64 characters and is
+# REJECTED. Base64 of 24 bytes is exactly 32 characters, and carries no '=' and
+# no '$', so it also survives the envsubst pass below unchanged.
+#
+# Minted here rather than in a script of its own: nothing else on the box
+# consumes it, nothing in docker-compose.yml interpolates it, and it reaches Dex
+# only through the config rendered a few lines down.
+DEX_SESSION_KEY=""
+ensure_secret DEX_SESSION_KEY openssl rand -base64 24 \
+    || log_warn "Could not mint DEX_SESSION_KEY; Dex session cookies will be unencrypted"
 
 export DOMAIN AUTHELIA_DEX_SECRET DEX_SESSION_KEY
 envsubst '${DOMAIN} ${AUTHELIA_DEX_SECRET} ${DEX_SESSION_KEY}' < "$TEMPLATE" > "$TMP"

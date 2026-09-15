@@ -51,9 +51,7 @@ ENV_MANAGER="$YND_ROOT/scripts/tools/env-file-manager.sh"
 # DEFAULT_SERVICE_HOST / _PORT: what the root domain (${DOMAIN} and the two IP
 # fallbacks, routed in the Caddyfile) resolves to. `maison` is the AppShield gate
 # in the maison stack, which exposes 80 and fronts the dashboard — NOT `maison-app`,
-# which has no auth of its own. Was casaos:8080 until CasaOS was removed (phase 3,
-# 2026-08-02); existing hosts were repointed by the teardown migration, retired
-# 2026-09-08.
+# which has no auth of its own.
 if ! "$ENV_MANAGER" exists DEFAULT_SERVICE_HOST "$PCS_ENV_FILE"; then
     "$ENV_MANAGER" set DEFAULT_SERVICE_HOST "maison" "$PCS_ENV_FILE"
     echo "Set default DEFAULT_SERVICE_HOST=maison"

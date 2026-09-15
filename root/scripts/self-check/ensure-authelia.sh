@@ -38,6 +38,7 @@ set -euo pipefail
 
 YND_ROOT="/DATA/AppData/yundera"
 source "$YND_ROOT/scripts/library/log.sh"
+source "$YND_ROOT/scripts/library/secrets.sh"
 
 AUTH_ROOT="/DATA/AppData/yundera/auth"
 SECRETS_DIR="$AUTH_ROOT/secrets"
@@ -152,14 +153,11 @@ fi
 # stores only a pbkdf2 hash. The plaintext lives in .pcs.secret.env and is
 # folded into the unified .env so the SAME cycle's Dex render (ensure-dex.sh,
 # which runs right after this script) can interpolate it into the connector.
-AUTHELIA_DEX_SECRET="$("$ENV_MGR" get AUTHELIA_DEX_SECRET "$SECRET_ENV")"
-if [ -z "$AUTHELIA_DEX_SECRET" ]; then
-    AUTHELIA_DEX_SECRET="$(openssl rand -hex 32)"
-    "$ENV_MGR" set AUTHELIA_DEX_SECRET "$AUTHELIA_DEX_SECRET" "$SECRET_ENV"
+AUTHELIA_DEX_SECRET=""
+ensure_secret AUTHELIA_DEX_SECRET openssl rand -hex 32
+if [ "$SECRET_MINTED" = "1" ]; then
     rm -f "$DEX_HASH_FILE"   # force a fresh hash for the new secret
-    log_info "Generated AUTHELIA_DEX_SECRET (Dex<->Authelia connector secret)"
 fi
-"$ENV_MGR" set AUTHELIA_DEX_SECRET "$AUTHELIA_DEX_SECRET" "$UNIFIED_ENV"
 
 # pbkdf2 hash of the client secret, cached (generate-once alongside the secret).
 if [ ! -f "$DEX_HASH_FILE" ]; then

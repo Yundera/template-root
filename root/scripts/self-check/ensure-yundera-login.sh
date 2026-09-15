@@ -20,10 +20,11 @@
 # they have typed real credentials into a real login page. A dead end that asks
 # for a password is worse than no button.
 #
-# ORDER: must run BEFORE ensure-dex.sh (which is what actually renders and
-# restarts Dex). It is nonetheless order-independent — when the drop-in's
-# content changes it re-runs ensure-dex.sh itself, so a manual invocation or the
-# one tick where a newly-added script sorts last still converges immediately.
+# ORDER: must run BEFORE ensure-dex.sh, which is what actually renders and
+# restarts Dex. scripts-config.txt enforces that, and self-check.sh re-runs the
+# whole list when a sync changes it, so the order holds even on the cycle that
+# first delivers a script. A drop-in written out of band (this script invoked by
+# hand) reaches Dex when ensure-dex.sh next runs.
 #
 # FAIL-OPEN, ALWAYS. The drop-in is CACHE, never config: on any doubt — disabled,
 # no USER_JWT, IdP unreachable, registration refused, discovery not answering —
@@ -45,7 +46,6 @@ source "$YND_ROOT/scripts/library/log.sh"
 DEX_ROOT="/DATA/AppData/yundera/dex"
 CONNECTORS_D="$DEX_ROOT/connectors.d"
 DROPIN="$CONNECTORS_D/yundera.yaml"
-ENSURE_DEX="$YND_ROOT/scripts/self-check/ensure-dex.sh"
 
 PCS_ENV="$YND_ROOT/.pcs.env"
 SECRET_ENV="$YND_ROOT/.pcs.secret.env"
@@ -59,16 +59,6 @@ DEX_UID=1001
 
 mkdir -p "$CONNECTORS_D"
 
-# Re-render Dex only when this script actually changed the drop-in. Costs a Dex
-# restart, so it must not fire on every tick.
-# Tolerant on purpose: ensure-dex.sh runs on its own later in the cycle and
-# reports its own failures, and this script must not turn "Dex is unhappy for an
-# unrelated reason" into a failure of the Yundera-Login step.
-rerender_dex() {
-    [ -f "$ENSURE_DEX" ] || return 0
-    bash "$ENSURE_DEX" || log_warn "ensure-dex.sh failed while re-rendering for the Yundera Login connector"
-}
-
 # Remove the drop-in (the fail-open path). Quiet when there was nothing to
 # remove — that is the steady state on a PCS where the connector is disabled.
 drop_connector() {
@@ -76,7 +66,6 @@ drop_connector() {
     if [ -f "$DROPIN" ]; then
         rm -f "$DROPIN"
         log_warn "Removed the Yundera Login connector: $reason"
-        rerender_dex
     else
         log_info "Yundera Login connector not configured: $reason"
     fi
@@ -197,4 +186,3 @@ mv "$TMP" "$DROPIN"
 chmod 600 "$DROPIN"
 chown "$DEX_UID:$DEX_UID" "$DROPIN" 2>/dev/null || true
 log_info "Wrote the Yundera Login connector (client ${CLIENT_ID})"
-rerender_dex

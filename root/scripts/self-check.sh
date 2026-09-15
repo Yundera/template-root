@@ -68,50 +68,66 @@ read_scripts_config() {
 
 OVERALL_FAILED=0
 
+# Run the configured list, in the configured order.
+#
+# `tolerate_missing=1` treats a script that is named in the config but absent on
+# disk as a skip rather than a failure: it was deleted by this cycle's template
+# sync, mid-run. The mirror removal on 2026-09-08 made every box in the fleet
+# report two of those and end with "Self-check completed with failures", for two
+# scripts that were deliberately deleted. The reconcile pass below passes 0
+# instead — it re-reads the config from disk first, so a missing script there
+# means the SHIPPED config names something that does not exist, which is a real
+# error.
+run_scripts() {
+    local tolerate_missing="$1"
+    shift
+    local script_name
+    for script_name in "$@"; do
+        if [ "$tolerate_missing" = "1" ] && [ ! -f "$SCRIPT_DIR/self-check/$script_name" ]; then
+            log "Skipping $script_name: listed when this run started, removed by the template sync during it"
+            continue
+        fi
+        if ! execute_script_with_logging "$SCRIPT_DIR/self-check/$script_name"; then
+            OVERALL_FAILED=1
+        fi
+    done
+}
+
 # Main pass: slurp the script list into memory FIRST, then iterate. This is
 # deterministic even if scripts-config.txt gets replaced mid-run (e.g. by
 # ensure-template-sync.sh's rsync, which atomically swaps inodes — a naive
 # `while ... done < file` would keep reading the old inode via its open FD).
 read_scripts_config
-EXECUTED=("${SCRIPTS[@]}")
-for script_name in "${EXECUTED[@]}"; do
-    # A script that was in the config when this run STARTED but is not on disk
-    # when we reach it was deleted by this cycle's template sync — the mirror
-    # removal on 2026-09-08 made every box in the fleet report two of these and
-    # end with "Self-check completed with failures", for two scripts that were
-    # deliberately deleted. It is the same mid-run config swap this two-pass
-    # loop already exists to handle, so it is a skip, not a failure.
-    #
-    # ONLY in this pass. The second pass below re-reads the config from disk, so
-    # a missing script there means the SHIPPED config names something that does
-    # not exist — a real error, and still reported as one.
-    if [ ! -f "$SCRIPT_DIR/self-check/$script_name" ]; then
-        log "Skipping $script_name: listed when this run started, removed by the template sync during it"
-        continue
-    fi
-    if ! execute_script_with_logging "$SCRIPT_DIR/self-check/$script_name"; then
-        OVERALL_FAILED=1
-    fi
-done
+STARTED_WITH=("${SCRIPTS[@]}")
+run_scripts 1 "${STARTED_WITH[@]}"
 
-# Second pass: template-sync (or any other script) may have added new entries
-# to scripts-config.txt during the main pass. Re-read and run anything we
-# haven't executed yet. Ordering caveat: newly-added scripts run AFTER all
-# existing ones this cycle; proper ordering takes effect on the next reboot.
+# Reconcile pass: ensure-template-sync.sh may have changed scripts-config.txt
+# during the main pass. When it did, re-run the WHOLE list in its configured
+# order rather than appending the new entries at the end.
+#
+# Appending was the old behaviour, and it meant a newly-delivered script ran
+# after every pre-existing one for exactly one cycle — including after
+# ensure-user-compose-stack-up.sh. Every ordering rule in scripts-config.txt was
+# therefore false on the one cycle that mattered: the cycle that first delivers
+# the script. Scripts compensated individually, by re-invoking the peers they
+# had just invalidated (ensure-admin-gate-secret.sh called
+# ensure-user-compose-stack-up.sh; ensure-yundera-login.sh called
+# ensure-dex.sh), which made real execution order emergent instead of
+# configured, and cost a bespoke workaround per ordered script. Fixing it here
+# once let both of those be deleted.
+#
+# Re-running everything is safe by construction: these scripts are convergent
+# reconcilers, that being the entire premise of the self-check. It costs one
+# slow cycle, only on the rare tick that actually changes the config.
 read_scripts_config
-for script_name in "${SCRIPTS[@]}"; do
-    already_ran=false
-    for ran in "${EXECUTED[@]}"; do
-        [ "$ran" = "$script_name" ] && { already_ran=true; break; }
-    done
-    if [ "$already_ran" = false ]; then
-        log "Running newly-added script from refreshed config: $script_name"
-        if ! execute_script_with_logging "$SCRIPT_DIR/self-check/$script_name"; then
-            OVERALL_FAILED=1
-        fi
-        EXECUTED+=("$script_name")
-    fi
-done
+if [ "${SCRIPTS[*]}" != "${STARTED_WITH[*]}" ]; then
+    log "scripts-config.txt changed during this run - re-running the full list in its configured order"
+    # The complete second pass is the authoritative verdict: a script that
+    # failed above only because its dependency had not run yet gets its real
+    # answer here, and reporting the stale failure too would be noise.
+    OVERALL_FAILED=0
+    run_scripts 0 "${SCRIPTS[@]}"
+fi
 
 if [ "$OVERALL_FAILED" -eq 0 ]; then
     log "=== Self-check completed successfully ==="

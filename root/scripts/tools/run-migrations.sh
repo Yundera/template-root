@@ -11,12 +11,8 @@ MIGRATIONS_DIR="${1:-}"
 #
 # An empty marker directory does not mean "nothing has been applied" — it means
 # "this is a tree that has never run migrations", and read literally it replays
-# every migration in the tree at once. Until 2026-09-15 this block seeded the
-# directory from /DATA/AppData/casaos/apps/yundera/migration-markers to carry a
-# box's history across the root move; it was retired with
-# 2026-09-08-12-move-root-to-maison.sh, once every box in the fleet carried its
-# own $MARKER_DIR. A box restored from a pre-move backup is the only way back to
-# that state, and it needs the marker directory restored with it.
+# every migration in the tree at once. So a restore must bring this directory
+# back with the rest of the tree; restoring the tree alone replays history.
 MARKER_DIR="/DATA/AppData/yundera/migration-markers"
 
 if [ -z "$MIGRATIONS_DIR" ]; then

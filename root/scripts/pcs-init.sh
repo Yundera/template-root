@@ -53,44 +53,15 @@ if ! flock -n 200; then
     die "another pcs-init.sh is already running on this host (lock: $LOCK_FILE) — refusing to run concurrently"
 fi
 
-# 1. Relocate the orchestrator-staged env files, then validate.
+# 1. Validate the orchestrator-staged env files.
 #
-# THE ORCHESTRATOR STILL STAGES AT THE OLD ROOT, and does not need to change:
-# runHostBootstrap.ts scp's .pcs.env / .pcs.secret.env to
-# /DATA/AppData/casaos/apps/yundera before invoking this script. The root move
-# (doc/root-migration.md) changed where the template lives, not where a create
-# drops its seed — and pinning the orchestrator to the new path would break
-# every host that self-syncs against a template channel still on the old one.
+# The orchestrator scp's .pcs.env / .pcs.secret.env into $YND_ROOT before
+# invoking this script (runHostBootstrap.ts, PCS_BOOTSTRAP_ROOT).
 #
-# So the move happens here, at the first thing that runs on the box. It is also
-# the ONLY thing that populates the new root on a fresh host before the
-# self-check starts. The cutover migration — which does this same relocation for
-# existing boxes — DOES still run later in the cycle (via os-init.sh, see the
-# header), so it has to recognise a fresh install and no-op. Note what this loop
-# leaves behind for it: a `mv` out of an existing LEGACY_ROOT empties that
-# directory but does not remove it, so "Root A exists" is not a usable signal
-# there. It tests for a template in Root A instead.
-#
-# `mv` rather than copy: two roots holding two divergent .pcs.env is the exact
-# failure the root move exists to end, and env-file-manager.sh writes via an
-# atomic rename, so a stale second copy would never be updated and would look
-# authoritative to anyone reading it. Modes are preserved (.pcs.secret.env is
-# 600). Idempotent: a re-run finds nothing left to move.
-#
-# RETIRE THIS BLOCK when every orchestrator that provisions against this
-# template channel sets PCS_BOOTSTRAP_ROOT=/DATA/AppData/yundera (staging was
-# flipped 2026-09-08; production follows once stable carries the move). Until
-# then removing it breaks every create from an unflipped deployment, silently:
-# .pcs.env would simply not be where this script looks for it.
-LEGACY_ROOT="/DATA/AppData/casaos/apps/yundera"
+# The shim that relocated them out of the pre-move root was retired 2026-09-15,
+# once every deployment staged at the new one — see doc/auth-history.md. Nothing
+# on the box reads the old root.
 mkdir -p "$YND_ROOT"
-for f in .pcs.env .pcs.secret.env; do
-    if [ -f "$LEGACY_ROOT/$f" ] && [ ! -f "$YND_ROOT/$f" ]; then
-        mv "$LEGACY_ROOT/$f" "$YND_ROOT/$f" \
-            || die "could not move $LEGACY_ROOT/$f to $YND_ROOT/$f"
-        log "moved staged $f into $YND_ROOT"
-    fi
-done
 
 [ -f "$PCS_ENV" ] || die ".pcs.env missing at $PCS_ENV — orchestrator did not stage env files"
 UPDATE_URL=$(grep '^UPDATE_URL=' "$PCS_ENV" | cut -d= -f2- || true)

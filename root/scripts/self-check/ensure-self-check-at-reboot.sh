@@ -2,19 +2,13 @@
 # Ensure the @reboot self-check cron entry exists, and that there is exactly ONE.
 #
 # MANAGED BY MARKER COMMENT, like ensure-nightly-self-check.sh: strip every line
-# carrying our marker, then write the entry we want. The previous version tested
-# `crontab -l | grep -q "$scriptFile"` and appended when it missed, which can
-# only ever add — so the root move (2026-09-08) would have left every box with
-# TWO @reboot entries, the old one pointing at
-# /DATA/AppData/casaos/apps/yundera. They race on
-# /var/run/yundera-self-check.lock, the loser exits 0 without doing anything,
-# and which tree actually converges on a given boot is a coin flip. That is the
-# kind of failure nobody notices for months. Keep the marker pattern.
-#
-# The one-off sweep of that un-marked legacy line was retired 2026-09-15: no box
-# in the fleet carries one (`sudo crontab -l | grep casaos` is empty everywhere).
-# It had to be explicit while it lasted, because the old code wrote no marker for
-# the marker pattern to match on.
+# carrying our marker, then write the entry we want. KEEP THAT PATTERN. Testing
+# `crontab -l | grep -q "$scriptFile"` and appending on a miss — which is what
+# this used to do — can only ever add, so any change to the script path leaves a
+# box with TWO @reboot entries pointing at two different trees. They race on
+# /var/run/yundera-self-check.lock, the loser exits 0 without doing anything, and
+# which tree converges on a given boot is a coin flip. That is the kind of
+# failure nobody notices for months.
 
 set -e  # Exit on any error
 

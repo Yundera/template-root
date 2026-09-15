@@ -44,14 +44,13 @@ ensure-logrotate.sh
 # Docker and application setup
 ensure-docker-installed.sh
 ensure-env-vars-valid.sh
-# RENDER EVERYTHING, *THEN* BRING THE STACK UP. The auth block below all mints
-# secrets and renders config files that services read at startup, and it must
-# stay ahead of ensure-admin-gate-secret.sh — because that script does not just
-# mint a secret, it calls ensure-user-compose-stack-up.sh itself to propagate it.
-# On a cold provision that is the FIRST `docker compose up` on the box.
+# RENDER EVERYTHING, *THEN* BRING THE STACK UP. The auth block below mints
+# secrets and renders config files that services read at startup, so all of it
+# must stay ahead of ensure-user-compose-stack-up.sh.
 #
-# It used to sit above this block, which meant the first up started Dex against a
-# /DATA/AppData/yundera/dex/config.yaml that ensure-dex.sh had not written yet.
+# Stack-up used to sit above this block, which meant the first up started Dex
+# against a /DATA/AppData/yundera/dex/config.yaml that ensure-dex.sh had not
+# written yet.
 # `dex serve` on a missing config exits immediately, so Dex crash-looped under
 # restart:unless-stopped for the ~2m45s until ensure-dex.sh ran — and on
 # 2026-08-27 that loop lost Dex's then-pinned gRPC address to auth-registrar and
@@ -64,24 +63,18 @@ ensure-env-vars-valid.sh
 # "Local Account" connector's clientSecret.
 ensure-authelia.sh
 # ensure-yundera-login.sh writes dex/connectors.d/yundera.yaml, which
-# ensure-dex.sh concatenates into the rendered config — so it belongs before it.
-# Not a hard dependency: it re-runs ensure-dex.sh itself whenever the drop-in
-# actually changed, which is also what covers the first cycle after this line is
-# introduced (newly-added scripts run last in that one cycle).
+# ensure-dex.sh concatenates into the rendered config — so it MUST run before it.
+# A drop-in written after the render sits unused until the next cycle.
 ensure-yundera-login.sh
-# ensure-dex-session-key.sh MUST run before ensure-dex.sh: it mints
-# DEX_SESSION_KEY into .pcs.secret.env / .env, which ensure-dex.sh interpolates
-# into `sessions.cookieEncryptionKey`. Unset renders an empty key, which Dex
-# accepts (cookies simply go unencrypted), so this is an ordering requirement
-# rather than a hard dependency.
-ensure-dex-session-key.sh
 # Cold-boot safe: ensure-dex.sh's trailing `docker restart dex` is guarded on the
 # container existing, so running it before the stack has ever come up is a no-op.
 ensure-dex.sh
 # ensure-admin-gate-secret.sh MUST run before ensure-user-compose-stack-up.sh: it
 # mints ADMIN_ASSERTION_SECRET into .pcs.secret.env / .env, which the admin gate
 # and the admin app both interpolate. Without it the dashboard authenticates
-# nobody (it fails closed).
+# nobody (it fails closed). Enforced by order alone — self-check.sh re-runs this
+# whole list when a sync changes it, so a newly-delivered script lands in its
+# configured position rather than at the end.
 ensure-admin-gate-secret.sh
 ensure-user-compose-pulled.sh
 ensure-user-compose-stack-up.sh

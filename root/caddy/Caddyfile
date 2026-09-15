@@ -75,7 +75,7 @@
 #
 # `maison` is the AppShield gate in the maison stack — the authenticated front
 # door to the dashboard. Pointing this at `maison-app` would publish the
-# dashboard with no auth at all. Default was casaos:8080 before CasaOS was removed.
+# dashboard with no auth at all.
 # =============================================================================
 
 # Root domain via gateway (custom CA)

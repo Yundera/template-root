@@ -80,8 +80,8 @@ sessions:
   absoluteLifetime: "720h"
   validIfNotUsedFor: "720h"
 
-  # Encrypts the session cookie. Minted by ensure-dex-session-key.sh; must be
-  # 16, 24 or 32 BYTES. Empty is legal and simply leaves cookies unencrypted.
+  # Encrypts the session cookie. Minted by ensure-dex.sh; must be 16, 24 or 32
+  # BYTES. Empty is legal and simply leaves cookies unencrypted.
   cookieEncryptionKey: "${DEX_SESSION_KEY}"
 
   # Share one Dex session across every client. The default is "none", which
@@ -118,9 +118,5 @@ sessions:
 # account is claimed over SSH.
 connectors:
 
-  # REMOVED: the `casaos` connector (federated to casaos-oidc-bridge, which
-  # authenticated against CasaOS's /v1/users/login). Authelia above is the PCS's
-  # local credential store now, so the CasaOS path was a second local identity for
-  # the same person — and one that dies with CasaOS in phase 3. The bridge service
-  # was removed from stacks/casaos/docker-compose.yml at the same time; it had no
-  # other consumer. See doc/maison-migration.md.
+  # Connectors this template no longer ships, and the ids they still hold, are in
+  # doc/auth-history.md. Dex refuses to start on a duplicate connector id.

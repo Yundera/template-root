@@ -85,6 +85,36 @@ services:
       # Gate session lifetime: 30 days (matches the AppShield default; pinned
       # explicitly so the PCS-wide 30-day session policy is visible here).
       SESSION_DURATION_HOURS: "720"
+      # Trust the mesh-router CA *on top of* the image's baked-in roots. Required
+      # by the extra_hosts pin below: once this gate resolves auth-${DOMAIN}
+      # on-box, its back-channel TLS terminates at this PCS's own Caddy, which
+      # serves that host with the mesh-router CA (the `gateway_tls` snippet in
+      # caddy/Caddyfile) rather than a publicly-trusted certificate — the public
+      # path only ever validated because Cloudflare re-terminated TLS on the way
+      # through.
+      #
+      # SSL_CERT_DIR and NOT SSL_CERT_FILE: Go unions certFiles with
+      # certDirectories, so a directory ADDS roots, while SSL_CERT_FILE REPLACES
+      # the image's /etc/ssl/certs/ca-certificates.crt outright.
+      SSL_CERT_DIR: "/ca"
+    # KEEP THE OIDC BACK-CHANNEL ON THE BOX. The gate is handed
+    # `issuer_url: https://auth-${DOMAIN}` by auth-registrar and from then on does
+    # discovery, the code->token exchange and the JWKS fetch against that public
+    # hostname. Resolved publicly, those server-to-server calls leave the PCS,
+    # cross Cloudflare and the mesh-router CF Worker, and re-enter this same
+    # machine — a round trip through two proxies for traffic between two
+    # containers on this bridge, and one that has been observed answering ~70% of
+    # requests with an empty body. Pin the name to this host instead. The browser
+    # is untouched: it resolves auth-${DOMAIN} publicly as before and receives the
+    # same absolute authorize/logout URLs, and the issuer string does not change,
+    # so go-oidc's issuer check still passes.
+    #
+    # Full write-up — why a pin rather than plain HTTP or an endpoint override, and
+    # what was actually measured — is on the `admin` gate in the yundera stack's
+    # docker-compose.yml. Every AppShield gate on a PCS needs this same pair
+    # (extra_hosts + SSL_CERT_DIR + the /ca mount); keep them in step.
+    extra_hosts:
+      - "auth-${DOMAIN}:host-gateway"
     volumes:
       # Gate state under /data: persisted login sessions (sessions.json,
       # AppShield >= 2.0.6 — older images simply don't write it) and the MCP
@@ -93,6 +123,11 @@ services:
       # stack's own folder (deploy-stack.sh only ever writes docker-compose.yml
       # and .env there) so it shares the app's lifecycle.
       - /DATA/AppData/maison/gate-data:/data
+      # The mesh-router CA that SSL_CERT_DIR above points at. Written straight here
+      # by mesh-router-agent (CA_CERT_PATH in the yundera stack) — its own directory
+      # precisely so the gates can mount it without also mounting key.pem. A CA
+      # certificate is public; the key beside it is not.
+      - /DATA/AppData/yundera/data/ca:/ca:ro
     depends_on:
       - maison-app
     networks:

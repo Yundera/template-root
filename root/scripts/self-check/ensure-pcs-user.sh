@@ -53,6 +53,12 @@ fi
 mkdir -p /DATA/AppData/yundera/scripts
 mkdir -p /DATA/AppData/yundera/log
 mkdir -p /DATA/AppData/yundera/data/certs
+# data/ca holds only the mesh-router CA: mesh-router-agent writes it there
+# (CA_CERT_PATH) so the AppShield gates can mount a CA without also mounting the
+# key.pem beside it. Declared here with its sibling rather than left to Docker to
+# invent on the agent's mount, so the layout is stated in one place and the chown
+# below covers it like the rest of the tree.
+mkdir -p /DATA/AppData/yundera/data/ca
 mkdir -p /DATA/AppData/yundera/data/caddy/data
 mkdir -p /DATA/AppData/yundera/data/caddy/config
 
