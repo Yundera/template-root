@@ -224,15 +224,15 @@ services:
       pcs: null
 
 
-  # NOTE: CasaOS is gone (Maison migration phase 3). It was split out of this
-  # stack in phase 1 precisely so that retiring it would be a stack deletion
+  # NOTE: CasaOS is gone (Maison migration phase 3, 2026-08-02). It was split out
+  # of this stack in phase 1 precisely so that retiring it would be a stack deletion
   # rather than surgery on this file — and it was: stacks/casaos/ and
-  # ensure-casaos-stack.sh are deleted, and the container is torn down on
-  # existing hosts by scripts/migrations/2026-08-02-14-remove-casaos-stack.sh,
-  # which also repoints the root domain (DEFAULT_SERVICE_HOST) at the Maison
-  # AppShield gate. `casaos-oidc-bridge` died earlier — Authelia is the local
-  # credential now. /DATA/AppData/casaos survives as a plain directory: it holds
-  # apps/, including apps/yundera, which is this stack. See doc/maison-migration.md.
+  # ensure-casaos-stack.sh are deleted, and the container was torn down on existing
+  # hosts by a teardown migration (retired 2026-09-08) that also repointed the root
+  # domain (DEFAULT_SERVICE_HOST) at the Maison AppShield gate. `casaos-oidc-bridge`
+  # died earlier — Authelia is the local credential now. /DATA/AppData/casaos
+  # survives as a plain directory of dead data, including the stale pre-2026-09-08
+  # copy of this stack at apps/yundera. See doc/maison-migration.md.
 
 
 

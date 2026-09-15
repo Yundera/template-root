@@ -102,9 +102,7 @@
 /onboarding.d/
 # Set while a box is provisioning; self-check.sh refuses to run while it exists.
 /.provisioning-in-progress
-# The tile icon Maison renders this stack from, placed at the flip.
+# The tile icon Maison renders this stack from. Derived from the synced icon.svg
+# by ensure-template-sync.sh, so it is written into the root rather than shipped
+# in the tree, and must not be deleted by the sync that produces it.
 /.icon.svg
-# Provenance marker from the retired mirrors. Kept so that a box rolled back to
-# a template that still runs one finds its own marker and reclaims the folder
-# instead of refusing to touch it.
-/.casaos-mirror

@@ -211,7 +211,7 @@ mkdir -p "$YND_ROOT"
 # wrong we do not know what else it is wrong about, and a PCS running last
 # week's template is a far better outcome than one missing its user database.
 # ---------------------------------------------------------------------------
-PROTECTED_RE='^(auth|dex|dex-frontend|data|admin|onboarding(\.d)?|log|migration-markers)(/|$)|^\.(env|pcs\.env|pcs\.secret\.env|ynd\.user\.env|provisioning-in-progress|self-check-cron-disabled|icon\.svg|casaos-mirror)$'
+PROTECTED_RE='^(auth|dex|dex-frontend|data|admin|onboarding(\.d)?|log|migration-markers)(/|$)|^\.(env|pcs\.env|pcs\.secret\.env|ynd\.user\.env|provisioning-in-progress|self-check-cron-disabled|icon\.svg)$'
 DEL_LIST=$(rsync "${RSYNC_OPTS[@]}" --dry-run --itemize-changes \
                "$TEMPLATE_ROOT/" "$YND_ROOT/" 2>/dev/null \
            | sed -n 's/^\*deleting  *//p' || true)
@@ -262,6 +262,26 @@ else
     # failed sync is exactly the moment to keep the copy rather than spend it.
     [ -d "$BACKUP_DIR" ] && { rm -rf "$YND_ROOT"; cp -a "$BACKUP_DIR" "$YND_ROOT"; }
     exit $rsync_exit_code
+fi
+
+# The Settings tile's icon. Maison renders a managed app's tile from `.icon.<ext>`
+# beside its compose in preference to the compose's `icon:` URL, which is what keeps
+# the tile from going blank on an offline box or a moved repo path.
+#
+# This used to be step 4 of migrations/2026-09-08-12-move-root-to-maison.sh (retired
+# 2026-09-15), which meant it only ever ran on boxes that flipped: that migration
+# returned early on the fresh-install branch, so no PCS created after the move was
+# ever given one. It belongs here — `icon.svg` arrives with the sync above and
+# `.icon.svg` is derived from it, so the pair converges on every box, every cycle.
+# `.icon.svg` is excluded from the sync itself (root/.ignore), so rsync will not
+# delete what we write here.
+#
+# ABOVE the chown below, not after it: this script runs under `set -e`, and the
+# recursive chown is the last thing that can abort it. Placed here the icon is
+# already in place when that runs, and it picks up pcs:pcs from the same sweep.
+if [ -f "$YND_ROOT/icon.svg" ] && ! cmp -s "$YND_ROOT/icon.svg" "$YND_ROOT/.icon.svg"; then
+    cp -a "$YND_ROOT/icon.svg" "$YND_ROOT/.icon.svg"
+    echo "✓ Settings tile icon refreshed (.icon.svg)"
 fi
 
 # Set proper ownership and permissions

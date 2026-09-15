@@ -2,8 +2,8 @@
 # deploy-stack.sh <stack-name> <dest-dir> [EXTRA_KEY=value ...]
 #
 # Deploys one of the auxiliary compose stacks shipped under
-# /DATA/AppData/yundera/stacks/<stack-name>/ (currently `casaos` and
-# `maison` — see doc/maison-migration.md) to its own project directory:
+# /DATA/AppData/yundera/stacks/<stack-name>/ (currently `maison` and `kopia`) to
+# its own project directory:
 #
 #   1. copy stacks/<stack-name>/docker-compose.yml -> <dest-dir>/docker-compose.yml
 #   1b. copy stacks/<stack-name>/icon.<ext> -> <dest-dir>/.icon.<ext>, the file
@@ -19,12 +19,14 @@
 #
 # The generated <dest-dir>/.env is chmod 600: it carries DEFAULT_PWD, PROVIDER_STR,
 # USER_JWT and friends, exactly as the yundera .env does. It is chowned to 1000:1000
-# (pcs, who owns /DATA) rather than left root-owned, because casaos-app-management
-# runs as uid 1000 and reads it: it enumerates EVERY compose project on the box and
-# loads each one from its config file, so a 0600 root-owned .env makes the whole
-# project fail to load ("open <dest>/.env: permission denied") and the stack silently
-# vanishes from CasaOS's app grid. Same reasoning as the chown in
-# ensure-maison-{app,yundera}-mirror.sh.
+# (pcs, who owns /DATA) rather than left root-owned. KEEP THE CHOWN, but not for the
+# reason it was written: it was casaos-app-management, which ran as uid 1000,
+# enumerated every compose project and dropped any whose .env it could not read.
+# That component is gone and maison-app runs as root, so it would read a root-owned
+# file fine. What still needs 1000 is everything downstream that does NOT run as
+# root — Maison writes app files as PUID:PGID 1000 and the kopia backup engine reads
+# them as the same uid, which is where a root-owned 0600 file inside an app
+# directory turns into a failed backup rather than a missing tile.
 #
 # Retries mirror ensure-user-compose-{pulled,stack-up}.sh: GHCR resets from Contabo
 # are common enough that a single transient failure must not fail the self-check.
@@ -135,7 +137,7 @@ fi
 
 # Unconditional (not inside the branch above): the file may already exist with the
 # right content but the wrong owner, from a template version that predates this.
-# See the header note — casaos-app-management (uid 1000) must be able to read it.
+# See the header note for why 1000 rather than root.
 chown 1000:1000 "$DEST_ENV" 2>/dev/null || true
 
 # --- 3. pull + up ----------------------------------------------------------

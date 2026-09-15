@@ -9,19 +9,16 @@
 # /DATA/AppData/casaos/apps/yundera. They race on
 # /var/run/yundera-self-check.lock, the loser exits 0 without doing anything,
 # and which tree actually converges on a given boot is a coin flip. That is the
-# kind of failure nobody notices for months.
+# kind of failure nobody notices for months. Keep the marker pattern.
 #
-# The un-marked legacy line is swept explicitly below: boxes that already carry
-# it were given it by the old code, which wrote no marker.
-#
-# RETIRE THE LEGACY SWEEP (not the marker pattern — that stays) once no box has
-# an @reboot entry pointing at the old root: `sudo crontab -l | grep casaos`.
-# The marker pattern alone cannot remove it, because the old code wrote no marker.
+# The one-off sweep of that un-marked legacy line was retired 2026-09-15: no box
+# in the fleet carries one (`sudo crontab -l | grep casaos` is empty everywhere).
+# It had to be explicit while it lasted, because the old code wrote no marker for
+# the marker pattern to match on.
 
 set -e  # Exit on any error
 
 YND_ROOT="/DATA/AppData/yundera"
-LEGACY_ROOT="/DATA/AppData/casaos/apps/yundera"
 
 if [ -f /.dockerenv ]; then
     echo "Inside Docker - dev environment detected. Skipping setup."
@@ -40,11 +37,10 @@ chmod +x "$scriptFile"
 
 CURRENT=$(crontab -l 2>/dev/null || true)
 
-# Drop (a) any entry we manage, and (b) the unmarked legacy entry pointing at the
-# old root. Anything else in the user's crontab is left exactly as it is.
+# Drop any entry we manage. Anything else in the user's crontab is left exactly
+# as it is.
 FILTERED=$(printf '%s\n' "$CURRENT" \
     | grep -vF "$MARKER" \
-    | grep -vF "@reboot $LEGACY_ROOT/scripts/self-check-reboot.sh" \
     || true)
 
 # Both sides of the comparison below come from `$(...)`, which strips the

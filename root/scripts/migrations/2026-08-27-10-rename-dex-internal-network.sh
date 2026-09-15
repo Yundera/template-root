@@ -25,21 +25,15 @@
 # or reboot), once the containers have moved. Best-effort throughout: a migration
 # failure aborts template sync, and an unused empty bridge is not worth blocking
 # an update over.
+#
+# THAT CONDITIONAL MARKER DOES NOT CURRENTLY WORK — see run-migrations.sh, which
+# writes a marker after any exit 0. Every box in the fleet carries this marker
+# and still has the dex-internal network. Not addressed here; it is a runner bug,
+# not a migration bug.
 
 set -euo pipefail
 
 MIGRATION_NAME="$(basename "$0")"
-# The NEW root (the 2026-09-08 move). This was the legacy root, and the
-# `mkdir -p` below therefore CREATED /DATA/AppData/casaos/apps/yundera on every
-# host it ran on — including fresh ones, where nothing else does any more now
-# that the orchestrator stages at PCS_BOOTSTRAP_ROOT. This migration sorts ahead
-# of 2026-09-08-12-move-root-to-maison.sh, so it manufactured exactly the Root A
-# that migration's old `[ -d ]` guard read as "this is a pre-move box".
-#
-# Repointing is a no-op for boxes that already ran it: run-migrations.sh seeds
-# the whole marker directory from the legacy root, and the runner's own marker
-# for this script has the same filename, so it is already present at the new
-# root on every box that has flipped.
 MARKER_FILE="/DATA/AppData/yundera/migration-markers/$(basename "$0" .sh).marker"
 
 OLD_NETWORK="dex-internal"

@@ -1,9 +1,9 @@
 #!/bin/bash
 # ensure-maison-stack.sh - Deploy Maison behind its AppShield gate.
 #
-# Maison (github.com/Yundera/Maison) is the dashboard-only CasaOS replacement.
-# Phase 1 runs it ALONGSIDE CasaOS: it lists and can manage every app, while CasaOS
-# stays the only installer. See doc/maison-migration.md.
+# Maison (github.com/Yundera/Maison) is the dashboard-only CasaOS replacement, and
+# since phase 3 (2026-08-02) the only one — it lists, installs and manages every
+# app. It ran alongside CasaOS during phase 1. See doc/maison-migration.md.
 #
 # It was called CasaDash until 1.1.0. The rebrand renamed the image, the repo, the
 # compose project, both containers, the public host and this deployment directory —
