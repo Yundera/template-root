@@ -43,6 +43,23 @@ fi
 SCRIPT_DIR="/DATA/AppData/yundera/template/scripts"
 source "${SCRIPT_DIR}/library/common.sh"
 
+# BOOTSTRAP THE EXEC BITS BEFORE TRUSTING ANY SCRIPT IN THE TREE.
+#
+# ensure-script-executable.sh (step 2 of scripts-config.txt) exists to keep this
+# tree executable, and it cannot fix the one case that matters: if the tree
+# arrives mode 644, execute_script_with_logging refuses to run it —
+# `[ ! -x "$script_path" ] && return 1` in library/log.sh — so the repair script
+# is itself unrunnable, and so is ensure-template-sync.sh, so no later template
+# can land. A box in that state never recovers without someone SSHing in.
+#
+# Three lines here close that paradox: we are already running, so we can always
+# restore the bits before the first execute_script_with_logging call. Cheap
+# (~60 files), idempotent, and it makes a whole class of delivery bug — a sync
+# that loses modes, a bad umask, a restore from an archive that drops them —
+# self-healing instead of terminal. wisera hit exactly this on 2026-09-16 during
+# the template-subtree crossover and had to be repaired by hand.
+find "$SCRIPT_DIR" -type f -name '*.sh' -exec chmod +x {} \; 2>/dev/null || true
+
 # Run the core self-check with the lock-bypass flag so it doesn't try to
 # re-acquire the lock we already hold. On the @reboot cron path, failures
 # don't abort — we still want to bring the user compose stack up on a

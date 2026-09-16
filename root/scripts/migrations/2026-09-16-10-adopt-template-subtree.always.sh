@@ -79,6 +79,35 @@ else
     exit 0
 fi
 
+# SET EXEC BITS ON THE SOURCE, BEFORE THE GUARD AND BEFORE ANY RSYNC.
+#
+# This is not housekeeping — without it the crossover BRICKS THE BOX, and it has
+# to happen here because there is nowhere else it can.
+#
+# The old on-disk ensure-template-sync.sh sets exec bits on the downloaded tree
+# with `find "$TEMPLATE_ROOT/scripts" ...`. Post-split that path is the two-file
+# compatibility shim, not the template tree, so its rsync copies all 62 scripts
+# to $YND_ROOT/template/scripts with mode 644 — and its closing chmod sweeps
+# $YND_ROOT/scripts, the legacy tree, missing them again.
+#
+# That is unrecoverable without SSH, because execute_script_with_logging
+# (library/log.sh) REFUSES a non-executable script — `[ ! -x ] && return 1` —
+# rather than invoking it through bash. So on the next cycle every ensure-*
+# script under template/scripts fails the same way, including
+# ensure-script-executable.sh (which exists to fix exactly this, and cannot run)
+# and ensure-template-sync.sh (so no later template can ever land). Self-locking,
+# fleet-wide, the same shape as the `.casaos-mirror` deadlock.
+#
+# We cannot patch the old script — it is already on the box, mid-run, a release
+# behind. But we run BEFORE its rsync, and rsync -a preserves modes, so setting
+# the bits on the source here is what carries them to the destination. Observed
+# on wisera 2026-09-16 (exit 126 from every tool invocation) before this existed.
+#
+# Unconditional and ahead of the guard below: a box that already crossed over
+# without the bits still needs this, and it is idempotent.
+echo "Setting exec bits on $NEW_SCRIPTS (the old sync script chmods the wrong directory)"
+find "$NEW_SCRIPTS" -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
+
 # A box with no legacy tree is either freshly built or already crossed over.
 if [ ! -d "$LEGACY_SCRIPTS" ]; then
     echo "No legacy tree at $LEGACY_SCRIPTS — box is already on the subtree layout"

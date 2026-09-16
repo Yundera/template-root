@@ -121,6 +121,45 @@ fleet: `+ /auth/configuration.yml.tmpl` made that file a deletion candidate once
 had not yet received `cbac878` would have refused, permanently. The include was removed; see
 the note in `root/.ignore`.
 
-Still to verify on a real box (`UPDATE_URL` pinned to a `file://` tarball, on holyhorse or
-wisera): cron rewriting, the compose restart against the moved `caddy` bind, and Dex/Authelia
-rendering from the moved templates.
+### wisera, 2026-09-16 — the crossover that found the exec-bit bug
+
+The first real crossover ran on wisera against `main`. The sync itself succeeded and the
+migration did its job, then every step afterwards failed with exit 126:
+
+```
+/DATA/AppData/yundera/template/scripts/tools/env-file-manager.sh: Permission denied
+```
+
+Zero of the 62 scripts under `template/scripts` were executable. The old on-disk script sets
+exec bits with `find "$TEMPLATE_ROOT/scripts" ...`, which post-split is the **compatibility
+shim**, not the template tree; its closing chmod then sweeps `$YND_ROOT/scripts`, the legacy
+tree, missing them again. The tree arrived mode 644.
+
+**This does not heal itself.** `execute_script_with_logging` (`library/log.sh`) refuses a
+non-executable script — `[ ! -x "$script_path" ] && return 1` — instead of invoking it through
+bash. So on every later cycle `ensure-script-executable.sh`, which exists to repair exactly
+this, cannot run; and neither can `ensure-template-sync.sh`, so no corrected template can ever
+land. Self-locking and fleet-wide, the same shape as the `.casaos-mirror` deadlock. wisera was
+repaired by hand (`chmod +x`), after which the next cycle completed clean and cron flipped to
+`template/scripts/`.
+
+Two fixes, both shipped:
+
+1. **The migration sets exec bits on the SOURCE**, unconditionally and ahead of its own guard.
+   It runs before the old script's rsync, and `rsync -a` preserves modes, so this is the only
+   available hook — the script with the wrong `find` is already on the box, a release behind.
+2. **`self-check.sh` and `self-check-reboot.sh` chmod `$SCRIPT_DIR` before the first
+   `execute_script_with_logging` call**, closing the bootstrap paradox in general: any future
+   delivery that loses modes now self-heals rather than bricking the box.
+
+Verified by replaying a crossover with the archive forced to mode 644 — 0/62 executable
+reproduced, 62/62 after the fix, including `ensure-template-sync.sh`,
+`ensure-script-executable.sh` and the cron target.
+
+### Still unverified
+
+The wisera run covered cron rewriting, the compose restart against the moved `caddy` bind, and
+Dex/Authelia rendering from the moved templates — all green, stack healthy, Maison still
+rendering the tile from `.icon.svg`. What it did **not** cover is a crossover with the exec-bit
+fix in place from the start: wisera crossed before the fix existed and was repaired by hand. A
+clean end-to-end crossover on a still-pre-split box (holyhorse) is worth doing before `stable`.
