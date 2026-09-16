@@ -1,0 +1,63 @@
+#!/bin/bash
+# Ensure the @reboot self-check cron entry exists, and that there is exactly ONE.
+#
+# MANAGED BY MARKER COMMENT, like ensure-nightly-self-check.sh: strip every line
+# carrying our marker, then write the entry we want. KEEP THAT PATTERN. Testing
+# `crontab -l | grep -q "$scriptFile"` and appending on a miss — which is what
+# this used to do — can only ever add, so any change to the script path leaves a
+# box with TWO @reboot entries pointing at two different trees. They race on
+# /var/run/yundera-self-check.lock, the loser exits 0 without doing anything, and
+# which tree converges on a given boot is a coin flip. That is the kind of
+# failure nobody notices for months.
+
+set -e  # Exit on any error
+
+YND_ROOT="/DATA/AppData/yundera"
+
+YND_TEMPLATE="$YND_ROOT/template"
+
+if [ -f /.dockerenv ]; then
+    echo "Inside Docker - dev environment detected. Skipping setup."
+    exit 0
+fi
+
+# Install cron if crontab command is not available
+"$YND_TEMPLATE/scripts/tools/ensure-packages.sh" cron
+
+scriptFile="$YND_TEMPLATE/scripts/self-check-reboot.sh"
+MARKER="# YUNDERA_REBOOT_SELFCHECK"
+CRON_ENTRY="@reboot $scriptFile $MARKER"
+
+# Ensure the script file is executable
+chmod +x "$scriptFile"
+
+CURRENT=$(crontab -l 2>/dev/null || true)
+
+# Drop any entry we manage. Anything else in the user's crontab is left exactly
+# as it is.
+FILTERED=$(printf '%s\n' "$CURRENT" \
+    | grep -vF "$MARKER" \
+    || true)
+
+# Both sides of the comparison below come from `$(...)`, which strips the
+# trailing newline — so build DESIRED the same way rather than with a trailing
+# \n, or the two can never be equal and this rewrites the crontab every tick.
+if [ -n "$FILTERED" ]; then
+    DESIRED=$(printf '%s\n%s' "$FILTERED" "$CRON_ENTRY")
+else
+    DESIRED="$CRON_ENTRY"
+fi
+
+# Only rewrite when something actually changes — `crontab -` is a full replace,
+# and doing it on every tick would churn the file's mtime for nothing.
+if [ "$CURRENT" = "$DESIRED" ]; then
+    echo "@reboot cron job is correct"
+    exit 0
+fi
+
+if printf '%s\n' "$DESIRED" | crontab -; then
+    echo "@reboot cron job set to: $scriptFile"
+else
+    echo "ERROR: Failed to write the @reboot cron job"
+    exit 1
+fi

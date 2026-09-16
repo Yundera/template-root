@@ -34,7 +34,7 @@ Three self-check scripts, in this order (`scripts/self-check/scripts-config.txt`
 | Script | Writes |
 |---|---|
 | `ensure-backup-credentials.sh` | `.pcs.secret.env`: `BACKUP_DEVICE_ID`, `BACKUP_ENDPOINT`, `BACKUP_BUCKET`, `BACKUP_PREFIX`, `BACKUP_ACCESS_KEY_ID`, `BACKUP_SECRET_ACCESS_KEY`, `BACKUP_EXPIRES_AT`, `BACKUP_WRITABLE`, `BACKUP_STATUS` |
-| `ensure-backup-config.sh` | `/DATA/AppDataShared/backup/kopia/`: `repository.config` (once), `repository.password` (once), `credentials.env` (per rotation), `state.json` (per run), `needs-credentials` / `needs-recovery` markers |
+| `ensure-backup-config.sh` | `/DATA/AppData/kopia/engine/`: `repository.config` (once), `repository.password` (once), `credentials.env` (per rotation), `state.json` (per run), `needs-credentials` / `needs-recovery` markers |
 | `ensure-kopia-stack.sh` | `/DATA/AppData/kopia/{docker-compose.yml,.env}`; brings up `kopia-engine` (Maison's `docker exec` target) and the kopia UI behind an AppShield gate |
 
 The single knob for all three is **`BACKUP_ENABLED` in `.pcs.env`, and absent means
@@ -67,8 +67,8 @@ self-check.sh — scripts-config.txt order, then @reboot + nightly
   ├─ ensure-backup-config.sh
   │     reads  BACKUP_*
   │     runs   kopia repository create | connect   (identity pinned to BACKUP_DEVICE_ID)
-  │     writes → /DATA/AppDataShared/backup/kopia/{repository.config,repository.password,
-  │                                                credentials.env,state.json}
+  │     writes → /DATA/AppData/kopia/engine/{repository.config,repository.password,
+  │                                           credentials.env,state.json,adapter.json}
   ├─ ensure-kopia-stack.sh         → kopia-engine + kopia UI
   │
   └─ ensure-maison-stack.sh
@@ -208,6 +208,11 @@ box with the seeded `{}` needs nothing either way.
 ---
 
 ## Field notes, 2026-09-04
+
+> Paths below are as they were read on the day. The engine directory has since moved
+> from `/DATA/AppDataShared/backup/<engine>/` to `/DATA/AppData/<engine>/engine/`; these
+> notes keep their original spelling rather than being rewritten, because they are a
+> record of what was observed.
 
 Two boxes read while diagnosing this. Both carry a hand-saved
 `{"enabled": true, "engine": "kopia", …}` with the empty `smtp` block an older Maison

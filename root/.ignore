@@ -30,10 +30,63 @@
 # template one day ships under stacks/<x>/ is delivered rather than silently
 # skipped for the lifetime of the fleet.
 
+# --- CROSSOVER BLOCK — PERMANENT, DO NOT SCHEDULE ITS REMOVAL -----------------
+#
+# The template tree moved under template/ (doc/template-subtree.md). The script
+# that reads THIS FILE on a crossover cycle is the OLD ensure-template-sync.sh
+# already on the box, which still runs `rsync -a --delete` over the whole of
+# $YND_ROOT. So this file has to protect the legacy top-level tree as well as
+# the state — otherwise that sync deletes the very scripts the current
+# self-check run is still iterating over, and the cron entry it wrote points at
+# a path that no longer exists. A box that stops self-checking has no remote
+# recovery path.
+#
+# Nothing NEW is ever written to these paths: they are frozen copies from the
+# moment 2026-09-16-10-adopt-template-subtree.always.sh refreshes them.
+#
+# THIS BLOCK IS NOT A TRANSITION ARTEFACT TO BE TIDIED AWAY LATER. There is no
+# safe date to remove it. A box on UPDATE_URL=frozen, one that has been powered
+# off, or one built from an old image can arrive here months from now still on
+# the pre-split layout; if it downloads a tree with no .ignore, its old on-disk
+# script hits `[ ! -f "$TEMPLATE_ROOT/.ignore" ] && exit 1`, fails its sync, and
+# never updates again — silently, because the self-check completion signal does
+# not distinguish "refused" from "never ran".
+#
+# The `.casaos-mirror` deadlock (see the header, and ensure-template-sync.sh)
+# is what a "safe" cleanup of a cross-release compatibility surface actually
+# costs. The price of keeping this is a few inert lines no post-split box reads.
+# See root/scripts/README.MD for the matching argument about the shim.
+#
+# template/ is deliberately NOT listed. The old sync is what delivers it.
+/scripts/
+/caddy/
+/dex-theme/
+/stacks/
+/dex.config.yaml.tmpl
+
 # --- the template's own file inside a protected directory --------------------
-# Rendered by ensure-authelia.sh into auth/configuration.yml; the template is
-# the only thing in auth/ we own, and it must keep being updated.
-+ /auth/configuration.yml.tmpl
+# RETIRED, AND THE LINE THAT WAS HERE WOULD HAVE DEADLOCKED THE FLEET.
+#
+# This used to be `+ /auth/configuration.yml.tmpl` — an include carved out of
+# /auth/** so that the one file in auth/ the template owns kept being updated in
+# place. The subtree split moves that file to template/auth/, so on the
+# transition cycle it is present in the destination and absent from the source's
+# top level: an include makes it a DELETION CANDIDATE, and `auth/` is the first
+# alternative in the old script's PROTECTED_RE. Every box in the fleet still
+# carrying that regex — i.e. every box until `stable` ships cbac878 — would have
+# printed "REFUSING SYNC: --delete would remove protected state" and stopped
+# updating. And because the refusal is what stops the sync, the box could never
+# receive the fix: the same unrecoverable deadlock `.casaos-mirror` caused on
+# wisera, fleet-wide.
+#
+# Dropping the include lets /auth/** cover the whole directory again: rsync does
+# not descend into it, so nothing in auth/ is a transfer or a delete candidate.
+# The legacy copy at $YND_ROOT/auth/configuration.yml.tmpl goes unread from the
+# moment the post-split ensure-authelia.sh starts reading it from $YND_TEMPLATE,
+# and is left where it is like the rest of the legacy tree.
+#
+# Found by simulating a crossover cycle against a fixture box before release:
+# the include was still here on the first run, and it refused.
 
 # --- per-host state that predates the root move ------------------------------
 /.env

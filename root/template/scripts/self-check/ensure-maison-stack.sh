@@ -1,0 +1,237 @@
+#!/bin/bash
+# ensure-maison-stack.sh - Deploy Maison behind its AppShield gate.
+#
+# Maison (github.com/Yundera/Maison) is the dashboard-only CasaOS replacement, and
+# since phase 3 (2026-08-02) the only one — it lists, installs and manages every
+# app. It ran alongside CasaOS during phase 1. See doc/maison-migration.md.
+#
+# It was called CasaDash until 1.1.0. The rebrand renamed the image, the repo, the
+# compose project, both containers, the public host and this deployment directory —
+# see the legacy-locations block below for what that costs an already-provisioned PCS.
+#
+# Deployed to /DATA/AppData/maison. The name carries no leading dot, so Maison's
+# own managed-app scan of /DATA/AppData (it skips any name containing a dot) picks the
+# stack up and the dashboard tiles itself. That is deliberate: it is not hidden.
+#
+# SECURITY: Maison ships with no authentication whatsoever and mounts the Docker
+# socket. The compose file never publishes its port — the AppShield gate in the same
+# stack is the only way in. Do not "temporarily" add a ports: mapping to debug.
+#
+# ORDERING: must run AFTER ensure-user-compose-stack-up.sh — the `pcs` network is
+# owned by the yundera stack and joined here as external, and the gate depends on
+# auth-registrar / dex (yundera stack) being reachable by name on that network.
+set -euo pipefail
+
+YND_ROOT="/DATA/AppData/yundera"
+
+YND_TEMPLATE="$YND_ROOT/template"
+source "$YND_TEMPLATE/scripts/library/log.sh"
+
+# The maison container talks to the Docker socket as a non-root user, so it needs
+# the socket's group. Resolve it from the host rather than assuming the usual 999.
+if [ ! -S /var/run/docker.sock ]; then
+    log_error "/var/run/docker.sock not found; cannot determine DOCKER_GID"
+    exit 1
+fi
+DOCKER_GID="$(stat -c '%g' /var/run/docker.sock)"
+
+# Maison stamps container timezones from TZ. The unified .env does not carry it.
+if [ -f /etc/timezone ]; then
+    TZ="$(cat /etc/timezone 2>/dev/null || echo UTC)"
+elif [ -L /etc/localtime ]; then
+    TZ="$(readlink /etc/localtime | sed 's|.*/zoneinfo/||')"
+else
+    TZ="UTC"
+fi
+
+# --- legacy location ----------------------------------------------------------
+# The 1.1.0 rebrand moved the deployment directory from /DATA/AppData/casadash to
+# /DATA/AppData/maison, and with it the compose project name (`name:` inside the
+# stack file) and both container names.
+# A PCS provisioned before the rebrand therefore has a live `casadash` project that
+# THIS script would otherwise never touch again: `docker compose ... -d` on the new
+# project cannot see it, --remove-orphans only reaches orphans of its own project, and
+# nothing else on the box owns it. It would keep running forever, holding the
+# `casadash-${DOMAIN}` Caddy labels and the Docker socket.
+#
+# So take it down explicitly, then MOVE the directory rather than recreating it: it is
+# also the dashboard's state directory, holding settings.json and the store cache.
+# Recreating it empty would silently reset the user's dashboard. deploy-stack.sh below
+# then overwrites only docker-compose.yml and .env in the moved folder, which is
+# exactly what should change.
+#
+# gate-data/ moves with it but its sessions do not survive in practice: the public host
+# changes from casadash-${DOMAIN} to maison-${DOMAIN}, so every existing session cookie
+# is on an origin that no longer routes. Users log in once more after the rebrand, and
+# old bookmarks to casadash-${DOMAIN} stop resolving. Nothing recovers that — the
+# hostname is the app's identity to both Caddy and the OIDC registrar.
+#
+# One-way and idempotent: once /DATA/AppData/maison exists this whole block is a no-op
+# except for the teardown, which is itself a no-op with no old project on the box.
+LEGACY_DIR="/DATA/AppData/casadash"
+MAISON_DIR="/DATA/AppData/maison"
+
+if [ -d "$LEGACY_DIR" ]; then
+    if [ -f "$LEGACY_DIR/docker-compose.yml" ] && docker compose version >/dev/null 2>&1; then
+        log_info "Rebrand: taking down the legacy 'casadash' compose project"
+        # No --volumes: the stack declares none, and a future one must not be wiped
+        # by a migration. --remove-orphans clears the pre-1.1.0 container names.
+        docker compose --project-directory "$LEGACY_DIR" \
+            -f "$LEGACY_DIR/docker-compose.yml" down --remove-orphans \
+            || log_warn "Rebrand: 'casadash' teardown failed; continuing"
+    fi
+
+    if [ -e "$MAISON_DIR" ]; then
+        # Both present — the move already happened (or something else owns the new
+        # path). Never merge: drop the leftovers rather than guess.
+        log_warn "Rebrand: $MAISON_DIR already exists; discarding leftover $LEGACY_DIR"
+        rm -rf "$LEGACY_DIR"
+    else
+        mv "$LEGACY_DIR" "$MAISON_DIR"
+        # The stack file and .env carry the old project's names; deploy-stack.sh
+        # rewrites both from the template a few lines below.
+        log_info "Rebrand: moved $LEGACY_DIR to $MAISON_DIR (state preserved)"
+    fi
+fi
+
+# --- .env.app: what every app Maison installs receives -----------------------
+# The deployment's statement of the world it places apps into: the network they join,
+# the domain and public IP their Caddy routes are templated with, the identity they seed
+# an admin account from. Maison forwards each key below into every app's own .env, on
+# install and again on every start — so a box that changes domain or IP carries its apps
+# with it, instead of stranding them on the deployment they were installed against.
+# See Maison's docs/app-env.md.
+#
+# It goes in the stack's own directory, which is also Maison's state directory
+# (STATE_DIR, left unset so it defaults to DATA_ROOT/AppData/maison). Written BEFORE
+# deploy-stack.sh, so a first-ever install finds it already there and never falls back
+# to Maison's built-in default — that
+# default is a standalone local install (`APP_NET=mesh`, no domain), and `mesh` does not
+# exist on a PCS, so every app would fail to start.
+#
+# Rewritten on every self-check from the unified .env, the single source of environment
+# truth.
+APPENV_DIR="$MAISON_DIR"
+UNIFIED_ENV="$YND_ROOT/.env"
+
+env_get() {
+    "$YND_TEMPLATE/scripts/tools/env-file-manager.sh" get "$1" "$UNIFIED_ENV" 2>/dev/null || true
+}
+
+mkdir -p "$APPENV_DIR"
+
+# Written to a temp file and moved into place: Maison reads .env.app from another
+# container, at any moment, to start an app — it must never observe a half-written one.
+APPENV_TMP="$(mktemp "$APPENV_DIR/.env.app.XXXXXX")"
+cat > "$APPENV_TMP" <<EOF
+# Generated by ensure-maison-stack.sh from the yundera unified .env.
+# DO NOT EDIT — rewritten on every self-check. Change .pcs.env / .ynd.user.env instead.
+#
+# The variables Maison forwards into every app it manages; see docs/app-env.md.
+APP_NET=pcs
+APP_DATA_ROOT=/DATA
+APP_DOMAIN=$(env_get DOMAIN)
+domain=$(env_get DOMAIN)
+APP_PUBLIC_IP=$(env_get PUBLIC_IP)
+APP_PUBLIC_IP_DASH=$(env_get PUBLIC_IP_DASH)
+APP_PUBLIC_IPV4=$(env_get PUBLIC_IPV4)
+APP_PUBLIC_IPV4_DASH=$(env_get PUBLIC_IPV4_DASH)
+APP_PUBLIC_IPV6=$(env_get PUBLIC_IPV6)
+APP_PUBLIC_IPV6_DASH=$(env_get PUBLIC_IPV6_DASH)
+APP_EMAIL=$(env_get EMAIL)
+APP_DEFAULT_PASSWORD=$(env_get DEFAULT_PWD)
+DefaultUserName=admin
+DefaultPassword=$(env_get DEFAULT_PWD)
+EOF
+
+# Carries DEFAULT_PWD, exactly as the unified .env does. Maison runs as root and is
+# the only reader.
+chmod 600 "$APPENV_TMP"
+mv -f "$APPENV_TMP" "$APPENV_DIR/.env.app"
+log_info "Wrote $APPENV_DIR/.env.app"
+
+# --- onboarding gate: onboarding.json ----------------------------------------
+# Maison's dashboard is the box's root domain, so it is where an owner actually
+# lands — and until this existed, landing there walked them straight past
+# onboarding into permanent dependence on the operator's SSO. While this file is
+# present Maison serves an interstitial instead, pointing at the admin app's
+# first-start wizard. Its PRESENCE is the entire state; Maison reads nothing else
+# and remembers nothing between requests. See Maison's internal/onboarding.
+#
+# THIS BLOCK IS THE AUTHORITY, and it reconciles rather than seeds. `claimed` is
+# derived from the user database on every call, so writing the file once at
+# provisioning would be a marker, with all the ways a marker drifts: a box
+# claimed with `authelia-user-manager.sh claim` never runs the wizard, so nothing
+# would ever remove the file and Maison would gate forever on a box that is
+# already done; a restored or migrated box carries the auth database and Maison's
+# state directory independently, so either half can arrive without the other.
+# Reconciling on every tick means the worst case is one self-check of drift, and
+# @reboot bounds even that. onboarding.sh's own `rm` on success is only a fast
+# path so the gate clears immediately instead of at the next tick.
+#
+# It is asked, not re-derived: onboarding.sh already owns the definition of
+# "claimed" — three copies of that predicate exist and its header says to keep
+# them identical, so a fourth would be one too many. It is also the file a
+# deployment overrides to redefine onboarding entirely, which means an override
+# decides when Maison's gate opens, for free.
+ONBOARDING_SH="$YND_TEMPLATE/scripts/tools/onboarding.sh"
+ONBOARDING_FILE="$MAISON_DIR/onboarding.json"
+DOMAIN="$(env_get DOMAIN)"
+
+onboarding_claimed() {
+    local out
+    [ -x "$ONBOARDING_SH" ] || return 2
+    out="$("$ONBOARDING_SH" status 2>/dev/null)" || return 2
+    case "$(printf '%s' "$out" | yq -r '.claimed' 2>/dev/null)" in
+        true)  return 0 ;;
+        false) return 1 ;;
+        *)     return 2 ;;
+    esac
+}
+
+# Tested context, so `set -e` does not abort on the 1 and 2 answers, which are
+# both normal outcomes here rather than failures.
+ONBOARDING_RC=0
+onboarding_claimed || ONBOARDING_RC=$?
+
+case "$ONBOARDING_RC:$DOMAIN" in
+    2:*)
+        # Could not find out. Change nothing — both edits are wrong under
+        # uncertainty, and leaving the file as it stands preserves whatever the
+        # last confident answer was.
+        log_warn "Could not read onboarding status; leaving $ONBOARDING_FILE untouched"
+        ;;
+    0:*)
+        # Claimed: open the gate.
+        if [ -e "$ONBOARDING_FILE" ]; then
+            rm -f "$ONBOARDING_FILE"
+            log_info "PCS is onboarded; removed $ONBOARDING_FILE"
+        fi
+        ;;
+    1:)
+        # Unclaimed, but no domain — so there is no admin host to send anyone to
+        # and the interstitial's only button would go nowhere. Better an
+        # un-gated dashboard than a dead end.
+        log_warn "PCS is not onboarded but DOMAIN is empty; leaving Maison un-gated"
+        rm -f "$ONBOARDING_FILE"
+        ;;
+    1:*)
+        # Unclaimed: gate the dashboard, pointing at the admin app's wizard.
+        # `admin-${DOMAIN}` bare, with no path — the wizard gates that app's whole
+        # shell rather than living on a route, so the host itself is the entry
+        # point. Maison appends its own ?return= before linking.
+        #
+        # Written to a temp file and moved into place for the same reason .env.app
+        # is: Maison reads it from another container on every navigation and must
+        # never see a half-written one.
+        ONBOARDING_TMP="$(mktemp "$MAISON_DIR/onboarding.json.XXXXXX")"
+        printf '{"url":"https://admin-%s/"}\n' "$DOMAIN" > "$ONBOARDING_TMP"
+        chmod 644 "$ONBOARDING_TMP"   # no secrets; Maison is the only reader
+        mv -f "$ONBOARDING_TMP" "$ONBOARDING_FILE"
+        log_info "PCS is not onboarded; Maison gated to https://admin-$DOMAIN/"
+        ;;
+esac
+
+exec "$YND_TEMPLATE/scripts/tools/deploy-stack.sh" maison "$MAISON_DIR" \
+    "DOCKER_GID=$DOCKER_GID" \
+    "TZ=$TZ"

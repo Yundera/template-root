@@ -353,8 +353,19 @@ services:
     volumes:
       - /DATA/AppData/yundera/data/certs:/app/data
       # Read-write: this is where the agent WRITES the CA, per CA_CERT_PATH above.
-      # Pre-created pcs-owned by ensure-pcs-user.sh — the agent runs as uid 1000, so
-      # a directory Docker had invented root-owned would be unwritable.
+      #
+      # ensure-pcs-user.sh declares this directory alongside data/certs, but do
+      # NOT rely on it existing first: that script is #1 in scripts-config.txt
+      # and ensure-template-sync.sh is #5, so on the tick that INTRODUCES a new
+      # directory the pre-create always runs a tick before the template that
+      # needs it. Docker then invents it root-owned and the next tick's
+      # `chown -R pcs:pcs` tidies up (observed on wisera 2026-09-16).
+      #
+      # That is survivable here only because mesh-router-agent runs as uid 0
+      # (verified in the 1.1.1 image, not assumed) and can write into a
+      # root-owned directory. A future container that needs a pre-created,
+      # correctly-owned mount and does NOT run as root will fail on the tick it
+      # is introduced. Fix the ordering before relying on the pre-create.
       - /DATA/AppData/yundera/data/ca:/app/ca
     networks:
       pcs: null
@@ -383,7 +394,7 @@ services:
       # generation, so the config always looked freshly built. Observed in the
       # field as an eight-week-old Caddyfile behind a correct-looking config.
       # The dir also cannot be the app root — .pcs.secret.env lives there.
-      - /DATA/AppData/yundera/caddy:/etc/caddy:ro
+      - /DATA/AppData/yundera/template/caddy:/etc/caddy:ro
       - /DATA/AppData/yundera/data/certs:/certs:ro
       - /DATA/AppData/yundera/data/caddy/data:/data
       - /DATA/AppData/yundera/data/caddy/config:/config
@@ -465,11 +476,55 @@ services:
       # what makes it an OP you can log out of — and what replaces the
       # connector-stickiness rules that used to live in caddy/Caddyfile.
       DEX_SESSIONS_ENABLED: "true"
-    # If a connector's issuer is NOT served with a publicly-trusted cert (e.g. an
-    # internal-CA-only test host), Dex's back-channel TLS to it will fail; in
-    # that case add a CA bundle to the environment block above:
-    #     SSL_CERT_FILE: /data/ca-bundle.crt
+      # Trust the mesh-router CA *on top of* the image's baked-in roots, for the
+      # extra_hosts pin below. Same pair as the AppShield gates: once the Local
+      # Account connector's issuer resolves on-box, its back-channel TLS
+      # terminates at this PCS's own Caddy, which serves local-auth-${DOMAIN}
+      # with the mesh-router CA (`gateway_tls` in caddy/Caddyfile) rather than a
+      # publicly-trusted certificate. The public path only ever validated because
+      # Cloudflare re-terminated TLS on the way through.
+      #
+      # SSL_CERT_DIR and NOT SSL_CERT_FILE: Go replaces certDirectories but keeps
+      # certFiles, so a directory ADDS roots while SSL_CERT_FILE would REPLACE
+      # the image's bundle outright — and Dex still needs the public roots for
+      # the "Yundera Login" connector, whose issuer is genuinely off-box.
+      #
+      # This relies on the image keeping a bundle at one of Go's default
+      # certFiles paths. Verified for the digest pinned above:
+      # /etc/ssl/certs/ca-certificates.crt, and it is the only file in that
+      # directory. RE-VERIFY ON REPIN — an image that ships only a cert
+      # directory would lose its public roots here and Yundera Login with them.
+      SSL_CERT_DIR: "/ca"
+    # KEEP THE CONNECTOR BACK-CHANNEL ON THE BOX — the same hairpin fixed on the
+    # AppShield gates (see the `admin` gate above for the full diagnosis).
+    # ensure-dex.sh renders the Local Account connector with
+    # `issuer: https://local-auth-${DOMAIN}`, and Dex does discovery, the code
+    # exchange and the JWKS fetch against that public hostname. Resolved
+    # publicly, those server-to-server calls leave the PCS, cross Cloudflare and
+    # the mesh-router CF Worker, and re-enter this same machine to reach a
+    # container on this bridge — a path observed answering ~70% of requests with
+    # an empty body on 2026-09-15.
+    #
+    # The issuer STRING does not change, so Authelia's discovery document still
+    # matches, the browser still resolves local-auth-${DOMAIN} publicly, and
+    # every redirect the user sees is unchanged. Only the lookup moves.
+    #
+    # Plain HTTP is not an alternative: the scheme is part of the issuer, and an
+    # OIDC client rejects a discovery document whose `issuer` does not match the
+    # URL it fetched.
+    extra_hosts:
+      - "local-auth-${DOMAIN}:host-gateway"
     volumes:
+      # The mesh-router CA that SSL_CERT_DIR above points at — written straight
+      # here by mesh-router-agent (CA_CERT_PATH), in its own directory so key.pem
+      # never travels with it. A CA certificate is public; the key is not.
+      #
+      # An EMPTY or missing directory is survivable: Go still loads the image's
+      # own bundle, so Dex starts and every publicly-trusted connector keeps
+      # working. Only the pinned Local Account connector would fail to open —
+      # which is exactly what the probe in ensure-dex.sh prevents from being
+      # rendered in the first place.
+      - /DATA/AppData/yundera/data/ca:/ca:ro
       # config.yaml (rendered) + dex.db (sqlite). This is CACHE, not precious
       # data — see the recovery note in scripts/self-check/ensure-dex.sh.
       - /DATA/AppData/yundera/dex:/data
@@ -505,8 +560,26 @@ services:
         aliases:
           - dex-grpc
     # No `depends_on` for the connectors: authelia is in this stack but Dex must
-    # not block on it, and the Yundera IdP is off-box entirely. Dex retries a
-    # connector's back-channel on use, so cold-boot ordering resolves itself.
+    # not block on it, and the Yundera IdP is off-box entirely.
+    #
+    # WHAT ACTUALLY HAPPENS WHEN A CONNECTOR IS UNREACHABLE AT BOOT — measured
+    # against the digest pinned above (v2.46.0-20260806171424) on 2026-09-16,
+    # because two different notes in this tree used to claim two wrong things:
+    #
+    #   * it is NOT retried on use. Every connector is opened once, at startup.
+    #   * it is NOT fatal per-connector. This build logs
+    #     "continue on connector failure feature flag enabled", drops the
+    #     connector that failed and carries on with the rest.
+    #
+    # Dex exits only when EVERY connector fails ("failed to open all connectors
+    # (1/1)"). So a cold boot that races Authelia loses the Local Account button
+    # but keeps Yundera Login and the box stays reachable — unless that was the
+    # only connector, in which case Dex exits and restart:unless-stopped retries.
+    #
+    # The cost is that a dropped connector stays dropped until Dex restarts.
+    # ensure-dex.sh restarts it on every self-check, so the ceiling is one tick.
+    # THE FEATURE FLAG IS AN UNRELEASED-MASTER DEFAULT: re-measure this on the
+    # repin to a release, or a single bad connector is back to taking down login.
     # Unlike every other service here, these labels declare ONLY the hostnames:
     # the TLS choice and the upstream live in the (dex_router*) snippets in
     # caddy/Caddyfile. That is where the connector-memory rules are — named
