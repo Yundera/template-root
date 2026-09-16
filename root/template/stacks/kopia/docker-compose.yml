@@ -182,6 +182,29 @@ services:
   # Maison does not attempt to reimplement.
   # ===========================================================================
   kopia-app:
+    # THE TAG IS PINNED IN scripts/library/kopia.sh, and reaches this file as a variable.
+    # That is unlike the gate's appshield above, which is a literal, and the difference is
+    # the number of consumers rather than inconsistency.
+    #
+    # FOUR THINGS NEED THIS IMAGE, and only two of them are compose services:
+    #   - this service and kopia-engine below;
+    #   - the one-shot `docker run` in ensure-backup-config.sh, which creates and connects
+    #     the repository BEFORE any container exists, so it cannot exec into one;
+    #   - the "image" field that script writes into adapter.json — and that one is
+    #     load-bearing precisely BECAUSE Maison is engine-agnostic. Maison no longer
+    #     contains an engine at all (internal/backup/kopia is gone), so it cannot know
+    #     what to run when the resident container is unreachable and it falls back to a
+    #     one-shot; the descriptor is what supplies it (engine.go's Argv refuses a spec
+    #     with no image).
+    #
+    # A literal here would therefore be a SECOND pin, to be kept in step with the one the
+    # other two read. Two pins disagreeing does not fail loudly — it quietly runs two
+    # different kopia builds against one repository, which is a format surprise found at
+    # restore time. One variable, resolved from one place, cannot do that.
+    #
+    # ensure-kopia-stack.sh passes the value to deploy-stack.sh, which writes it into this
+    # stack's .env every cycle, so the deployed compose and .env together still pin an
+    # exact tag on disk. The indirection is in the source, not on the box.
     image: ${ENGINE_IMAGE}
     container_name: kopia-app
     restart: unless-stopped
@@ -295,6 +318,8 @@ services:
   # THE ENGINE — the container Maison runs `docker exec` in. No listener, no UI.
   # ===========================================================================
   kopia-engine:
+    # The same variable as kopia-app, which is what keeps the UI and the engine on one
+    # kopia build by construction rather than by two values agreeing. See the note there.
     image: ${ENGINE_IMAGE}
     container_name: kopia-engine
     # MUST match the `hostname` in /DATA/AppData/kopia/engine/repository.config,

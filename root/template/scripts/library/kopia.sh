@@ -12,21 +12,35 @@
 # binary that speaks Maison's backup adapter protocol (see the maison-kopia-engine repo,
 # docs/protocol.md).
 #
-# ONE PIN, NOT TWO. It used to be `kopia/kopia:<v>` here and `kopia.DefaultImage` in
-# Maison, held together by a comment saying they must match. The adapter image is built
-# FROM a pinned kopia, so the engine version is now an attribute of this image: Maison
-# does not know it, cannot disagree about it, and bumping kopia is a change to the
-# adapter's Dockerfile.
+# ONE PIN, NOT TWO, AND THIS LINE IS IT. The stack's compose says `${ENGINE_IMAGE}` on
+# both of its engine services and gets the value from here, via deploy-stack.sh.
 #
-# It serves BOTH containers in the stack. `kopia server --ui` still runs from it, because
-# /bin/kopia is still in there — which is also what keeps the UI and the engine on the
-# same kopia build by construction rather than by two pins agreeing.
+# It is here rather than literally in the compose because FOUR things need it and only two
+# of them are compose services:
+#   - kopia-app and kopia-engine;
+#   - the one-shot `docker run` in ensure-backup-config.sh, which creates and connects the
+#     repository BEFORE any container exists, so it cannot exec into one;
+#   - the "image" field that script writes into adapter.json.
 #
-# TODO(trial): `:main` is a MOVING tag and must not reach production. It is here so the
-# adapter can be exercised on a test PCS before a version is cut; replace it with the
-# first `v*` tag (the publish workflow tags those) before this ships to the fleet. An
-# engine that changes under a live repository turns a format surprise into a 3am failure.
-ENGINE_IMAGE="ghcr.io/yundera/maison-kopia-engine:main"
+# That last one is load-bearing BECAUSE Maison is engine-agnostic, not in spite of it.
+# Maison no longer contains an engine (internal/backup/kopia is gone), so when the
+# resident container is unreachable and it falls back to a one-shot it cannot know what
+# to run — the descriptor supplies it, and engine.Argv refuses a spec with no image.
+#
+# Naming the tag literally in the compose as well would make it a second pin. Two pins
+# disagreeing does not fail loudly: it runs two different kopia builds against one
+# repository, and that is found at restore time.
+#
+# The image is built FROM a pinned kopia, so the kopia version is an attribute of this
+# tag: Maison does not know it, cannot disagree about it, and bumping kopia is a change to
+# the adapter's Dockerfile. It serves BOTH containers, `kopia server --ui` included,
+# because /bin/kopia is still in there.
+#
+# PINNED, AND IT HAS TO STAY PINNED. This was `:main` while the adapter was being
+# exercised on a test PCS; a moving tag means the engine can change under a live
+# repository between two self-check cycles, with nothing in the logs to say it did. Bump
+# it deliberately, to a tag that exists, or not at all.
+ENGINE_IMAGE="ghcr.io/yundera/maison-kopia-engine:1.0.1"
 
 # The adapter binary inside that image. `docker exec` does not apply an image's own
 # ENTRYPOINT, so Maison names this explicitly — and so does this script, which runs the

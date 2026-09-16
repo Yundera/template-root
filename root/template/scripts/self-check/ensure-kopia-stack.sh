@@ -114,6 +114,9 @@ if [ "$STORAGE_TYPE" = "filesystem" ]; then
     log_info "Repository is on a local filesystem - the engine network stays internal"
 fi
 
+# Names the image, because with `${ENGINE_IMAGE}` in the compose the deployed stack folder
+# does not answer "which build is this" from one file — the compose holds the reference
+# and the .env holds the value. One log line beats cross-referencing two files.
 log_info "Kopia stack: $ENGINE_IMAGE as $KOPIA_HOSTNAME"
 
 "$YND_TEMPLATE/scripts/tools/deploy-stack.sh" kopia "$STACK_DIR" \
