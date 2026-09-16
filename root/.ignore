@@ -10,9 +10,12 @@
 # /DATA/AppData/yundera, which is not just the template tree — it is also where
 # Authelia's user database, Dex's sqlite store, the TLS certs and the admin
 # gate's sessions live. Before the move those sat safely outside the synced
-# directory. Now a missing line here is a data-loss bug, which is why
-# ensure-template-sync.sh dry-runs the delete list and refuses to proceed if a
-# protected path is in it.
+# directory. Now a missing line here is a data-loss bug.
+#
+# It is also the ONLY thing standing there. ensure-template-sync.sh used to carry
+# a PROTECTED_RE second opinion; it was removed 2026-09-16 because it could not be
+# one — see the comment where it used to live. The backstop is the pre-sync copy of
+# the whole root that script takes into /var/backups/yundera before rsync runs.
 #
 # `+ ` lines are INCLUDES and must come before the exclude they carve out of.
 # Note the `/auth/**` form: excluding `/auth/` itself would stop rsync
@@ -25,9 +28,7 @@
 # name at any depth. Every entry here is anchored — `*.backup` is the one
 # deliberate exception, for the reason given at that line — so that a `.env` the
 # template one day ships under stacks/<x>/ is delivered rather than silently
-# skipped for the lifetime of the fleet. Anchoring also keeps this file aligned
-# with ensure-template-sync.sh's PROTECTED_RE, which anchors the same names with
-# `^`: the two are hand-kept in sync and nothing checks that they agree.
+# skipped for the lifetime of the fleet.
 
 # --- the template's own file inside a protected directory --------------------
 # Rendered by ensure-authelia.sh into auth/configuration.yml; the template is
@@ -43,8 +44,8 @@
 # `dateext` (ensure-logrotate.sh), so yesterday's file is `yundera.log-2026-09-02`
 # and the compressed ones end `.gz` — neither matches `*.log`. Before the root
 # move that only meant every template sync quietly deleted the rotated logs,
-# defeating the 7-day retention; after it, the delete guard sees a protected
-# path in the delete list and refuses to sync at all. Seen on wisera, 2026-09-08.
+# defeating the 7-day retention; after it, dropping this line destroys the log
+# the self-check is writing as it runs. Seen on wisera, 2026-09-08.
 /log/**
 # Operator and upgrade snapshots — e.g. docker-compose.yml.pre-1.5.0-alpha.backup,
 # still on wisera. Nothing in the template writes one any more, but the root move
@@ -54,8 +55,7 @@
 #
 # This is NOT what protects Authelia's `users_database.yml.<stamp>.reset-backup`
 # snapshots — those end `-backup`, which `*.backup` does not match. `/auth/**`
-# covers them. And unlike every other entry here there is no PROTECTED_RE line for
-# this pattern, so if it is ever dropped the deletion is silent.
+# covers them.
 *.backup
 /migration-markers/
 
@@ -84,11 +84,8 @@
 # here any more and a box built today has no perf/ at all. The line survives only
 # because wisera still carries an empty one from May 2026.
 #
-# ITS PROTECTED_RE ENTRY WAS REMOVED AHEAD OF THIS LINE (2026-09-10), on purpose,
-# so retiring the directory later is a safe one-liner: delete this line and `perf/`
-# lands in the delete list with no guard to refuse it, taking the leftover with it
-# on that box's next sync. Until then the exclude keeps it out of the list
-# entirely, so removing the guard entry changes nothing today.
+# Retiring it is now a safe one-liner: delete this line and `perf/` lands in the
+# delete list, taking the leftover with it on that box's next sync.
 /perf/
 # The onboarding `completed` marker.
 /onboarding/
@@ -106,3 +103,18 @@
 # by ensure-template-sync.sh, so it is written into the root rather than shipped
 # in the tree, and must not be deleted by the sync that produces it.
 /.icon.svg
+# Provenance marker from the retired root mirror (ensure-maison-yundera-mirror.sh,
+# gone since the 2026-09-08 root move). Nothing writes one any more and the file is
+# dead weight — but it CANNOT be dropped in the same release that removed the delete
+# guard, and that is the whole reason this line is back.
+#
+# A box syncing this release still runs the PREVIOUS on-disk ensure-template-sync.sh,
+# whose PROTECTED_RE still lists `casaos-mirror`. Omit this line and the marker lands
+# in that old guard's delete list, it refuses, and the refusal is what prevents the
+# new guard-free script from ever being installed — the box is stuck until someone
+# SSHes in and rm's the file. Exactly what a6bcc61 did, seen on wisera 2026-09-16.
+#
+# DELETE THIS LINE ONE RELEASE AFTER the guard-free script has reached the fleet.
+# By then no box runs a script that protects the path, so the marker simply lands
+# in the delete list and is swept on the next sync.
+/.casaos-mirror

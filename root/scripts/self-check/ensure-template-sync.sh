@@ -197,35 +197,31 @@ echo "→ Syncing files..."
 mkdir -p "$YND_ROOT"
 
 # ---------------------------------------------------------------------------
-# DELETE GUARD — dry-run first, and refuse to sync if `--delete` would touch
-# anything that is not ours to delete.
+# THERE IS NO DELETE GUARD HERE, AND THAT IS DELIBERATE (removed 2026-09-16).
 #
-# Since the root move, $YND_ROOT is both the template tree AND the stack's live
-# state: auth/ (the owner's only local credential), dex/, data/certs, admin/.
-# All of it is protected by .ignore — and the whole protection is one file that
-# a future edit can silently break. `--delete` gives no warning and no second
-# chance, so this converts "a pattern went missing" from total loss into a
-# refusal to sync.
+# There used to be one: a PROTECTED_RE naming the same paths as root/.ignore,
+# matched against a `--dry-run --itemize-changes` delete list, hard-exiting if
+# the two ever disagreed. It was meant as a second opinion on .ignore. It could
+# not be one, because the two halves came from different releases: .ignore is
+# read from the template we just downloaded, while PROTECTED_RE lives in the
+# copy of THIS script already on disk, i.e. the previous release. So the guard
+# never compared a release against itself — it compared new .ignore against old
+# regex, and the only thing it could reliably detect was its own maintainers
+# retiring a path.
 #
-# Deliberately a hard exit rather than a filtered sync: if the exclude list is
-# wrong we do not know what else it is wrong about, and a PCS running last
-# week's template is a far better outcome than one missing its user database.
+# Which is exactly what it did. Dropping `.casaos-mirror` from both files in one
+# commit (a6bcc61) deadlocked every box carrying that marker: the new .ignore put
+# it in the delete list, the old on-disk regex still protected it, refuse — and
+# since the refusal is what stops the sync, the script carrying the stale regex
+# could never be replaced. Unrecoverable without a manual `rm` on each box. Seen
+# on wisera 2026-09-16.
+#
+# What actually protects the live state is root/.ignore, and the pre-sync copy of
+# the whole root taken above into $BACKUP_DIR — which, unlike the guard, is kept
+# on success, survives the reboot, and covers every failure mode rather than the
+# one the regex author thought of. Retiring a path is now a single edit to
+# .ignore, with no second file to keep in lockstep and no cross-release trap.
 # ---------------------------------------------------------------------------
-PROTECTED_RE='^(auth|dex|dex-frontend|data|admin|onboarding(\.d)?|log|migration-markers)(/|$)|^\.(env|pcs\.env|pcs\.secret\.env|ynd\.user\.env|provisioning-in-progress|self-check-cron-disabled|icon\.svg)$'
-DEL_LIST=$(rsync "${RSYNC_OPTS[@]}" --dry-run --itemize-changes \
-               "$TEMPLATE_ROOT/" "$YND_ROOT/" 2>/dev/null \
-           | sed -n 's/^\*deleting  *//p' || true)
-
-if [ -n "$DEL_LIST" ]; then
-    OFFENDING=$(printf '%s\n' "$DEL_LIST" | grep -E "$PROTECTED_RE" || true)
-    if [ -n "$OFFENDING" ]; then
-        echo "✗ REFUSING SYNC: --delete would remove protected state under $YND_ROOT"
-        printf '%s\n' "$OFFENDING" | sed 's/^/    /'
-        echo "  Check $TEMPLATE_ROOT/.ignore — every path above should be excluded."
-        rm -rf "$BACKUP_DIR"
-        exit 1
-    fi
-fi
 
 # Set exec bits on the SOURCE before syncing. The chmod at the end of this
 # script leaves a window in which the newly-synced scripts are on disk but not

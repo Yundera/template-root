@@ -301,12 +301,33 @@ EOF
 # into its own environment and those outrank the command line, which the adapter knows
 # and this script no longer has to.
 #
-# PUID:PGID, not root. Everything here touches the engine directory and the storage
-# behind it, both of which belong to that user. Reading an app's private data needs root
-# and capabilities; creating a repository does not.
+# ROOT, WITH THE SAME CAPABILITIES MAISON GIVES THE ENGINE — and it has to be, because
+# of the CACHE.
+#
+# This used to run as PUID:PGID, on the reasoning that creating a repository needs no
+# more than the engine directory. That reasoning was right about the directory and wrong
+# about what is inside it: $ENGINE_DIR/cache is SHARED with the resident engine Maison
+# execs into, which runs as 0:0 and therefore creates cache subdirectories owned by root
+# with mode 0700. A PUID process cannot read them, so `status` fails with
+# "permission denied" on a repository that is perfectly healthy.
+#
+# The consequence was not a visible error. Any failure here arms needs-credentials (see
+# the steady-state branch for why that is deliberate), so the box asked for a fresh
+# storage credential every night, forever, against a local permission problem no
+# credential can fix — indistinguishable from a flaky provider. Found on wisera,
+# 2026-09-16.
+#
+# Root alone is not enough either: $ENGINE_DIR itself is pcs-owned 0700, so root needs
+# DAC_OVERRIDE and DAC_READ_SEARCH to traverse it. The set below mirrors Maison's
+# engineCaps exactly; the two must not drift, because they run the same binary against
+# the same directory.
 engine_run() {
     docker run --rm \
-        --user "$PUID:$PGID" \
+        --user 0:0 \
+        --cap-drop ALL \
+        --cap-add DAC_READ_SEARCH --cap-add DAC_OVERRIDE \
+        --cap-add CHOWN --cap-add FOWNER --cap-add FSETID \
+        --security-opt no-new-privileges:true \
         -v /DATA:/DATA \
         "$ENGINE_IMAGE" "$@" \
         --repo-dir="$ENGINE_DIR" 2>&1

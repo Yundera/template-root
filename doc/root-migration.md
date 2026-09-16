@@ -184,9 +184,19 @@ unless `--delete-excluded` is passed, which it is not).
 ### `scripts/self-check/ensure-template-sync.sh`
 
 - `YND_ROOT` → Root B.
-- **Dry-run delete guard.** Before the real sync, run it with `--dry-run --itemize-changes`,
+- **Dry-run delete guard.** ~~Before the real sync, run it with `--dry-run --itemize-changes`,
   collect `^\*deleting` lines, and abort if any names a protected path. This converts a
-  forgotten `.ignore` entry from silent total loss into a loud refusal:
+  forgotten `.ignore` entry from silent total loss into a loud refusal:~~
+
+  **RETIRED 2026-09-16 — do not reinstate.** It shipped as described and was removed again.
+  The guard's path list lived in the script, so on any given box it was the *previous*
+  release's list being matched against the *current* release's `.ignore` — the two halves
+  never came from the same commit. It could not detect a forgotten entry (a new `.ignore`
+  omission is not in an old regex either), and the one thing it did detect reliably was a
+  path being retired on purpose, which it turned into an unrecoverable deadlock: the refusal
+  stops the sync, and the sync is the only thing that would replace the script holding the
+  stale list. Hit on wisera 2026-09-16 over `.casaos-mirror`. `.ignore` plus the persistent
+  pre-sync backup below are the protection.
 
   ```bash
   rsync -a --delete --dry-run --itemize-changes \
