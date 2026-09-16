@@ -348,11 +348,29 @@ engine_connected() {
 
 if [ -f "$CONFIG_FILE" ] && [ -f "$PASSWORD_FILE" ]; then
     # Steady state. The configuration is already correct and must not be rewritten;
-    # rotation happened above when credentials.env was replaced. Prove the repository
-    # is reachable and stop.
+    # rotation happened above when credentials.env was replaced.
+
+    # THE DESCRIPTOR IS WRITTEN BEFORE THE REACHABILITY CHECK, AND THAT IS THE POINT.
+    #
+    # It says WHICH ADAPTER SERVES THIS ENGINE, not whether the storage is up today. A
+    # configured repository that cannot be reached right now — an expired key, a provider
+    # outage, a bucket that has hit its transaction cap — is still this box's backup
+    # destination, and Maison has to keep knowing that so it can say the destination is
+    # unreachable.
+    #
+    # Gating it on the probe instead looks careful and is the exact failure this whole
+    # design removed: no descriptor means Maison registers no engine for it, which means
+    # nothing is configured to write there, which means its "cannot be reached" incident
+    # resolves itself. The box then writes backups to its own disk, reports success, and
+    # tells nobody. Found on wisera, 2026-09-15, while its bucket was refusing every
+    # transaction.
+    #
+    # The one case that correctly writes no descriptor is below: a box with no repository
+    # configuration at all has no engine to describe yet.
+    write_adapter_descriptor
+
     OUT="$(engine_run status)"
     if engine_connected "$OUT"; then
-        write_adapter_descriptor
         log_success "Backup repository is connected (space $BACKUP_SPACE_ID, writable ${BACKUP_WRITABLE:-true})"
         exit 0
     fi
