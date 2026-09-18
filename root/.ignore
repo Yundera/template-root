@@ -122,12 +122,16 @@
 # Authelia: users_database.yml, db.sqlite, secrets/, oidc/, clients.d/. Losing
 # it drops the PCS back to UNCLAIMED — the owner's only local credential.
 /auth/**
-# Dex: dex.db, the rendered config, and connectors.d/ (which nothing
-# regenerates — see ensure-dex.sh).
+# Dex: dex.db, the rendered config, connectors.d/ (which nothing regenerates —
+# see ensure-dex.sh), and since 2026-09-18 frontend/ — the rendered theme plus
+# the two template files the dex container bind-mounts as FILES. Docker
+# recreates a missing bind source as a directory, which makes dex permanently
+# unstartable, so that last one must stay covered.
 /dex/
-# The rendered Dex theme and the two template files the dex container
-# bind-mounts as FILES. Docker recreates a missing bind source as a directory,
-# which makes dex permanently unstartable.
+# The pre-2026-09-18 location of frontend/, above. Retained for the same reason
+# as the rest of the crossover surface: a box that has not yet received the move
+# still has this directory live and bind-mounted, and it is swept by
+# migrations/2026-09-18-10-move-dex-frontend-into-dex.sh, not by the sync.
 /dex-frontend/
 # mesh-router-agent's certs and Caddy's state.
 /data/

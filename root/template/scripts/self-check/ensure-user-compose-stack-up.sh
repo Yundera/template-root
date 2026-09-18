@@ -21,7 +21,7 @@ if [ ! -f "$COMPOSE_FILE" ]; then
 fi
 
 # The `dex` service bind-mounts two individual FILES from
-# /DATA/AppData/yundera/dex-frontend/templates/. Docker auto-creates a missing
+# /DATA/AppData/yundera/dex/frontend/templates/. Docker auto-creates a missing
 # bind-mount source as a DIRECTORY, which makes `dex` unstartable forever
 # ("not a directory: Are you trying to mount a directory onto a file"). During
 # cold provisioning this script runs before ensure-dex.sh has ever written those
@@ -29,9 +29,15 @@ fi
 # ADMIN_ASSERTION_SECRET — so provision them here as well. Idempotent, and it
 # also repairs a host already poisoned by an earlier `up`.
 #
+# PATH: template/scripts/, not scripts/. The pre-split location still exists on
+# a crossed-over box as an inert legacy tree (see template/scripts/README.MD in
+# the repo), so the old path did not fail loudly — it silently ran the STALE
+# copy of the tool, and on a box provisioned after the split it does not exist
+# at all, so the `-x` guard skipped the whole safeguard.
+#
 # Tolerant on purpose: a missing theme only costs the custom login UI, and it
 # must never stop the stack from coming up.
-DEX_FRONTEND_TOOL="$COMPOSE_DIR/scripts/tools/provision-dex-frontend.sh"
+DEX_FRONTEND_TOOL="$COMPOSE_DIR/template/scripts/tools/provision-dex-frontend.sh"
 if [ -x "$DEX_FRONTEND_TOOL" ]; then
     "$DEX_FRONTEND_TOOL" || echo "WARN: Dex frontend provisioning reported an error; continuing"
 fi

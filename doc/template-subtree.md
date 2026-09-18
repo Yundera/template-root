@@ -31,7 +31,7 @@ Two roots instead of one:
 
 | Path | Contents | `--delete` target? |
 |---|---|---|
-| `/DATA/AppData/yundera/` | state: `auth/ dex/ dex-frontend/ data/ admin/ onboarding*/ log/ migration-markers/ .pcs*.env`, plus `docker-compose.yml` and `.icon.svg` for Maison | **never** |
+| `/DATA/AppData/yundera/` | state: `auth/ dex/ data/ admin/ onboarding*/ log/ migration-markers/ .pcs*.env`, plus `docker-compose.yml` and `.icon.svg` for Maison | **never** |
 | `/DATA/AppData/yundera/template/` | the template tree, and nothing else | yes — it holds no state |
 
 `ensure-template-sync.sh` is now three commands:

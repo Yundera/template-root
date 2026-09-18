@@ -531,9 +531,19 @@ services:
       # Custom "yundera" frontend, overlaid onto the stock image (no frontend.dir,
       # so all other stock templates/static stay intact). ensure-dex.sh renders
       # these from the template's dex-theme/ before the stack comes up.
-      - /DATA/AppData/yundera/dex-frontend/templates/login.html:/srv/dex/web/templates/login.html:ro
-      - /DATA/AppData/yundera/dex-frontend/templates/header.html:/srv/dex/web/templates/header.html:ro
-      - /DATA/AppData/yundera/dex-frontend/themes/yundera:/srv/dex/web/themes/yundera:ro
+      #
+      # These sit UNDER dex/, which the line above already mounts at /data — so
+      # the same files are visible twice inside the container, at /data/frontend/
+      # and at the two /srv/dex/web/ targets. Deliberate: Docker mounts each
+      # source at its own target independently, Dex reads nothing but
+      # /data/config.yaml and /data/dex.db, and keeping the rendered theme inside
+      # the directory that owns Dex's disposable state means one cache dir at the
+      # stack root instead of two. Moved here from the sibling dex-frontend/ on
+      # 2026-09-18; migrations/2026-09-18-10-move-dex-frontend-into-dex.sh sweeps
+      # the old path.
+      - /DATA/AppData/yundera/dex/frontend/templates/login.html:/srv/dex/web/templates/login.html:ro
+      - /DATA/AppData/yundera/dex/frontend/templates/header.html:/srv/dex/web/templates/header.html:ro
+      - /DATA/AppData/yundera/dex/frontend/themes/yundera:/srv/dex/web/themes/yundera:ro
     expose:
       - "5556"   # OIDC web endpoints (Caddy terminates TLS), bound on pcs
       - "5557"   # gRPC client-mgmt API — UNAUTHENTICATED, bound to yundera-auth IP only

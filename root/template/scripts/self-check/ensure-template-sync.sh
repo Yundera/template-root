@@ -11,7 +11,8 @@ set -e
 # TWO ROOTS, AND THE SPLIT IS THE POINT.
 #
 #   $YND_ROOT      the stack's live state, and the app folder Maison manages.
-#                  auth/, dex/, dex-frontend/, data/, admin/, onboarding*/,
+#                  auth/, dex/ (config, dex.db, connectors.d/, frontend/),
+#                  data/, admin/, onboarding*/,
 #                  log/, migration-markers/, the .pcs*.env files. NEVER a
 #                  --delete target.
 #   $YND_TEMPLATE  the template tree, and nothing else. Owned wholesale by this

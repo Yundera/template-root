@@ -27,6 +27,8 @@
 #   dex/config.yaml          rendered Dex config (re-rendered each run)
 #   dex/connectors.d/*.yaml  drop-in connectors, concatenated into config.yaml
 #   dex/dex.db               Dex sqlite store (clients, codes, refresh tokens, keys)
+#   dex/frontend/            rendered login theme + overlaid templates, bind-mounted
+#                            over the stock image (tools/provision-dex-frontend.sh)
 #
 # RECOVERY / BACKUP: none of this needs backing up — it is all CACHE.
 #   - The auth-registrar (mesh-auth) is STATELESS: its OIDC client-secret cache
@@ -41,6 +43,11 @@
 #   - ONE EXCEPTION: connectors.d/ (below) is not cache. It is whatever the
 #     deployment dropped in, and nothing here regenerates it. Wiping the dex dir
 #     silently removes those connectors from the login page.
+#   - AND ONE ORDERING RULE, since frontend/ moved in here: a `rm -rf dex/` must
+#     be followed by tools/provision-dex-frontend.sh BEFORE any `docker compose
+#     up`, or Docker recreates frontend/templates/{login,header}.html as
+#     DIRECTORIES and dex never starts again. Both in-tree callers already do
+#     this in the right order; a hand-run wipe over SSH does not.
 #
 # NETWORK: Dex's gRPC client-management API is UNAUTHENTICATED, so the rendered
 # config binds it to `dex-grpc:5557` — a network-scoped alias on the isolated
@@ -336,7 +343,10 @@ if [ "$CONNECTOR_COUNT" -eq 0 ]; then
     log_warn "  Fix over SSH: sudo $YND_TEMPLATE/scripts/tools/authelia-user-manager.sh claim <username>"
 fi
 
-# Perms: dex (uid 1001) owns its tree so it can create dex.db.
+# Perms: dex (uid 1001) owns its tree so it can create dex.db. This now also
+# covers frontend/, which lives under $DEX_ROOT — the container mounts those
+# files :ro, so ownership is cosmetic there, but it must run AFTER the
+# provisioning call above or the freshly copied theme stays root-owned.
 chown -R "$DEX_UID:$DEX_UID" "$DEX_ROOT" 2>/dev/null || true
 chmod 755 "$DEX_ROOT" 2>/dev/null || true
 

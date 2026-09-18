@@ -10,7 +10,7 @@
 # leaves a directory where a file belongs, and from then on `dex` cannot start
 # at all:
 #
-#   error mounting ".../dex-frontend/templates/login.html" to rootfs at
+#   error mounting ".../dex/frontend/templates/login.html" to rootfs at
 #   "/srv/dex/web/templates/login.html": not a directory
 #
 # On a cold provisioning run that is not hypothetical: ensure-admin-gate-secret.sh
@@ -29,7 +29,16 @@ YND_ROOT="/DATA/AppData/yundera"
 
 YND_TEMPLATE="$YND_ROOT/template"
 THEME_SRC="$YND_TEMPLATE/dex-theme"
-DEX_FRONTEND="/DATA/AppData/yundera/dex-frontend"
+# Lives INSIDE dex/ rather than beside it. Same owner, same lifecycle, same
+# "pure cache, never backed up" rule as the rest of dex/ (see the RECOVERY note
+# in self-check/ensure-dex.sh), and it keeps the stack root from growing one
+# top-level directory per rendered asset set. The dex container already
+# bind-mounts dex/ at /data, so it also sees these files at /data/frontend/ —
+# harmless, Dex reads only /data/config.yaml and /data/dex.db.
+#
+# The old location, $YND_ROOT/dex-frontend, is swept by
+# migrations/2026-09-18-10-move-dex-frontend-into-dex.sh.
+DEX_FRONTEND="$YND_ROOT/dex/frontend"
 
 if [ ! -d "$THEME_SRC" ]; then
     echo "dex-theme/ not found in template; Dex will use its stock login UI"

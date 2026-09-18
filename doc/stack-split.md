@@ -87,8 +87,7 @@ the next container start minted a new one, signing every user out.
 | `admin/gate-data/` | AppShield gate sessions |
 | `admin/admin-session-key` | legacy — nothing reads it any more |
 | `auth/` — `users_database.yml`, `db.sqlite`, `configuration.yml`, `secrets/`, `clients.d/`, `oidc/`, `.lock`, `*.reset-backup` | Authelia |
-| `dex/` — `dex.db`, `config.yaml`, `connectors.d/`, `clients/`, `ca-bundle.crt`, `caddy-root.crt`, `admin-password` | Dex |
-| `dex-frontend/` | rendered Dex theme |
+| `dex/` — `dex.db`, `config.yaml`, `connectors.d/`, `clients/`, `ca-bundle.crt`, `caddy-root.crt`, `admin-password`, `frontend/` (rendered theme, moved in from the sibling `dex-frontend/` 2026-09-18) | Dex |
 | `data/certs/` | written by mesh-router-agent, read `:ro` by mesh-router-caddy |
 | `data/caddy/{data,config}` | Caddy state |
 | `onboarding/completed` | onboarding marker |
@@ -164,8 +163,7 @@ Everything that decides who someone is. The crown jewels, and the highest-risk m
 | From | To |
 |---|---|
 | `yundera/auth/` | `accounts/authelia/` |
-| `yundera/dex/` | `accounts/dex/` |
-| `yundera/dex-frontend/` | `accounts/dex-frontend/` |
+| `yundera/dex/` (now including `frontend/`) | `accounts/dex/` |
 | `casaos/apps/yundera/auth/configuration.yml.tmpl` | `accounts/authelia/configuration.yml.tmpl` |
 | `casaos/apps/yundera/dex.config.yaml.tmpl` | `accounts/dex/config.yaml.tmpl` |
 | `casaos/apps/yundera/dex-theme/` | `accounts/dex-theme/` |
@@ -239,7 +237,7 @@ shape.
 |---|---|
 | keeps | `admin/gate-data/`, `onboarding/completed` |
 | gains | a **real** `docker-compose.yml` + `docker-compose.override.yml` + `.env` |
-| loses | `auth/`, `dex/`, `dex-frontend/`, `data/` — moved out |
+| loses | `auth/`, `dex/`, `data/` — moved out |
 | deletes | `admin/admin-session-key`, `.casaos-mirror`, and the mirror compose/env |
 
 Panels: **Operator**, **Support**, **Migration**, and whatever onboarding ends up as.
