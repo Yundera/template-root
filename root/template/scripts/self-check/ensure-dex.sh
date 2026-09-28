@@ -68,6 +68,10 @@ source "$YND_TEMPLATE/scripts/library/secrets.sh"
 DEX_ROOT="/DATA/AppData/yundera/dex"
 TEMPLATE="$YND_TEMPLATE/dex.config.yaml.tmpl"
 CONFIG_OUT="$DEX_ROOT/config.yaml"
+# Drop-in connectors, consumed near the end of this script. Declared here because
+# the Local Account retention rule below needs to know whether ANY other
+# connector will be rendered this cycle.
+CONNECTORS_D="$DEX_ROOT/connectors.d"
 
 SECRET_ENV="$YND_ROOT/.pcs.secret.env"
 USER_ENV="$YND_ROOT/.ynd.user.env"
@@ -77,6 +81,32 @@ ENV_MGR="$YND_TEMPLATE/scripts/tools/env-file-manager.sh"
 DEX_UID=1001
 
 mkdir -p "$DEX_ROOT"
+mkdir -p "$CONNECTORS_D"
+
+# ---------------------------------------------------------------------------
+# State from the PREVIOUS cycle, read BEFORE the render below overwrites it.
+#
+# `LOCAL_ACCOUNT_WAS_RENDERED` is what lets the probe further down distinguish
+# "this connector has never worked here" from "this connector worked yesterday
+# and the back-channel is merely unavailable at this instant". Those two deserve
+# opposite answers, and the old code gave them the same one.
+#
+# `OTHER_CONNECTOR_PRESENT` keeps the original safety property: Dex exits if
+# EVERY connector fails to open, so a connector is only ever retained on a box
+# that has another one to fall back on.
+# ---------------------------------------------------------------------------
+LOCAL_ACCOUNT_WAS_RENDERED=0
+if [ -f "$CONFIG_OUT" ] && grep -qE '^[[:space:]]*id:[[:space:]]*authelia[[:space:]]*$' "$CONFIG_OUT"; then
+    LOCAL_ACCOUNT_WAS_RENDERED=1
+fi
+
+OTHER_CONNECTOR_PRESENT=0
+shopt -s nullglob
+for dropin in "$CONNECTORS_D"/*.yaml "$CONNECTORS_D"/*.yml; do
+    OTHER_CONNECTOR_PRESENT=1
+    break
+done
+shopt -u nullglob
 
 DOMAIN="$("$ENV_MGR" get DOMAIN "$USER_ENV")"
 if [ -z "$DOMAIN" ]; then
@@ -155,8 +185,8 @@ fi
 # CA certificate — so the connector only works once mesh-router-agent has
 # written data/ca/ca-cert.pem, which the dex container mounts.
 #
-# FAIL-CLOSED here, the opposite of the claimed-ness check below, because the
-# asymmetry runs the other way:
+# FAIL-CLOSED for a connector this box has never rendered, because the asymmetry
+# runs the other way from the claimed-ness check above:
 #
 #   * Rendering a connector Dex cannot open costs the Local Account button
 #     anyway (Dex logs "Failed to open connector" and drops it) — and if it is
@@ -165,22 +195,56 @@ fi
 #
 # Both lose the button; only one can lose the box. So omit when in doubt.
 #
-# COST: one self-check cycle. On the tick that first delivers this pin to a box
-# that does not yet have data/ca (one that skipped the agent's CA_CERT_PATH
-# change), the agent writes the CA AFTER this script runs, so the connector is
-# omitted until the next tick re-probes and re-renders. The trailing
-# `docker restart dex` makes that automatic; nothing needs a human.
+# BUT NOT FOR ONE THAT ALREADY WORKED HERE — see the retention rule at the end
+# of the probe. This comment used to claim the cost was "one self-check cycle,
+# the next tick re-probes and re-renders, nothing needs a human", and that claim
+# was false for any probe failure with a DETERMINISTIC cause. The cause that bit
+# us was the script order itself: ensure-authelia.sh restarted Authelia and
+# returned without waiting, this probe fired 1-2s later, and the box lost its
+# local login every night for a week (wisera, 2026-09-28) while the log
+# faithfully repeated a warning that promised self-recovery.
+#
+# Two changes follow from that, and they are independent on purpose:
+#   1. the probe RETRIES, so a slow restart is not read as a broken service
+#      (ensure-authelia.sh also waits now — belt and braces, because a probe
+#      that only works when its dependency is punctual is the bug, not the fix);
+#   2. a connector a PREVIOUS cycle rendered is RETAINED when the probe fails,
+#      as long as another connector exists to keep Dex startable.
 #
 # The probe is a real discovery fetch over the pinned path — the same route the
 # dex container will take (127.0.0.1:443 here, host-gateway:443 there; both are
-# Caddy's published port) validated against the same CA file. `"issuer"` in the
-# body is the assertion, not the status code: the failure this whole change
-# exists to defeat is an HTTP 200 with an empty body.
+# Caddy's published port) validated against the same CA file.
 #
 # NOTE the path split: the CA lives under YND_ROOT (runtime data written by the
 # agent), not YND_TEMPLATE (synced tree).
 # ---------------------------------------------------------------------------
 CA_CERT="$YND_ROOT/data/ca/ca-cert.pem"
+
+# The probe RETRIES. A single shot made this check a race against the previous
+# script in scripts-config.txt: ensure-authelia.sh restarts Authelia, and until it
+# learned to wait for it (see wait_for_authelia there) the container was still
+# booting when the probe fired 1-2s later. Caddy also needs a moment to notice a
+# restarted upstream. Both are transient by nature, and the penalty for calling
+# them permanent is losing the box's local login for a whole cycle.
+#
+# Worst case here is ~55s, paid only on a box where Authelia really is not
+# serving. The good path costs one fast request.
+PROBE_ATTEMPTS=4
+PROBE_DELAY=5
+
+# probe_local_auth — does local-auth-$DOMAIN serve a discovery document over the
+# route DEX will take (the host-gateway pin, validated against the mesh CA)?
+#
+# `"issuer"` in the BODY is the assertion, not the status code: the failure this
+# whole check exists to defeat is an HTTP 200 with an empty body.
+probe_local_auth() {
+    curl -sS --max-time 10 \
+        --resolve "local-auth-$DOMAIN:443:127.0.0.1" \
+        --cacert "$CA_CERT" \
+        "https://local-auth-$DOMAIN/.well-known/openid-configuration" 2>/dev/null \
+        | grep -q '"issuer"'
+}
+
 LOCAL_ACCOUNT_REACHABLE=1
 if [ "$LOCAL_ACCOUNT_CLAIMED" != "1" ]; then
     : # unclaimed — the connector is not rendered anyway; skip the probe
@@ -190,14 +254,47 @@ elif [ ! -s "$CA_CERT" ]; then
     LOCAL_ACCOUNT_REACHABLE=0
     log_warn "mesh CA not present at $CA_CERT; omitting the Local Account connector this cycle"
     log_warn "  mesh-router-agent writes it (CA_CERT_PATH); the next self-check will re-probe and render."
-elif ! curl -sS --max-time 10 \
-        --resolve "local-auth-$DOMAIN:443:127.0.0.1" \
-        --cacert "$CA_CERT" \
-        "https://local-auth-$DOMAIN/.well-known/openid-configuration" 2>/dev/null \
-        | grep -q '"issuer"'; then
-    LOCAL_ACCOUNT_REACHABLE=0
-    log_warn "local-auth-$DOMAIN did not return a discovery document over the on-box path; omitting the Local Account connector this cycle"
-    log_warn "  Check that authelia is up and that Caddy serves local-auth-$DOMAIN with the mesh CA."
+else
+    PROBE_OK=0
+    ATTEMPT=1
+    while [ "$ATTEMPT" -le "$PROBE_ATTEMPTS" ]; do
+        if probe_local_auth; then
+            PROBE_OK=1
+            if [ "$ATTEMPT" -gt 1 ]; then
+                log_info "local-auth-$DOMAIN answered on probe attempt $ATTEMPT/$PROBE_ATTEMPTS"
+            fi
+            break
+        fi
+        if [ "$ATTEMPT" -lt "$PROBE_ATTEMPTS" ]; then
+            sleep "$PROBE_DELAY"
+        fi
+        ATTEMPT=$((ATTEMPT + 1))
+    done
+
+    if [ "$PROBE_OK" != "1" ]; then
+        log_warn "local-auth-$DOMAIN did not return a discovery document over the on-box path after $PROBE_ATTEMPTS attempts"
+        log_warn "  Check that authelia is up and that Caddy serves local-auth-$DOMAIN with the mesh CA."
+
+        # RETENTION, and the one place this script is not fail-closed.
+        #
+        # Omitting a connector the box has never had costs a button that never
+        # worked. Omitting one that worked yesterday REMOVES the owner's local
+        # door, and if the surviving connector is a federated cloud login whose
+        # account does not match, it removes every door — measured on wisera
+        # 2026-09-28. So a connector a previous cycle rendered is kept.
+        #
+        # The original "omitting can never take Dex down" property is preserved
+        # by OTHER_CONNECTOR_PRESENT: Dex tolerates one connector failing to open
+        # but exits when ALL of them do, so nothing is retained on a box where
+        # this is the only connector.
+        if [ "$LOCAL_ACCOUNT_WAS_RENDERED" = "1" ] && [ "$OTHER_CONNECTOR_PRESENT" = "1" ]; then
+            log_warn "  KEEPING it anyway: a previous cycle rendered it and another connector is present."
+            log_warn "  Dex drops a connector it cannot open, so the cost is the button, not the login page."
+        else
+            LOCAL_ACCOUNT_REACHABLE=0
+            log_warn "  Omitting the Local Account connector this cycle."
+        fi
+    fi
 fi
 
 if [ "$LOCAL_ACCOUNT_CLAIMED" = "1" ] && [ "$LOCAL_ACCOUNT_REACHABLE" = "1" ]; then
@@ -297,8 +394,8 @@ fi
 # already taken — `authelia` (rendered above) and `yundera`
 # (ensure-yundera-login.sh) — Dex rejects duplicate ids at startup.
 # ---------------------------------------------------------------------------
-CONNECTORS_D="$DEX_ROOT/connectors.d"
-mkdir -p "$CONNECTORS_D"
+# CONNECTORS_D and its mkdir are hoisted to the top of this script — the Local
+# Account retention rule needs the glob before the render.
 shopt -s nullglob
 for dropin in "$CONNECTORS_D"/*.yaml "$CONNECTORS_D"/*.yml; do
     printf '\n' >> "$CONFIG_OUT"

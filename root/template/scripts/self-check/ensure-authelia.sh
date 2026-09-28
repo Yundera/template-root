@@ -18,7 +18,8 @@
 #   - seed the owner account in users_database.yml as UNCLAIMED (disabled, with
 #     a throwaway hash nobody ever learns), refreshing only the email on
 #     subsequent runs (Authelia owns the password once the user sets it),
-#   - restart authelia so a re-rendered config is picked up.
+#   - restart authelia so a re-rendered config is picked up, and WAIT for it to
+#     serve again before returning (ensure-dex.sh probes it moments later).
 #
 # Storage layout (host /DATA/AppData/yundera/auth/, mounted at /config):
 #   secrets/{session,storage,reset,oidc-hmac}  generate-once (chmod 600)
@@ -65,6 +66,85 @@ AUTHELIA_IMAGE="authelia/authelia:4.39"
 HASH_MAX_ATTEMPTS=5
 HASH_INITIAL_BACKOFF=5
 HASH_MAX_BACKOFF=60
+
+# How long to wait for Authelia to answer again after a restart, and how often to
+# ask. Authelia's own startup is ~3-6s on a PCS; the ceiling is deliberately
+# generous because the two directions cost very different things:
+#
+#   * overshooting costs seconds on a self-check that already takes minutes;
+#   * undershooting costs the PCS its Local Account login for a WHOLE CYCLE.
+#
+# The second one is not hypothetical. ensure-dex.sh renders the Local Account
+# connector only if Authelia's discovery document answers, and it fail-closes.
+# This script used to end with a fire-and-forget `docker restart authelia`, so
+# ensure-dex.sh (next in scripts-config.txt) probed 1-2s later, always lost the
+# race, and dropped the connector — every single cycle, not the "one cycle" its
+# own comment predicted. Diagnosed on wisera 2026-09-28: 7 consecutive nights of
+# "did not return a discovery document", a box whose only remaining connector was
+# Yundera Login, and an owner locked out of their own PCS the moment the cloud
+# account behind that connector was not the one the browser was signed into.
+#
+# The postcondition of this script is therefore "Authelia is SERVING", not "a
+# restart was requested". Everything downstream already assumed the former.
+AUTHELIA_READY_TIMEOUT=45
+AUTHELIA_READY_INTERVAL=2
+
+# Is Authelia answering right now?
+#
+# Two independent signals, whichever says yes first:
+#
+#   1. Authelia's own /api/health over the container's bridge address. Port 9091
+#      is `expose`d, not published, so this goes host -> docker bridge; it is the
+#      fast signal (true within ~3-6s of a restart) and it is what actually
+#      matters, because "the HTTP server is listening" is the precondition Caddy
+#      and Dex both need.
+#   2. The container's health status. The authelia image ships its own HEALTHCHECK
+#      (/app/healthcheck.sh), but with interval 30s and start_period 60s, so this
+#      only turns "healthy" ~30s in. It is the fallback for a host that cannot
+#      reach the bridge directly.
+#
+# Never fatal: a false negative here only means we fall through to the timeout
+# and let ensure-dex.sh's own retrying probe have the final say.
+authelia_is_ready() {
+    local ip health
+
+    # `|| true`: `set -o pipefail` is on, so a container that vanished mid-run would
+    # otherwise make this assignment fail and take the whole script with it.
+    ip="$(docker inspect authelia \
+        --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' 2>/dev/null \
+        | awk '{print $1}')" || true
+    if [ -n "$ip" ] && command -v curl >/dev/null 2>&1; then
+        if curl -sf --max-time 3 -o /dev/null "http://${ip}:9091/api/health" 2>/dev/null; then
+            return 0
+        fi
+    fi
+
+    health="$(docker inspect authelia \
+        --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null || true)"
+    [ "$health" = "healthy" ]
+}
+
+# Block until authelia_is_ready or the budget runs out. Returns 0 either way —
+# see AUTHELIA_READY_TIMEOUT: a box where this never comes up has a bigger
+# problem than a missing login button, and aborting here would take the rest of
+# this script's convergence with it.
+wait_for_authelia() {
+    local waited=0
+
+    while [ "$waited" -lt "$AUTHELIA_READY_TIMEOUT" ]; do
+        if authelia_is_ready; then
+            log_info "Authelia is answering again after ${waited}s"
+            return 0
+        fi
+        sleep "$AUTHELIA_READY_INTERVAL"
+        waited=$((waited + AUTHELIA_READY_INTERVAL))
+    done
+
+    log_warn "Authelia did not answer within ${AUTHELIA_READY_TIMEOUT}s of its restart"
+    log_warn "  ensure-dex.sh re-probes and re-renders on its own, so the Local Account"
+    log_warn "  connector may be missing from the Dex login page until the next cycle."
+    return 0
+}
 
 # Digest produced by the last successful authelia_hash call. Returned this way
 # rather than on stdout so the retry logging below can use log_warn like the
@@ -356,6 +436,10 @@ fi
 # start (~3s). Silent on cold boot when the container does not exist yet.
 if docker inspect authelia >/dev/null 2>&1; then
     docker restart authelia >/dev/null 2>&1 || true
+    # Do NOT return before it answers: ensure-dex.sh runs seconds from now and
+    # fail-closes on a discovery probe against this very service. See
+    # wait_for_authelia above.
+    wait_for_authelia
 fi
 
 log_info "Authelia provisioning complete (data root: $AUTH_ROOT)"

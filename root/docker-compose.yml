@@ -22,6 +22,12 @@ services:
     container_name: admin
     hostname: admin
     restart: unless-stopped
+    # The image's own default, written down HERE because something on the host has
+    # to chown the gate-data bind below to match it, and an image repin must not
+    # be able to silently move the target (ensure-admin-gate-secret.sh chowns to
+    # this exact uid). The maison and kopia gates pin "0:0" instead; this one stays
+    # unprivileged — it needs to write nothing but its own session file.
+    user: "65534:65534"
     cpu_shares: 40
     mem_limit: 128m
     environment:
@@ -121,6 +127,14 @@ services:
       # Gate state: persisted sessions (sessions.json). Without this mount a
       # container recreate signs everyone out regardless of SESSION_DURATION_HOURS.
       # Beside the app's own /app/data, outside the rsync'd stack tree.
+      #
+      # OWNERSHIP IS LOAD-BEARING: the gate runs as 65534 (pinned above) and writes
+      # sessions.json through a temp file in this directory, so it needs the DIR
+      # writable, not just the file. ensure-admin-gate-secret.sh chowns it. Found
+      # on wisera 2026-09-28 owned 1000:1000 with a 0600 sessions.json from
+      # 2026-08-19: every login logged "[session] save failed: permission denied"
+      # and the 720h SESSION_DURATION_HOURS above was fiction for this one app —
+      # each gate restart silently signed the owner out.
       - type: bind
         source: /DATA/AppData/yundera/admin/gate-data
         target: /data
