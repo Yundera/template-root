@@ -111,6 +111,12 @@ ensure-kopia-stack.sh
 # yundera stack owns and creates.
 ensure-maison-stack.sh
 
+# The web Terminal (ttyd behind an AppShield gate) — the store's Terminal app shipped
+# as a platform stack. Same constraint as maison: its gate joins `pcs`, so it MUST stay
+# after ensure-user-compose-stack-up.sh. Nothing depends on it; opt out per box with
+# TERMINAL_ENABLED=false in .pcs.env.
+ensure-terminal-stack.sh
+
 # Retired with the CasaOS removal, and listed here only so nobody reintroduces
 # one: ensure-casaos-stack.sh (phase 3, 2026-08-02) and the two mirrors,
 # ensure-maison-app-mirror.sh / ensure-maison-yundera-mirror.sh (2026-09-08).

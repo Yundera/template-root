@@ -2,7 +2,7 @@
 # deploy-stack.sh <stack-name> <dest-dir> [EXTRA_KEY=value ...]
 #
 # Deploys one of the auxiliary compose stacks shipped under
-# /DATA/AppData/yundera/template/stacks/<stack-name>/ (currently `maison` and `kopia`) to
+# /DATA/AppData/yundera/template/stacks/<stack-name>/ (currently `maison`, `kopia` and `terminal`) to
 # its own project directory:
 #
 #   1. copy stacks/<stack-name>/docker-compose.yml -> <dest-dir>/docker-compose.yml
