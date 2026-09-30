@@ -9,7 +9,7 @@ root/                        # Files installed to /DATA/AppData/yundera
 ├── .pcs.env                 # PCS configuration environment variables
 ├── .pcs.secret.env          # Secret environment variables (JWT, passwords, etc.)
 ├── .ynd.user.env            # User-specific environment variables
-├── docker-compose.yml       # Core services stack (admin, casaos, mesh-router-*, smtp, dex, casaos-oidc-bridge, auth-registrar)
+├── docker-compose.yml       # `yundera` stack: admin (AppShield gate) + admin-app. mesh-router-*/smtp are the `mesh` stack and dex/authelia/auth-registrar the `auth` stack, under template/stacks/
 ├── Caddyfile                # Caddy gateway global config (per-app routes come from container labels)
 ├── dex.config.yaml.tmpl     # Dex OIDC broker config template (rendered each self-check)
 └── scripts/
@@ -115,7 +115,7 @@ All triggers run the same three-step sequence at the end of `scripts-config.txt`
 3. **`self-check/ensure-user-compose-stack-up.sh`**
    `docker compose up -d` to apply.
 
-This sequence covers the **yundera stack only**. User apps installed from the AppStore are not touched by the self-check chain — they run under Docker's own `restart:` policy and are updated from the CasaOS (or Maison) UI.
+This sequence covers the **yundera stack only** (the admin app). The platform stacks — `mesh`, `auth`, `kopia`, `maison`, `terminal` — are deployed from `template/stacks/<name>/` by their own `ensure-<name>-stack.sh` through `tools/deploy-stack.sh`; see `scripts-config.txt` for their order. User apps installed from the AppStore are not touched by the self-check chain — they run under Docker's own `restart:` policy and are updated from the CasaOS (or Maison) UI.
 
 Earlier entries in `scripts-config.txt` are host-level prerequisites (user, ssh, partitions, swap, docker install, public IP detection, auth secrets, cron installation, etc.).
 

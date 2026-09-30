@@ -17,9 +17,9 @@
 # socket. The compose file never publishes its port — the AppShield gate in the same
 # stack is the only way in. Do not "temporarily" add a ports: mapping to debug.
 #
-# ORDERING: must run AFTER ensure-user-compose-stack-up.sh — the `pcs` network is
-# owned by the yundera stack and joined here as external, and the gate depends on
-# auth-registrar / dex (yundera stack) being reachable by name on that network.
+# ORDERING: must run AFTER ensure-mesh-stack.sh and ensure-auth-stack.sh — the gate
+# joins the shared `pcs` network (external, created by the mesh deploy) and depends
+# on auth-registrar / dex (auth stack) being reachable by name on it.
 set -euo pipefail
 
 YND_ROOT="/DATA/AppData/yundera"

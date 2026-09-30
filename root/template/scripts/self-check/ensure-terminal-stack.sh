@@ -17,8 +17,8 @@
 # Opt out with TERMINAL_ENABLED=false (or 0/no/off) in .pcs.env: the stack is taken down
 # and not redeployed. Default is enabled.
 #
-# ORDERING: must run AFTER ensure-user-compose-stack-up.sh — the gate joins the `pcs`
-# network, which the yundera stack owns, and reaches auth-registrar on it.
+# ORDERING: must run AFTER ensure-mesh-stack.sh and ensure-auth-stack.sh — the gate
+# joins the shared `pcs` network and reaches auth-registrar (auth stack) on it.
 set -euo pipefail
 
 YND_ROOT="/DATA/AppData/yundera"

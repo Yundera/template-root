@@ -139,7 +139,7 @@ services:
         source: /DATA/AppData/yundera/admin/gate-data
         target: /data
       # The mesh-router CA that SSL_CERT_DIR above points at. Written straight here
-      # by mesh-router-agent (CA_CERT_PATH, below) — its own directory precisely so
+      # by mesh-router-agent (CA_CERT_PATH, in the mesh stack) — its own directory precisely so
       # the gates can mount it without also mounting key.pem. A CA certificate is
       # public; the key beside it is not.
       - type: bind
@@ -189,7 +189,7 @@ services:
     # directory, exactly as the caddy labels below already do. What no longer
     # rides along: DEFAULT_PWD, USER_JWT, AUTHELIA_DEX_SECRET, and PROVIDER_STR
     # (which the Domain panel used to display, and which the mesh-router and smtp
-    # services below still interpolate for their own use). None of them are read
+    # services of the mesh stack still interpolate for their own use). None of them are read
     # by the app — and Terminal/TerminalHandler.ts spreads process.env into every
     # shell it spawns, so they were reaching the web terminal too. Nothing from
     # .pcs.secret.env now enters this container.
@@ -302,455 +302,24 @@ services:
   # died earlier — Authelia is the local credential now. /DATA/AppData/casaos
   # survives as a plain directory of dead data, including the stale pre-2026-09-08
   # copy of this stack at apps/yundera. See doc/maison-migration.md.
-
-
-
-
-  # =============================================================================
-  # MESH ROUTER TUNNEL (v2)
-  # Establishes WireGuard VPN tunnel to the provider for NAT traversal
-  # =============================================================================
-  mesh-router-tunnel:
-    image: ghcr.io/yundera/mesh-router-tunnel:1.3.0
-    container_name: mesh-router-tunnel
-    hostname: mesh-router-tunnel
-    restart: unless-stopped
-    cpu_shares: 90
-    cap_add:
-      - NET_ADMIN
-      - SYS_MODULE
-    sysctls:
-      net.ipv4.ip_forward: "1"
-      net.ipv4.conf.all.src_valid_mark: "1"
-    environment:
-      - PROVIDER=${PROVIDER_STR}
-      - ROUTING_TARGET_HOST=mesh-router-caddy
-      # Dual-port support for transparent HTTP/HTTPS routing
-      - ROUTING_TARGET_PORT_HTTPS=443
-      - ROUTING_TARGET_PORT_HTTP=80
-    networks:
-      pcs: null
-    depends_on:
-      - mesh-router-caddy
-
-  
-  # =============================================================================
-  # MESH ROUTER AGENT (v2)
-  # Registers public IP with backend for direct routing (bypasses VPN)
-  # =============================================================================
-  mesh-router-agent:
-    image: ghcr.io/yundera/mesh-router-agent:1.1.1
-    container_name: mesh-router-agent
-    hostname: mesh-router-agent
-    restart: unless-stopped
-    cpu_shares: 90
-    environment:
-      - PROVIDER=${PROVIDER_STR}
-      # Must stay in sync with Caddy's ${PUBLIC_IP_DASH}-based labels — registering
-      # any other family here causes the CF Worker to rewrite Host to a hostname
-      # Caddy doesn't know, and every subdomain falls into the catch-all.
-      - PUBLIC_IP=${PUBLIC_IP}
-      # Dual-port support for transparent HTTP/HTTPS routing
-      - TARGET_PORT_HTTPS=443
-      - TARGET_PORT_HTTP=80
-      # THE CA GOES IN ITS OWN DIRECTORY, AWAY FROM THE KEY. The agent writes three
-      # files: key.pem, cert.pem and the mesh-router CA. Caddy needs the first two
-      # and nothing on the box reads the third — but the AppShield gates do, because
-      # they resolve auth-${DOMAIN} on-box (see the extra_hosts block on the `admin`
-      # gate above) and that TLS terminates at Caddy's mesh-CA certificate.
-      #
-      # A CA certificate is public — Caddy hands it to every client in the
-      # handshake. key.pem is not, and mounting one directory into the gates would
-      # mean mounting both. Splitting them at the writer costs one env var and one
-      # mount here, and is why no self-check script has to copy anything.
-      - CA_CERT_PATH=/app/ca/ca-cert.pem
-    volumes:
-      - /DATA/AppData/yundera/data/certs:/app/data
-      # Read-write: this is where the agent WRITES the CA, per CA_CERT_PATH above.
-      #
-      # ensure-pcs-user.sh declares this directory alongside data/certs, but do
-      # NOT rely on it existing first: that script is #1 in scripts-config.txt
-      # and ensure-template-sync.sh is #5, so on the tick that INTRODUCES a new
-      # directory the pre-create always runs a tick before the template that
-      # needs it. Docker then invents it root-owned and the next tick's
-      # `chown -R pcs:pcs` tidies up (observed on wisera 2026-09-16).
-      #
-      # That is survivable here only because mesh-router-agent runs as uid 0
-      # (verified in the 1.1.1 image, not assumed) and can write into a
-      # root-owned directory. A future container that needs a pre-created,
-      # correctly-owned mount and does NOT run as root will fail on the tick it
-      # is introduced. Fix the ordering before relying on the pre-create.
-      - /DATA/AppData/yundera/data/ca:/app/ca
-    networks:
-      pcs: null
-
-  
-  # =============================================================================
-  # MESH ROUTER CADDY (v2)
-  # Reverse proxy with Docker container discovery via labels
-  # =============================================================================
-  mesh-router-caddy:
-    image: ghcr.io/yundera/mesh-router-caddy:1.2.6
-    container_name: mesh-router-caddy
-    hostname: mesh-router-caddy
-    restart: unless-stopped
-    cpu_shares: 90
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      # A DIRECTORY, not the Caddyfile itself. A single-file bind mount is pinned
-      # to the inode it started with, and ensure-template-sync.sh updates the
-      # template with rsync — which renames a new file into place. Mounted as a
-      # file, this container would keep serving the Caddyfile it booted with,
-      # silently and forever: caddy-docker-proxy re-reads the path on every
-      # generation, so the config always looked freshly built. Observed in the
-      # field as an eight-week-old Caddyfile behind a correct-looking config.
-      # The dir also cannot be the app root — .pcs.secret.env lives there.
-      - /DATA/AppData/yundera/template/caddy:/etc/caddy:ro
-      - /DATA/AppData/yundera/data/certs:/certs:ro
-      - /DATA/AppData/yundera/data/caddy/data:/data
-      - /DATA/AppData/yundera/data/caddy/config:/config
-    environment:
-      - CADDY_DOCKER_CADDYFILE_PATH=/etc/caddy/Caddyfile
-      - CADDY_INGRESS_NETWORKS=pcs
-      - PCS_EMAIL=admin@${DOMAIN}
-      # Root domain routing configuration
-      - DOMAIN=${DOMAIN}
-      - PUBLIC_IP_DASH=${PUBLIC_IP_DASH}
-      - DEFAULT_SERVICE_HOST=${DEFAULT_SERVICE_HOST}
-      - DEFAULT_SERVICE_PORT=${DEFAULT_SERVICE_PORT}
-    networks:
-      pcs: null
-    depends_on:
-      - mesh-router-agent
-
-  smtp:
-    image: ghcr.io/yundera/mail-gateway:1.0.4
-    container_name: smtp
-    hostname: smtp
-    restart: unless-stopped
-    cpu_shares: 70
-    environment:
-      # Provider mode: route mail through the mesh-router-backend that owns this PCS's domain
-      # (same as the nsl path), sending from <app>.<user-domain>@<server-domain>. The gateway
-      # derives the endpoint + credential from PROVIDER_STR — no orchestrator email API.
-      RELAY_CREDENTIAL: "${PROVIDER_STR}"
-      SMTP_PORT: "587"
-    expose:
-      - "587"
-    networks:
-      pcs: null
-
-
-  # =============================================================================
-  # DEX - OIDC identity broker for PCS apps (replaces Authelia)
-  # Apps delegate login via OIDC authorization_code flow. Endpoints:
-  #   https://auth-${DOMAIN}/.well-known/openid-configuration
-  # User identity is federated to Authelia (the PCS-local credential store) and,
-  # when the box has a Yundera account, to the orchestrator's IdP — see the
-  # connectors in dex.config.yaml.tmpl and the tail of ensure-dex.sh. The old
-  # CasaOS connector (casaos-oidc-bridge) is gone.
-  # App clients are registered dynamically by auth-registrar over
-  # Dex's gRPC API — no static client list. Config + sqlite + issued client
-  # secrets are provisioned by scripts/self-check/ensure-dex.sh into
-  # /DATA/AppData/yundera/dex/.
-  # =============================================================================
-  dex:
-    # PINNED BY DIGEST TO A `master` BUILD, DELIBERATELY — not a release tag.
-    #
-    # The logout features this PCS depends on are merged upstream but UNRELEASED:
-    # RP-Initiated Logout (PR #4674, 2026-04-01) and Back-Channel Logout with a
-    # `sid` claim (PR #4945, 2026-07-30). The newest release, v2.45.1
-    # (2026-03-03), predates both and advertises no logout of any kind — which is
-    # why "log out" could not log anybody out. See SSO-LOGOUT-PLAN.md §10.
-    #
-    # By DIGEST and not `:master`, because `:master` is a moving tag: every push
-    # to trunk would silently reach the whole fleet on the next
-    # ensure-user-compose-pulled.sh. This digest is the 2026-08-06 build,
-    # verified to advertise end_session_endpoint + backchannel_logout_supported.
-    #
-    # REPIN TO A RELEASE as soon as one ships with both PRs (expected > v2.45.1).
-    # The delta from v2.45.1 is large — trunk restructured server/ into logout/,
-    # backchannel/, discovery/, consent/, mfa/ packages — so this is a bigger
-    # unreleased surface than "a logout patch" implies.
-    image: ghcr.io/dexidp/dex@sha256:af9469509350ff3f6ca70127175a58e5ab085b9d18740fa4a590d9f03f0a026b
-    container_name: dex
-    hostname: dex
-    restart: unless-stopped
-    cpu_shares: 80
-    command: ["dex", "serve", "/data/config.yaml"]
-    environment:
-      # Gates the whole `sessions:` block in dex.config.yaml.tmpl. Dex REFUSES TO
-      # START with a sessions config and this unset ("sessions config requires
-      # sessions to be enabled"), so the two must move together.
-      #
-      # Turning it on gives Dex a real `dex_session` browser cookie, which is
-      # what makes it an OP you can log out of — and what replaces the
-      # connector-stickiness rules that used to live in caddy/Caddyfile.
-      DEX_SESSIONS_ENABLED: "true"
-      # Trust the mesh-router CA *on top of* the image's baked-in roots, for the
-      # extra_hosts pin below. Same pair as the AppShield gates: once the Local
-      # Account connector's issuer resolves on-box, its back-channel TLS
-      # terminates at this PCS's own Caddy, which serves local-auth-${DOMAIN}
-      # with the mesh-router CA (`gateway_tls` in caddy/Caddyfile) rather than a
-      # publicly-trusted certificate. The public path only ever validated because
-      # Cloudflare re-terminated TLS on the way through.
-      #
-      # SSL_CERT_DIR and NOT SSL_CERT_FILE: Go replaces certDirectories but keeps
-      # certFiles, so a directory ADDS roots while SSL_CERT_FILE would REPLACE
-      # the image's bundle outright — and Dex still needs the public roots for
-      # the "Yundera Login" connector, whose issuer is genuinely off-box.
-      #
-      # This relies on the image keeping a bundle at one of Go's default
-      # certFiles paths. Verified for the digest pinned above:
-      # /etc/ssl/certs/ca-certificates.crt, and it is the only file in that
-      # directory. RE-VERIFY ON REPIN — an image that ships only a cert
-      # directory would lose its public roots here and Yundera Login with them.
-      SSL_CERT_DIR: "/ca"
-    # KEEP THE CONNECTOR BACK-CHANNEL ON THE BOX — the same hairpin fixed on the
-    # AppShield gates (see the `admin` gate above for the full diagnosis).
-    # ensure-dex.sh renders the Local Account connector with
-    # `issuer: https://local-auth-${DOMAIN}`, and Dex does discovery, the code
-    # exchange and the JWKS fetch against that public hostname. Resolved
-    # publicly, those server-to-server calls leave the PCS, cross Cloudflare and
-    # the mesh-router CF Worker, and re-enter this same machine to reach a
-    # container on this bridge — a path observed answering ~70% of requests with
-    # an empty body on 2026-09-15.
-    #
-    # The issuer STRING does not change, so Authelia's discovery document still
-    # matches, the browser still resolves local-auth-${DOMAIN} publicly, and
-    # every redirect the user sees is unchanged. Only the lookup moves.
-    #
-    # Plain HTTP is not an alternative: the scheme is part of the issuer, and an
-    # OIDC client rejects a discovery document whose `issuer` does not match the
-    # URL it fetched.
-    extra_hosts:
-      - "local-auth-${DOMAIN}:host-gateway"
-    volumes:
-      # The mesh-router CA that SSL_CERT_DIR above points at — written straight
-      # here by mesh-router-agent (CA_CERT_PATH), in its own directory so key.pem
-      # never travels with it. A CA certificate is public; the key is not.
-      #
-      # An EMPTY or missing directory is survivable: Go still loads the image's
-      # own bundle, so Dex starts and every publicly-trusted connector keeps
-      # working. Only the pinned Local Account connector would fail to open —
-      # which is exactly what the probe in ensure-dex.sh prevents from being
-      # rendered in the first place.
-      - /DATA/AppData/yundera/data/ca:/ca:ro
-      # config.yaml (rendered) + dex.db (sqlite). This is CACHE, not precious
-      # data — see the recovery note in scripts/self-check/ensure-dex.sh.
-      - /DATA/AppData/yundera/dex:/data
-      # Custom "yundera" frontend, overlaid onto the stock image (no frontend.dir,
-      # so all other stock templates/static stay intact). ensure-dex.sh renders
-      # these from the template's dex-theme/ before the stack comes up.
-      #
-      # These sit UNDER dex/, which the line above already mounts at /data — so
-      # the same files are visible twice inside the container, at /data/frontend/
-      # and at the two /srv/dex/web/ targets. Deliberate: Docker mounts each
-      # source at its own target independently, Dex reads nothing but
-      # /data/config.yaml and /data/dex.db, and keeping the rendered theme inside
-      # the directory that owns Dex's disposable state means one cache dir at the
-      # stack root instead of two. Moved here from the sibling dex-frontend/ on
-      # 2026-09-18; migrations/2026-09-18-10-move-dex-frontend-into-dex.sh sweeps
-      # the old path.
-      - /DATA/AppData/yundera/dex/frontend/templates/login.html:/srv/dex/web/templates/login.html:ro
-      - /DATA/AppData/yundera/dex/frontend/templates/header.html:/srv/dex/web/templates/header.html:ro
-      - /DATA/AppData/yundera/dex/frontend/themes/yundera:/srv/dex/web/themes/yundera:ro
-    expose:
-      - "5556"   # OIDC web endpoints (Caddy terminates TLS), bound on pcs
-      - "5557"   # gRPC client-mgmt API — UNAUTHENTICATED, bound to yundera-auth IP only
-    networks:
-      pcs: null
-      # gRPC (5557) is bound to `dex-grpc` in config.yaml.tmpl, so it is reachable
-      # ONLY by containers on yundera-auth (just auth-registrar).
-      #
-      # THE ALIAS IS THE WHOLE MECHANISM, and it must stay network-scoped. Dex is
-      # multi-homed, so binding to its own container name is ambiguous — Docker's
-      # embedded DNS answers from the *querying* container's perspective and can
-      # hand back the `pcs`-side address, which would publish an unauthenticated
-      # client-minting API to every app on the box. An alias declared here and
-      # nowhere else exists in exactly one network's DNS scope, so it has exactly
-      # one A record and `net.Listen` can only bind to the yundera-auth interface.
-      #
-      # This replaced a pinned ipv4_address (172.31.7.2 on a /29). That address was
-      # also the first one Docker's IPAM hands out dynamically, so any cycle where
-      # auth-registrar attached while Dex was between restarts stole it and wedged
-      # Dex forever on "Address already in use" — which is exactly what happened on
-      # the 2026-08-27 demostaging2 provision. There is no pinned address left to
-      # collide over; do not reintroduce one.
-      yundera-auth:
-        aliases:
-          - dex-grpc
-    # No `depends_on` for the connectors: authelia is in this stack but Dex must
-    # not block on it, and the Yundera IdP is off-box entirely.
-    #
-    # WHAT ACTUALLY HAPPENS WHEN A CONNECTOR IS UNREACHABLE AT BOOT — measured
-    # against the digest pinned above (v2.46.0-20260806171424) on 2026-09-16,
-    # because two different notes in this tree used to claim two wrong things:
-    #
-    #   * it is NOT retried on use. Every connector is opened once, at startup.
-    #   * it is NOT fatal per-connector. This build logs
-    #     "continue on connector failure feature flag enabled", drops the
-    #     connector that failed and carries on with the rest.
-    #
-    # Dex exits only when EVERY connector fails ("failed to open all connectors
-    # (1/1)"). So a cold boot that races Authelia loses the Local Account button
-    # but keeps Yundera Login and the box stays reachable — unless that was the
-    # only connector, in which case Dex exits and restart:unless-stopped retries.
-    #
-    # The cost is that a dropped connector stays dropped until Dex restarts.
-    # ensure-dex.sh restarts it on every self-check, so the ceiling is one tick.
-    # THE FEATURE FLAG IS AN UNRELEASED-MASTER DEFAULT: re-measure this on the
-    # repin to a release, or a single bad connector is back to taking down login.
-    # Unlike every other service here, these labels declare ONLY the hostnames:
-    # the TLS choice and the upstream live in the (dex_router*) snippets in
-    # caddy/Caddyfile. That is where the connector-memory rules are — named
-    # matchers, `uri`, and a `handle_response` block, none of which can be
-    # expressed as flat caddy-docker-proxy labels. Keep the hostname list here in
-    # sync with the three auth-* hostnames; everything else is in the snippet.
-    labels:
-      # Standard domain with custom CA (gateway-routed)
-      caddy_0: auth-${DOMAIN}
-      caddy_0.import: dex_router_tls
-      # nip.io variant for direct access (custom CA)
-      caddy_1: auth-${PUBLIC_IP_DASH}.nip.io
-      caddy_1.import: dex_router_tls
-      # sslip.io variant for direct access (Let's Encrypt)
-      caddy_2: auth-${PUBLIC_IP_DASH}.sslip.io
-      caddy_2.import: dex_router
-
-
-  # =============================================================================
-  # AUTHELIA - local-account IdP, federated by Dex as the "Local Account" connector
-  # Owns the credential that used to live in CasaOS. Exactly ONE OIDC client
-  # (Dex); no dynamic app-client registration (that stays on Dex's gRPC path).
-  # Serves its own login UI at local-auth-${DOMAIN} — which carries the built-in
-  # "Reset password?" link and drives the email reset flow through the local
-  # smtp relay. Config + secrets + users_database.yml are provisioned by
-  # scripts/self-check/ensure-authelia.sh into /DATA/AppData/yundera/auth/.
-  # =============================================================================
-  authelia:
-    image: authelia/authelia:4.39.20
-    container_name: authelia
-    hostname: authelia
-    restart: unless-stopped
-    cpu_shares: 80
-    environment:
-      AUTHELIA_SESSION_SECRET_FILE: /config/secrets/session
-      AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE: /config/secrets/storage
-      AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE: /config/secrets/reset
-    volumes:
-      # configuration.yml (rendered) + db.sqlite + users_database.yml + secrets.
-      # Unlike the dex dir this holds the local account — back it up.
-      - /DATA/AppData/yundera/auth:/config
-    expose:
-      - "9091"
-    networks:
-      pcs: null
-    labels:
-      # Standard domain with custom CA (gateway-routed). Distinct host from Dex's
-      # auth-${DOMAIN}: Dex is the broker, Authelia is the connector behind it.
-      caddy_0: local-auth-${DOMAIN}
-      caddy_0.import: gateway_tls
-      caddy_0.reverse_proxy: "{{upstreams 9091}}"
-      # nip.io variant for direct access (custom CA)
-      caddy_1: local-auth-${PUBLIC_IP_DASH}.nip.io
-      caddy_1.import: gateway_tls
-      caddy_1.reverse_proxy: "{{upstreams 9091}}"
-      # sslip.io variant for direct access (Let's Encrypt)
-      caddy_2: local-auth-${PUBLIC_IP_DASH}.sslip.io
-      caddy_2.reverse_proxy: "{{upstreams 9091}}"
-
-
-  # =============================================================================
-  # AUTH-REGISTRAR - OIDC client self-registration for PCS apps
-  # Sidecars (e.g. nginx-hash-lock) POST their redirect URIs to
-  #   http://auth-registrar:9092/register
-  # on first login and get back {client_id, client_secret, issuer_url}. Caller
-  # identity is derived from the source IP via PTR lookup on the pcs network —
-  # client_id is never accepted as input. Intentionally NOT publicly routable.
-  # In Dex mode it calls Dex's gRPC CreateClient.
   #
-  # STATELESS: the registrar's client-secret cache lives inside the container
-  # (DEX_CLIENTS_DIR=/tmp/dex-clients) and is deliberately NOT bind-mounted to the
-  # data volume — there is no per-client secret to back up. Within a container
-  # lifetime the cache makes re-registration idempotent (same secret); after a
-  # restart the cache is empty and the registrar transparently rotates each
-  # client's secret on its next /register. Apps re-register on every login, so
-  # this is invisible. See: packages/mesh-router-root/mesh-router-auth/README.md
-  # =============================================================================
-  auth-registrar:
-    image: ghcr.io/yundera/mesh-auth:1.1.6
-    container_name: auth-registrar
-    hostname: auth-registrar
-    restart: unless-stopped
-    cpu_shares: 40
-    environment:
-      ISSUER_URL: https://auth-${DOMAIN}
-      REGISTRAR_BACKEND: dex
-      # Dex gRPC is reachable only on the isolated yundera-auth net, under the
-      # network-scoped alias Dex binds to. Resolving `dex` instead would be a bug:
-      # both containers are on `pcs` too, so that name can resolve to the pcs-side
-      # address, where nothing is listening.
-      DEX_GRPC_ADDR: dex-grpc:5557
-      # ephemeral in-container cache (NOT persisted) — see note above
-      DEX_CLIENTS_DIR: /tmp/dex-clients
-      # Allowed redirect-URI host suffixes (comma-separated). An app's permitted
-      # hosts are <app>-<suffix> for each; the registrar verifies every requested
-      # callback against this exact set. Must list the SAME suffixes the apps'
-      # caddy_* labels use — the user domain plus the IP-based fallbacks.
-      REDIRECT_HOST_SUFFIXES: "${DOMAIN},${PUBLIC_IP_DASH}.nip.io,${PUBLIC_IP_DASH}.sslip.io"
-      # The one app allowed to register callbacks on the BARE suffixes
-      # (${DOMAIN} itself, not just <app>-${DOMAIN}) — i.e. whoever the root
-      # domain reverse-proxies to in the Caddyfile above.
-      #
-      # Deliberately the SAME variable that drives that Caddy block: "the app
-      # that owns the bare hostname" and "the app the bare hostname routes to"
-      # are then one fact rather than two settings that can drift. The Domain
-      # panel writes it to .pcs.env and triggers a self-check, so this container
-      # is recreated on the same tick the root route repoints.
-      #
-      # It is a proxy upstream target, not an identity: `host.docker.internal`
-      # is legal here and is not a container name. The registrar validates it
-      # and falls back to "nobody owns the bare hosts" rather than guessing —
-      # check the `root app:` line in `docker logs auth-registrar` if a login on
-      # the bare domain still lands on <app>-${DOMAIN}.
-      #
-      # Needs mesh-auth >= 1.1.4; older images ignore this and apps keep the
-      # pre-existing bounce-to-<app>-${DOMAIN} behaviour.
-      ROOT_CLIENT_ID: "${DEFAULT_SERVICE_HOST}"
-    expose:
-      - "9092"
-    networks:
-      pcs: null            # /register from app sidecars + PTR attestation
-      yundera-auth: null   # gRPC to Dex (no fixed address needed — dials the alias)
-    depends_on:
-      - dex
+  # NOTE: mesh-router-tunnel, -agent, -caddy and smtp now live in the `mesh` stack
+  # (template/stacks/mesh), and dex, authelia and auth-registrar in the `auth` stack
+  # (template/stacks/auth) — same container names, same data paths. What is left
+  # here is the admin app. On the tick that first ships that split, this stack comes
+  # up from the new file BEFORE mesh/auth have taken their services over, so its
+  # stack-up holds back --remove-orphans until they have (yundera_handover_pending
+  # in library/stacks.sh) — removing those orphans early would take the box dark.
 
 networks:
+  # Shared by every stack and owned by none: created by ensure_pcs_network
+  # (library/stacks.sh) before any stack comes up. This stack used to create it,
+  # which made every other stack's deploy depend on this one having run first. A
+  # box provisioned before the split keeps the yundera-labelled network; joining it
+  # as external is fine.
   pcs:
     name: pcs
-  # Isolated gRPC-only net for the auth-registrar <-> Dex client-management API.
-  # internal: true → no egress (Dex's egress comes from the pcs network it is also
-  # on). App containers live only on pcs, so they cannot reach Dex's gRPC port
-  # (5557), which is bound to the `dex-grpc` alias on this net.
-  #
-  # NO ipam BLOCK, DELIBERATELY. Addressing here is entirely dynamic: Dex is found
-  # by its network-scoped alias, not by a pinned address, so there is no reserved
-  # IP for the dynamic allocator to collide with and no subnet to keep clear of
-  # other host docker networks. See the alias note on the dex service.
-  #
-  # THE NAME IS NAMESPACED ON PURPOSE. The security property of this network is
-  # "only auth-registrar is on it", on a box where the owner installs arbitrary
-  # store apps. A generic top-level name (`auth`) is claimable by any third-party
-  # compose file with `name:` or `external: true`, and the prize for landing here
-  # is unauthenticated OIDC-client minting. Renamed from `dex-internal`;
-  # migrations/2026-08-27-10-rename-dex-internal-network.sh drops the old one.
-  yundera-auth:
-    name: yundera-auth
-    internal: true
+    external: true
 
 x-casaos:
   main: admin
@@ -790,9 +359,10 @@ x-compose-app:
   icon: https://cdn.jsdelivr.net/gh/Yundera/settings-center-app@main/public/YunderaPCS-setting_iconV2.svg
   category: pcs
   developer: Yundera Team
-  # This stack IS the PCS — mesh-router, dex, authelia, the admin app. `system`
-  # puts its tile in Maison's System grid and, the part that matters, makes
-  # Maison refuse to stop or uninstall it and the nightly backup skip it. It
+  # This stack is the admin app — mesh-router and auth have their own stacks and
+  # tiles now (template/stacks/{mesh,auth}). `system` puts its tile in Maison's
+  # System grid and, the part that matters, makes Maison refuse to stop or
+  # uninstall it and the nightly backup skip it. It
   # replaces the maison stack's PROTECTED_APPS env, removed at Maison 1.1.5;
   # an older image ignores the key entirely, so the guard travels with the pin
   # in stacks/maison/docker-compose.yml. Restart is still offered.

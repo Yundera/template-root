@@ -2,15 +2,19 @@
 # deploy-stack.sh <stack-name> <dest-dir> [EXTRA_KEY=value ...]
 #
 # Deploys one of the auxiliary compose stacks shipped under
-# /DATA/AppData/yundera/template/stacks/<stack-name>/ (currently `maison`, `kopia` and `terminal`) to
-# its own project directory:
+# /DATA/AppData/yundera/template/stacks/<stack-name>/ (currently `mesh`, `auth`, `maison`, `kopia`
+# and `terminal`) to its own project directory:
 #
 #   1. copy stacks/<stack-name>/docker-compose.yml -> <dest-dir>/docker-compose.yml
 #   1b. copy stacks/<stack-name>/icon.<ext> -> <dest-dir>/.icon.<ext>, the file
 #      Maison renders the stack's tile from
 #   2. generate <dest-dir>/.env from the yundera unified .env, plus any extra
 #      KEY=value pairs given on the command line
-#   3. docker compose pull, then up -d --remove-orphans (both with backoff)
+#   3. docker compose pull, then up -d --remove-orphans (both with backoff). Between
+#      the two: make sure the shared `pcs` network exists, evict containers from other
+#      projects that hold this stack's container names, and take over the networks
+#      named in DEPLOY_ADOPT_NETWORKS (see library/stacks.sh). After the pull, so the
+#      window where an evicted service is down is the `up` alone, not the download.
 #
 # The unified .env is the ONLY source of environment truth: it is assembled by
 # ensure-env-vars-valid.sh from .pcs.env + .pcs.secret.env + .ynd.user.env. Copying
@@ -36,6 +40,7 @@ YND_ROOT="/DATA/AppData/yundera"
 
 YND_TEMPLATE="$YND_ROOT/template"
 source "$YND_TEMPLATE/scripts/library/log.sh"
+source "$YND_TEMPLATE/scripts/library/stacks.sh"
 
 STACK_NAME="${1:?usage: deploy-stack.sh <stack-name> <dest-dir> [KEY=value ...]}"
 DEST_DIR="${2:?usage: deploy-stack.sh <stack-name> <dest-dir> [KEY=value ...]}"
@@ -172,6 +177,16 @@ pull_once() { COMPOSE_PARALLEL_LIMIT=1 compose pull; }
 up_once()   { compose up --quiet-pull --remove-orphans -d; }
 
 run_with_backoff "pull" pull_once
+
+ensure_pcs_network || log_warn "[$STACK_NAME] could not create the pcs network; up will say why"
+# The project must be able to start even if an eviction failed; up reports the
+# conflict itself.
+evict_name_squatters --project-directory "$DEST_DIR" -f "$DEST_COMPOSE" \
+    || log_warn "[$STACK_NAME] could not evict every container holding this stack's names"
+for net in ${DEPLOY_ADOPT_NETWORKS:-}; do
+    adopt_network "$net" "$STACK_NAME" || log_warn "[$STACK_NAME] could not take over network '$net'"
+done
+
 run_with_backoff "up" up_once
 
 log_info "[$STACK_NAME] stack is up ($DEST_DIR)"

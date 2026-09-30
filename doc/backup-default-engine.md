@@ -58,7 +58,7 @@ self-check.sh — scripts-config.txt order, then @reboot + nightly
   ├─ ensure-yundera-user-data.sh   → .pcs.secret.env : USER_JWT (refreshed)
   │                                  .ynd.user.env   : DOMAIN, UID
   ├─ ensure-env-vars-valid.sh      → .env (unified)
-  ├─ ensure-user-compose-stack-up.sh   yundera stack up (caddy, dex, smtp, …)
+  ├─ ensure-user-compose-stack-up.sh   yundera stack up (admin app; caddy/smtp are the mesh stack, dex the auth stack)
   │
   ├─ ensure-backup-credentials.sh
   │     reads  USER_JWT, OPERATOR_API

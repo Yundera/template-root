@@ -44,9 +44,19 @@ ensure-logrotate.sh
 # Docker and application setup
 ensure-docker-installed.sh
 ensure-env-vars-valid.sh
+# The mesh stack (tunnel, agent, caddy, smtp) — FIRST of the stacks: everything
+# else is reached through its Caddy, and its agent writes the mesh CA the auth
+# stack and every gate read. It also creates the shared `pcs` network, which no
+# stack owns (ensure_pcs_network, library/stacks.sh). Nothing above renders
+# anything it reads, so it does not wait for the auth block.
+#
+# On the tick that first ships the split it takes its four containers over from
+# the yundera project by name (deploy-stack.sh); see stacks/mesh.
+ensure-mesh-stack.sh
 # RENDER EVERYTHING, *THEN* BRING THE STACK UP. The auth block below mints
 # secrets and renders config files that services read at startup, so all of it
-# must stay ahead of ensure-user-compose-stack-up.sh.
+# must stay ahead of ensure-auth-stack.sh (and ADMIN_ASSERTION_SECRET ahead of
+# ensure-user-compose-stack-up.sh).
 #
 # Stack-up used to sit above this block, which meant the first up started Dex
 # against a /DATA/AppData/yundera/dex/config.yaml that ensure-dex.sh had not
@@ -69,6 +79,10 @@ ensure-yundera-login.sh
 # Cold-boot safe: ensure-dex.sh's trailing `docker restart dex` is guarded on the
 # container existing, so running it before the stack has ever come up is a no-op.
 ensure-dex.sh
+# The auth stack (dex, authelia, auth-registrar) — right after the renders it
+# reads, and before any gate: admin, maison, kopia and terminal all get their OIDC
+# client from auth-registrar. Needs the mesh stack above (Caddy, the mesh CA).
+ensure-auth-stack.sh
 # ensure-admin-gate-secret.sh MUST run before ensure-user-compose-stack-up.sh: it
 # mints ADMIN_ASSERTION_SECRET into .pcs.secret.env / .env, which the admin gate
 # and the admin app both interpolate. Without it the dashboard authenticates
@@ -101,19 +115,20 @@ ensure-backup-config.sh
 # one-shot engine container per command when the stack is absent or down, which is the
 # behaviour that predates it.
 #
-# It also attaches its gate to the `pcs` network, which the yundera stack owns — so it
-# must stay after ensure-user-compose-stack-up.sh, as ensure-maison-stack.sh does. It
-# is above that one only because the ordering it is pinned to is the backup config's.
+# Its gate joins `pcs` and registers with auth-registrar — both up by now (mesh and
+# auth stacks above). It is above ensure-maison-stack.sh only because the ordering it
+# is pinned to is the backup config's.
 ensure-kopia-stack.sh
 
 # Auxiliary stack — Maison (doc/maison-migration.md). MUST stay after
-# ensure-user-compose-stack-up.sh: it attaches to the `pcs` network, which the
-# yundera stack owns and creates.
+# ensure-mesh-stack.sh and ensure-auth-stack.sh: its gate joins `pcs` and gets its
+# OIDC client from auth-registrar.
 ensure-maison-stack.sh
 
 # The web Terminal (ttyd behind an AppShield gate) — the store's Terminal app shipped
-# as a platform stack. Same constraint as maison: its gate joins `pcs`, so it MUST stay
-# after ensure-user-compose-stack-up.sh. Nothing depends on it; opt out per box with
+# as a platform stack. Same constraint as maison: its gate joins `pcs` and registers
+# with auth-registrar, so it MUST stay after the mesh and auth stacks. Nothing depends
+# on it; opt out per box with
 # TERMINAL_ENABLED=false in .pcs.env.
 ensure-terminal-stack.sh
 

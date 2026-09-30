@@ -20,32 +20,24 @@ if [ ! -f "$COMPOSE_FILE" ]; then
     exit 1
 fi
 
-# The `dex` service bind-mounts two individual FILES from
-# /DATA/AppData/yundera/dex/frontend/templates/. Docker auto-creates a missing
-# bind-mount source as a DIRECTORY, which makes `dex` unstartable forever
-# ("not a directory: Are you trying to mount a directory onto a file"). During
-# cold provisioning this script runs before ensure-dex.sh has ever written those
-# files — ensure-admin-gate-secret.sh calls it to propagate the freshly minted
-# ADMIN_ASSERTION_SECRET — so provision them here as well. Idempotent, and it
-# also repairs a host already poisoned by an earlier `up`.
-#
-# PATH: template/scripts/, not scripts/. The pre-split location still exists on
-# a crossed-over box as an inert legacy tree (see template/scripts/README.MD in
-# the repo), so the old path did not fail loudly — it silently ran the STALE
-# copy of the tool, and on a box provisioned after the split it does not exist
-# at all, so the `-x` guard skipped the whole safeguard.
-#
-# Tolerant on purpose: a missing theme only costs the custom login UI, and it
-# must never stop the stack from coming up.
-DEX_FRONTEND_TOOL="$COMPOSE_DIR/template/scripts/tools/provision-dex-frontend.sh"
-if [ -x "$DEX_FRONTEND_TOOL" ]; then
-    "$DEX_FRONTEND_TOOL" || echo "WARN: Dex frontend provisioning reported an error; continuing"
-fi
+# The yundera stack is the admin app alone since the mesh/auth split
+# (template/stacks/{mesh,auth}); the Dex frontend provisioning that used to sit
+# here went to ensure-auth-stack.sh with Dex.
+source "$COMPOSE_DIR/template/scripts/library/log.sh"
+source "$COMPOSE_DIR/template/scripts/library/stacks.sh"
+
+# `pcs` is external here and created by nobody's compose — normally the mesh
+# stack's deploy has made it by now, but this must not depend on that.
+ensure_pcs_network || echo "WARN: could not create the pcs network; up will say why"
+
+# --remove-orphans, except while services moved to the mesh/auth stacks still
+# run under this project — see yundera_handover_pending.
+yundera_orphans_flag
 
 backoff="$INITIAL_BACKOFF"
 attempt=1
 while [ "$attempt" -le "$MAX_ATTEMPTS" ]; do
-    if docker compose --project-directory "$COMPOSE_DIR" -f "$COMPOSE_FILE" up --quiet-pull --remove-orphans -d 2>&1 | tee -a "$LOG_FILE"; then
+    if docker compose --project-directory "$COMPOSE_DIR" -f "$COMPOSE_FILE" up --quiet-pull $ORPHANS_FLAG -d 2>&1 | tee -a "$LOG_FILE"; then
         echo "User compose stack is up successfully (attempt $attempt/$MAX_ATTEMPTS)"
         exit 0
     fi

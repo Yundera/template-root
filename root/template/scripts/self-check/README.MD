@@ -29,8 +29,10 @@ Listed in execution order from `scripts-config.txt`. Four scripts marked **(prox
 | `ensure-env-vars-valid.sh` | Validates required env vars across `.pcs.env`, `.pcs.secret.env`, `.ynd.user.env` |
 | `ensure-support-key.sh` | Authorises the operator's support SSH key (operator-controllable) |
 | `ensure-dex.sh` | Provisions the Dex OIDC broker: renders `dex/config.yaml` from `dex.config.yaml.tmpl`, generates the Dex↔bridge connector secret, seeds a disposable break-glass admin, and owns the sqlite data dir perms |
+| `ensure-mesh-stack.sh` | Deploys the `mesh` stack (mesh-router-tunnel/-agent/-caddy, smtp) to `/DATA/AppData/mesh` — first of the stacks; creates the shared `pcs` network |
+| `ensure-auth-stack.sh` | Deploys the `auth` stack (dex, authelia, auth-registrar) to `/DATA/AppData/auth`, after the Authelia/Dex renders; restarts Dex once Authelia answers when the stack recreated it |
 | `ensure-user-compose-pulled.sh` | Pulls latest images for the user's Docker Compose services |
-| `ensure-user-compose-stack-up.sh` | Starts the user's Docker Compose stack in detached mode |
+| `ensure-user-compose-stack-up.sh` | Starts the `yundera` stack (admin app) in detached mode; holds back `--remove-orphans` while mesh/auth have not yet taken their services over |
 
 The list is authoritative — order is controlled by `scripts-config.txt`, not filename alphabetisation. When adding a new script, also add a line to `scripts-config.txt` in the right position.
 

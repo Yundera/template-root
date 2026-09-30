@@ -1,6 +1,21 @@
 # Splitting the `yundera` stack into Maison app folders
 
-Status: **proposal**. Nothing here is implemented. Companion to
+Status: **partly implemented, in a coarser shape** (2026-09-30). The services are split into
+three stacks, matching mesh-router-template-root rather than the five folders below:
+
+| Stack | Services | Here called |
+|---|---|---|
+| `mesh` → `/DATA/AppData/mesh` | mesh-router-tunnel, -agent, -caddy, smtp | `router` + `nsl-provider`, not separated |
+| `auth` → `/DATA/AppData/auth` | dex, authelia, auth-registrar (+ auth-console to come) | `accounts` |
+| `yundera` → `/DATA/AppData/yundera` | admin, admin-app | `yundera` |
+
+Deployed from `template/stacks/{mesh,auth}` by the rsync/self-check path, **not** the store
+model of "Two update mechanisms collide" below. The data did **not** move: every bind still points
+into `/DATA/AppData/yundera/{auth,dex,data}`; the per-app data tables below are still the target,
+not the state. The live-box handover is in `library/stacks.sh`; `CLAUDE.md` ("Runtime update
+sequence") has the mechanics. The rest of this document is the original proposal.
+
+Companion to
 [`maison-migration.md`](./maison-migration.md), which took the dashboard from CasaOS to
 Maison; this document takes the *platform stack* from one compose project to several,
 laid out the way Maison lays out every other app.

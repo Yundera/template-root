@@ -24,8 +24,8 @@
 # ORDERING: must run AFTER ensure-backup-config.sh, which writes the repository.config
 # this reads the engine's hostname out of. A box provisioned before that file exists
 # would otherwise bake in the synthetic fallback hostname and keep it until the stack is
-# next brought up. It must also run after ensure-user-compose-stack-up.sh — the gate
-# attaches to the `pcs` network, which the yundera stack owns and creates.
+# next brought up. It must also run after ensure-mesh-stack.sh and ensure-auth-stack.sh
+# — the gate joins the `pcs` network and gets its OIDC client from auth-registrar.
 set -euo pipefail
 
 YND_ROOT="/DATA/AppData/yundera"

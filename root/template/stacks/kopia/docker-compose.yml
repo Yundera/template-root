@@ -149,7 +149,7 @@ services:
       # disturbs this.
       - /DATA/AppData/kopia/gate-data:/data
       # The mesh-router CA that SSL_CERT_DIR above points at. Written straight here
-      # by mesh-router-agent (CA_CERT_PATH in the yundera stack) — its own directory
+      # by mesh-router-agent (CA_CERT_PATH in the mesh stack) — its own directory
       # precisely so the gates can mount it without also mounting key.pem. A CA
       # certificate is public; the key beside it is not.
       - /DATA/AppData/yundera/data/ca:/ca:ro
@@ -403,7 +403,7 @@ services:
 networks:
   # The stack's own bridge, stated rather than inherited from compose's implicit
   # default, so that "the engine and the UI are not on pcs" is something a reader can
-  # check here. Namespaced for the reason the yundera stack namespaces its auth
+  # check here. Namespaced for the reason the auth stack namespaces its own
   # network: on a box where the owner installs arbitrary store apps, a generic
   # top-level name is claimable by any third-party compose file, and the security
   # property is "nothing else is on it".
