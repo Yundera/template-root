@@ -261,7 +261,7 @@ services:
       caddy_2.reverse_proxy: "{{upstreams 80}}"
 
   mesh-console-app:
-    image: ghcr.io/yundera/mesh-console:1.1.0
+    image: ghcr.io/yundera/mesh-console:1.2.0
     container_name: mesh-console-app
     hostname: mesh-console-app
     restart: unless-stopped
@@ -280,12 +280,12 @@ services:
       #
       # Host actions run in the host's mount namespace, so these are HOST paths.
       MESH_HOST_ROOT: "/DATA/AppData/yundera"
-      SELF_CHECK_SCRIPT: "/DATA/AppData/yundera/template/scripts/self-check.sh"
+      # The template's scripts: the console runs self-check.sh and
+      # tools/set-default-app.sh from here and knows nothing else about this
+      # layout — where the default app is stored (.pcs.env) and what applying it
+      # recreates is that tool's business. VERSION-COUPLED: mesh-console >= 1.2.0.
+      TEMPLATE_SCRIPTS: "/DATA/AppData/yundera/template/scripts"
       LOG_FILE: "/mesh/log/yundera.log"
-      # DEFAULT_SERVICE_HOST/PORT live in .pcs.env here, and the .env the console
-      # would write is regenerated from it on every self-check — its edit would
-      # be silently undone. The admin app's Domain panel owns that setting.
-      DEFAULT_APP_EDIT: "false"
       # The compose projects listed as platform containers.
       PLATFORM_PROJECTS: "mesh,auth,yundera,maison,kopia,terminal"
     expose:

@@ -183,14 +183,13 @@ cmd_run() {
 # The inverse of `run`: put the box back into the unclaimed state so the wizard
 # is reachable again. For testing and for re-provisioning a box by hand.
 #
-# DELIBERATELY NOT EXPOSED OVER THE ADMIN API, and nothing in settings-center-app
-# calls it. Unclaiming is a self-lockout button: the gate immediately blocks the
-# session that triggered it, and ensure-dex.sh then withdraws the Local Account
-# connector — so on a PCS whose Yundera Login is absent or broken, the only way
-# back in is the support SSH key. That is an acceptable cost for someone already
-# at a root shell and an unacceptable one for a control in a dashboard. Keep it
-# terminal-only; if you find yourself adding a route for it, re-read
-# doc/pcs-onboarding.md first.
+# ALSO EXPOSED in the admin app ("Re-run onboarding", POST
+# /api/admin/onboarding-reset). Unclaiming is a self-lockout button: ensure-dex.sh
+# withdraws the Local Account connector, so on a PCS whose Yundera Login is absent
+# or broken the only way back in is the support SSH key. The route refuses while
+# Yundera Login is off, requires a typed confirmation, and revokes the other admin
+# gate sessions; from a terminal none of that applies, so --confirm stays
+# mandatory here. See doc/pcs-onboarding.md.
 cmd_reset() {
     [ "${1:-}" = "--confirm" ] \
         || error "reset disables every local account on this PCS; pass --confirm if that is what you want"
@@ -243,7 +242,7 @@ cmd_reset() {
     # arrival back to the wizard. Not written directly from here: the file's URL
     # is built from the deployment's domain, which ensure-maison-stack.sh already
     # resolves. Redeploying the stack is a heavier step than the two above; it is
-    # affordable because reset is a terminal-only command, and it is what makes a
+    # affordable because reset is a rare, deliberate command, and it is what makes a
     # reset box identical to one a self-check just reconciled.
     if [ -x "$SELF_CHECK/ensure-maison-stack.sh" ]; then
         "$SELF_CHECK/ensure-maison-stack.sh" >/dev/null 2>&1 \

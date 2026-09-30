@@ -239,13 +239,20 @@ first — it holds the only copy of those password hashes — and the backup nam
 collision-guarded, because resetting twice within one second is precisely what a
 test script does.
 
-**`reset` is deliberately terminal-only. There is no API route and nothing in
-`settings-center-app` calls it.** Unclaiming is a self-lockout button: the gate
-immediately blocks the session that triggered it, and `ensure-dex.sh` then
-withdraws the Local Account connector — so on a PCS whose Yundera Login is absent
-or broken, the only way back in is the support SSH key. That is an acceptable cost
-for someone already at a root shell and an unacceptable one for a control in a
-dashboard.
+**`reset` is also exposed in the admin app** — System Information → Onboarding →
+"Re-run onboarding" (`POST /api/admin/onboarding-reset`, settings-center-app
+releases after 1.4.8). Unclaiming is a self-lockout button: `ensure-dex.sh` withdraws the Local
+Account connector, so on a PCS whose Yundera Login is absent or broken the only way
+back in would be the support SSH key. The route therefore:
+
+- requires `{"confirm": true}`, and the UI makes the operator type `reset`;
+- **refuses while Yundera Login is off** (`feature-yundera-login.sh status`) — reset
+  such a box from a terminal;
+- spares the caller's gate session and revokes every other one on the admin gate,
+  so the reload lands the caller straight in the wizard.
+
+Sessions on other gates (Maison, auth-console, store apps) are not revoked — the
+same accepted gap as auth-console's account deletion.
 
 To replay only the **welcome** screen, the marker alone is enough — no reset, no
 account change:
