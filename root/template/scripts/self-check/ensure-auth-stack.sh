@@ -1,6 +1,6 @@
 #!/bin/bash
-# ensure-auth-stack.sh - Deploy the auth stack: dex, authelia and auth-registrar
-# (template/stacks/auth), to /DATA/AppData/auth.
+# ensure-auth-stack.sh - Deploy the auth stack: dex, authelia, auth-registrar and
+# auth-console (template/stacks/auth), to /DATA/AppData/auth.
 #
 # These three used to be services of the yundera stack. They are their own project
 # now — identity as one unit, on this template and on mesh-router-template-root
@@ -28,6 +28,7 @@ YND_ROOT="/DATA/AppData/yundera"
 YND_TEMPLATE="$YND_ROOT/template"
 source "$YND_TEMPLATE/scripts/library/log.sh"
 source "$YND_TEMPLATE/scripts/library/authelia-ready.sh"
+source "$YND_TEMPLATE/scripts/library/secrets.sh"
 
 # `dex` bind-mounts two individual FILES from dex/frontend/templates/. Docker
 # creates a missing bind source as a DIRECTORY, after which dex can never start
@@ -39,6 +40,22 @@ DEX_FRONTEND_TOOL="$YND_TEMPLATE/scripts/tools/provision-dex-frontend.sh"
 if [ -x "$DEX_FRONTEND_TOOL" ]; then
     "$DEX_FRONTEND_TOOL" || log_warn "Dex frontend provisioning reported an error; continuing"
 fi
+
+# auth-console (the stack's web UI): its gate signs an identity assertion with
+# this key and the app verifies it; the app also signs its session-revocation
+# requests to the gate with it. Unset, the app refuses every request (fails
+# closed). Minted before the deploy, which copies the unified .env into the
+# stack's own. Safe to lose: it re-mints and only logs everyone out of the console.
+ensure_secret AUTH_CONSOLE_ASSERTION_SECRET openssl rand -hex 32
+
+# The gate runs as 65534 and writes sessions.json through a temp file in this
+# directory, so the DIR must be its own — a root- or 1000-owned one makes it log
+# "[session] save failed: permission denied" and forget every login on restart
+# (the admin gate's wisera incident, see ensure-admin-gate-secret.sh).
+AUTH_CONSOLE_GATE_UID=65534
+mkdir -p /DATA/AppData/auth/auth-console/gate-data
+chown -R "$AUTH_CONSOLE_GATE_UID:$AUTH_CONSOLE_GATE_UID" /DATA/AppData/auth/auth-console/gate-data 2>/dev/null \
+    || log_warn "Could not chown auth-console/gate-data to $AUTH_CONSOLE_GATE_UID; the console gate will not persist sessions"
 
 dex_id() { docker container inspect -f '{{.Id}}' dex 2>/dev/null || true; }
 DEX_BEFORE="$(dex_id)"

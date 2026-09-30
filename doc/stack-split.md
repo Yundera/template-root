@@ -6,8 +6,8 @@ three stacks, matching mesh-router-template-root rather than the five folders be
 | Stack | Services | Here called |
 |---|---|---|
 | `mesh` → `/DATA/AppData/mesh` | mesh-router-tunnel, -agent, -caddy, smtp | `router` + `nsl-provider`, not separated |
-| `auth` → `/DATA/AppData/auth` | dex, authelia, auth-registrar (+ auth-console to come) | `accounts` |
-| `yundera` → `/DATA/AppData/yundera` | admin, admin-app | `yundera` |
+| `auth` → `/DATA/AppData/auth` | dex, authelia, auth-registrar, auth-console (gate + app: the Account and Access panels) | `accounts` |
+| `yundera` → `/DATA/AppData/yundera` | admin, admin-app (Account and Access moved to auth-console) | `yundera` |
 
 Deployed from `template/stacks/{mesh,auth}` by the rsync/self-check path, **not** the store
 model of "Two update mechanisms collide" below. The data did **not** move: every bind still points

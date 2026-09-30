@@ -119,8 +119,8 @@ services:
     # failure was invisible from anywhere except the machine living with it.
     #
     # THIS PAIR — extra_hosts + SSL_CERT_DIR + the /ca mount — is what every
-    # AppShield gate on a PCS needs. The other two in this template are the maison
-    # and kopia stacks; keep the three in step.
+    # AppShield gate on a PCS needs. The others in this template are the maison,
+    # kopia and auth (auth-console) stacks; keep them in step.
     extra_hosts:
       - "auth-${DOMAIN}:host-gateway"
     volumes:
