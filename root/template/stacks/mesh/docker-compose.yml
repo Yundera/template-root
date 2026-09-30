@@ -6,9 +6,10 @@
 #                       mesh certificate (data/certs) and the mesh CA (data/ca)
 #   mesh-router-caddy   the box's reverse proxy: every public hostname, :80/:443
 #   smtp                mail relay through the mesh-router-backend (PROVIDER_STR)
+#   mesh-console(-app)  the stack's web UI, behind its AppShield gate
 #
 # Split out of the yundera stack to match mesh-router-template-root, whose `mesh`
-# stack carries the same four. Deployed to /DATA/AppData/mesh by
+# stack carries the same services. Deployed to /DATA/AppData/mesh by
 # scripts/self-check/ensure-mesh-stack.sh through scripts/tools/deploy-stack.sh,
 # which also writes the .env beside it from the unified yundera .env. DO NOT edit
 # the deployed copy — it is overwritten on every self-check.
@@ -170,6 +171,142 @@ services:
     networks:
       pcs: null
 
+  # =============================================================================
+  # MESH CONSOLE - the stack's web UI (github.com/Yundera/mesh-console)
+  # IP and domain, how the gateways route to this box (direct / tunnel /
+  # offline), mail delivery, and whether the template is up to date with an
+  # "Update now" that runs the self-check. It is what the Mesh Router tile opens
+  # (x-compose-app below), so it lives in this stack rather than in a project of
+  # its own — the same two services as mesh-router-template-root's mesh stack;
+  # only the mesh-console-app paths below differ, for this template's layout.
+  #
+  # SECURITY — read before changing either service:
+  #   - mesh-console-app holds the Docker socket, i.e. root on this host, and
+  #     uses it to run a small fixed set of host actions. The AppShield gate is
+  #     the ONLY route in. Never add a `ports:` mapping to either service.
+  #   - Admins only, enforced twice: the gate refuses any account outside
+  #     `admins` (OIDC_REQUIRED_GROUPS), and the app independently verifies the
+  #     gate's signed identity assertion (IDENTITY_ASSERTION_SECRET) and the group
+  #     again. The app cannot trust plain headers: every app container on `pcs`
+  #     can reach it.
+  #
+  # MESH_CONSOLE_ASSERTION_SECRET is minted by ensure-mesh-stack.sh right before
+  # this stack comes up. Unset, the app refuses every request — it fails closed.
+  #
+  # NAMING IS LOAD-BEARING, exactly as for the maison stack: the auth-registrar
+  # derives the OIDC client_id from a PTR lookup of the calling container's name
+  # and only issues redirect URIs under `<client_id>-<suffix>`, so the gate owns
+  # the public name `mesh-console` and the backend takes the `-app` suffix.
+  # AppShield also derives the assertion audience (APP_NAME) from this hostname,
+  # which is why the app verifies aud=mesh-console.
+  # =============================================================================
+  mesh-console:
+    image: ghcr.io/yundera/appshield:3.0.2
+    container_name: mesh-console
+    hostname: mesh-console
+    restart: unless-stopped
+    # Root, like the maison gate: the gate-data dir is created by Docker as root,
+    # and a non-root gate silently fails to persist sessions there.
+    user: "0:0"
+    cpu_shares: 40
+    mem_limit: 128m
+    expose:
+      - "80"
+    environment:
+      OIDC_REGISTRAR_URL: "http://auth-registrar:9092"
+      # Fallback only — the registrar's own REDIRECT_HOST_SUFFIXES decides. Keep it
+      # matching the caddy_* labels below.
+      REDIRECT_HOST_SUFFIXES: "${DOMAIN},${PUBLIC_IP_DASH}.nip.io,${PUBLIC_IP_DASH}.sslip.io"
+      BACKEND_HOST: "mesh-console-app"
+      BACKEND_PORT: "8080"
+      LISTEN_PORT: "80"
+      SESSION_DURATION_HOURS: "720"
+      # Everything on this page is an admin action, so unlike admin-app (which
+      # lets a non-admin reach its Account panel) the group is enforced at the gate.
+      OIDC_REQUIRED_GROUPS: "admins"
+      # Shared with mesh-console-app, which verifies the X-AppShield-Assertion the
+      # gate signs with it.
+      IDENTITY_ASSERTION_SECRET: "${MESH_CONSOLE_ASSERTION_SECRET}"
+      # The only path that answers without a login: a liveness probe, no data.
+      ALLOWED_PATHS: "api/health"
+      # The on-box OIDC back-channel, as on every gate here: trust the mesh CA
+      # on top of the image's roots, for the extra_hosts pin below. Full write-up
+      # on the `admin` gate in the yundera stack; keep the three in step.
+      SSL_CERT_DIR: "/ca"
+    extra_hosts:
+      - "auth-${DOMAIN}:host-gateway"
+    volumes:
+      # Inside this stack's own folder — deploy-stack.sh only ever writes
+      # docker-compose.yml and .env there.
+      - /DATA/AppData/mesh/mesh-console/gate-data:/data
+      - /DATA/AppData/yundera/data/ca:/ca:ro
+    # Not auth-registrar: it is in the auth stack, and depends_on cannot name
+    # another project's service. Nothing is lost — the gate registers on first
+    # login, not at start, and retries then.
+    depends_on:
+      - mesh-console-app
+    networks:
+      pcs: null
+    labels:
+      # Standard domain with custom CA (gateway-routed)
+      caddy_0: mesh-console-${DOMAIN}
+      caddy_0.import: gateway_tls
+      caddy_0.reverse_proxy: "{{upstreams 80}}"
+      # nip.io variant (custom CA) — REQUIRED: the CF worker rewrites Host to nip.io
+      caddy_1: mesh-console-${PUBLIC_IP_DASH}.nip.io
+      caddy_1.import: gateway_tls
+      caddy_1.reverse_proxy: "{{upstreams 80}}"
+      # sslip.io variant (Let's Encrypt)
+      caddy_2: mesh-console-${PUBLIC_IP_DASH}.sslip.io
+      caddy_2.reverse_proxy: "{{upstreams 80}}"
+
+  mesh-console-app:
+    image: ghcr.io/yundera/mesh-console:1.1.0
+    container_name: mesh-console-app
+    hostname: mesh-console-app
+    restart: unless-stopped
+    # Root: it reads the unified .env (mode 600) and talks to the Docker socket.
+    # The socket already makes it root-equivalent on the host.
+    user: "0:0"
+    cpu_shares: 40
+    mem_limit: 128m
+    environment:
+      IDENTITY_ASSERTION_SECRET: "${MESH_CONSOLE_ASSERTION_SECRET}"
+      IDENTITY_ASSERTION_AUDIENCE: "mesh-console"
+      # THIS TEMPLATE'S LAYOUT, which is not the mesh template's. The console
+      # assumes one directory holding the stack's compose, its .env, the
+      # self-check log, the certs and template/.revision.json. Here those live in
+      # the yundera root, except the mesh stack's compose (see the mounts below).
+      #
+      # Host actions run in the host's mount namespace, so these are HOST paths.
+      MESH_HOST_ROOT: "/DATA/AppData/yundera"
+      SELF_CHECK_SCRIPT: "/DATA/AppData/yundera/template/scripts/self-check.sh"
+      LOG_FILE: "/mesh/log/yundera.log"
+      # DEFAULT_SERVICE_HOST/PORT live in .pcs.env here, and the .env the console
+      # would write is regenerated from it on every self-check — its edit would
+      # be silently undone. The admin app's Domain panel owns that setting.
+      DEFAULT_APP_EDIT: "false"
+      # The compose projects listed as platform containers.
+      PLATFORM_PROJECTS: "mesh,auth,yundera,maison,kopia,terminal"
+    expose:
+      - "8080"   # NEVER `ports:` — see the security note above
+    networks:
+      pcs: null
+    volumes:
+      # Read-only: .env, log/yundera.log, data/certs/cert.pem,
+      # template/.revision.json. Every write goes through a host action, never
+      # through this mount.
+      - /DATA/AppData/yundera:/mesh:ro
+      # ...except docker-compose.yml, read for the Stack page's image pins: the
+      # one at the yundera root is the admin app's. This one is the mesh stack's.
+      # A FILE mount is pinned to its inode, which is fine here: deploy-stack.sh
+      # updates it with `cp`, which rewrites in place.
+      - /DATA/AppData/mesh/docker-compose.yml:/mesh/docker-compose.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      # The self-check log is written in host local time and the console parses
+      # it in time.Local.
+      - /etc/localtime:/etc/localtime:ro
+
 networks:
   # Shared by every stack and owned by none — created by ensure_pcs_network
   # (library/stacks.sh) before any stack comes up. See the note in the root
@@ -183,8 +320,9 @@ volumes:
 
 # Tiles the stack in Maison's System grid: Maison refuses to stop or uninstall it
 # (uninstalling it would take every route on the box down) and the nightly backup
-# skips it. No web UI of its own yet — the Domain panel of the admin app is where
-# its settings live — so no webui-* fields.
+# skips it. The tile opens Mesh Console through its gate — the only
+# authenticated way in. `webui-host` is the only field Maison substitutes
+# ${DOMAIN} into; it must match the mesh-console service's caddy_0.
 x-compose-app:
   schema_version: 2
   id: mesh
@@ -192,3 +330,6 @@ x-compose-app:
   category: pcs
   developer: Yundera Team
   view: system
+  webui-host: mesh-console-${DOMAIN}
+  webui-scheme: https
+  webui-path: /

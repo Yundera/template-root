@@ -274,6 +274,20 @@ if rsync -a --delete "$SRC_TEMPLATE/" "$YND_TEMPLATE/" >/dev/null \
     sync
     sleep 2
     sync
+    # Revision marker: which commit this box now runs, for mesh-console's Update
+    # page (the same {url, commit, synced_at} mesh-router-template-root writes).
+    # Nothing else records it — the zip's top-level dir is <repo>-<branch>. GitHub
+    # archives come from `git archive`, which stores the commit id as the zip
+    # COMMENT; a hand-made zip has none and the marker says "commit": null rather
+    # than guessing. Written after the rsync, since --delete would remove it, and
+    # best effort: a marker failure must not fail the sync.
+    TEMPLATE_COMMIT="$(unzip -z "$TEMP_DIR/template.zip" 2>/dev/null \
+        | grep -o '^[0-9a-f]\{40\}$' | head -n1 || true)"
+    if [ -n "$TEMPLATE_COMMIT" ]; then COMMIT_JSON="\"$TEMPLATE_COMMIT\""; else COMMIT_JSON="null"; fi
+    printf '{"url":"%s","commit":%s,"synced_at":"%s"}\n' \
+        "$(printf '%s' "$UPDATE_URL" | tr -d '"\\')" "$COMMIT_JSON" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        > "$YND_TEMPLATE/.revision.json" || echo "WARN: could not write $YND_TEMPLATE/.revision.json"
+    echo "Template revision: ${TEMPLATE_COMMIT:-unknown}"
     # Keep this backup and prune the oldest. `ls -1d` sorts the epoch-suffixed
     # names lexically, which for a fixed-width epoch is chronological.
     ls -1d "${BACKUP_ROOT}"/root-backup-* 2>/dev/null \

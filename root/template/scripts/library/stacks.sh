@@ -4,7 +4,7 @@
 # The platform is several compose projects that share one Docker host and one
 # `pcs` network (see doc/stack-split.md):
 #
-#   mesh     /DATA/AppData/mesh     tunnel, agent, caddy, smtp  (stacks/mesh)
+#   mesh     /DATA/AppData/mesh     tunnel, agent, caddy, smtp, mesh-console (stacks/mesh)
 #   auth     /DATA/AppData/auth     dex, authelia, auth-registrar (stacks/auth)
 #   yundera  /DATA/AppData/yundera  admin, admin-app            (the root compose)
 #   + maison, kopia, terminal

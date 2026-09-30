@@ -1,8 +1,9 @@
 #!/bin/bash
-# ensure-mesh-stack.sh - Deploy the mesh stack: mesh-router-tunnel, -agent, -caddy
-# and smtp (template/stacks/mesh), to /DATA/AppData/mesh.
+# ensure-mesh-stack.sh - Deploy the mesh stack: mesh-router-tunnel, -agent, -caddy,
+# smtp, and mesh-console — the stack's web UI (template/stacks/mesh) — to
+# /DATA/AppData/mesh.
 #
-# These four used to be services of the yundera stack. They are their own project
+# The first four used to be services of the yundera stack. They are their own project
 # now, matching mesh-router-template-root's `mesh` stack, with the same container
 # names and the same data under /DATA/AppData/yundera/data — see the header of
 # stacks/mesh/docker-compose.yml.
@@ -23,5 +24,13 @@ YND_ROOT="/DATA/AppData/yundera"
 
 YND_TEMPLATE="$YND_ROOT/template"
 source "$YND_TEMPLATE/scripts/library/log.sh"
+source "$YND_TEMPLATE/scripts/library/secrets.sh"
+
+# The key mesh-console's gate signs its identity assertion with, and the app
+# verifies it with. Minted here, right before the stack comes up, so the tick that
+# first ships the console starts it with the key; mirrored into the unified .env
+# that deploy-stack.sh copies. Unset, the app refuses every request (fails
+# closed). Nothing to back up: a new key costs one round of console re-logins.
+ensure_secret MESH_CONSOLE_ASSERTION_SECRET openssl rand -hex 32
 
 exec "$YND_TEMPLATE/scripts/tools/deploy-stack.sh" mesh /DATA/AppData/mesh
