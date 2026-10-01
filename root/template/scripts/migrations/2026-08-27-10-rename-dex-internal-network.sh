@@ -2,6 +2,12 @@
 
 # Drop the `dex-internal` docker network, replaced by `yundera-auth`.
 #
+# HISTORY ONLY SINCE 2026-10-01: the auth stack's network is called `dex-internal`
+# again, to share one name with mesh-router-template-root (doc/mesh-stock-switch.md)
+# — but WITHOUT the pinned address this migration was really about. Harmless either
+# way: it only ever removes that network when nothing is attached to it, and
+# compose recreates it on the next `up`.
+#
 # Dex's gRPC client-management API used to be reached at a pinned address
 # (172.31.7.2) on a /29 named `dex-internal`. That address was also the first one
 # Docker's IPAM hands out dynamically, and auth-registrar shared the network with

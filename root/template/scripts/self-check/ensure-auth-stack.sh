@@ -8,11 +8,15 @@
 # too: /DATA/AppData/auth/{authelia,dex}, moved there from the yundera root by
 # migrations/2026-10-01-10-move-state-into-stack-folders.sh.
 #
-# THE HANDOVER: on the tick that first ships this, the containers and the
-# `yundera-auth` network still belong to the yundera project. deploy-stack.sh
-# evicts the containers by name, which empties the network, then removes it so
-# compose recreates it as the auth stack's own (DEPLOY_ADOPT_NETWORKS below,
-# adopt_network in library/stacks.sh).
+# THE HANDOVER: on the tick that first ships this, the containers still belong to
+# the yundera project. deploy-stack.sh evicts them by name and this project
+# recreates them.
+#
+# THE NETWORK IS `dex-internal`, the name mesh-router-template-root uses (it was
+# `yundera-auth` until 2026-10-01). The `up` creates it and recreates dex and
+# auth-registrar on it; DEPLOY_ADOPT_NETWORKS below covers a leftover
+# `dex-internal` some other project created (adopt_network, library/stacks.sh),
+# and the old `yundera-auth` is swept after the deploy, once nothing is on it.
 #
 # ORDERING, and why each neighbour matters:
 #   - AFTER ensure-mesh-stack.sh: Caddy routes auth-* / local-auth-* here, and Dex
@@ -65,8 +69,21 @@ chown -R "$AUTH_CONSOLE_GATE_UID:$AUTH_CONSOLE_GATE_UID" /DATA/AppData/auth/auth
 dex_id() { docker container inspect -f '{{.Id}}' dex 2>/dev/null || true; }
 DEX_BEFORE="$(dex_id)"
 
-DEPLOY_ADOPT_NETWORKS="yundera-auth" \
+DEPLOY_ADOPT_NETWORKS="dex-internal" \
     "$YND_TEMPLATE/scripts/tools/deploy-stack.sh" auth /DATA/AppData/auth
+
+# `yundera-auth` was this stack's gRPC network until it took the mesh template's
+# name. Compose does not remove a network a project no longer declares (only
+# `down` does), so the old one is left behind empty by the `up` above. Never
+# removed while anything is attached; retried on every run until it is gone.
+if docker network inspect yundera-auth >/dev/null 2>&1; then
+    if [ "$(docker network inspect -f '{{len .Containers}}' yundera-auth 2>/dev/null || echo 1)" = "0" ]; then
+        docker network rm yundera-auth >/dev/null 2>&1 \
+            && log_info "Removed the retired yundera-auth network (the auth stack uses dex-internal)"
+    else
+        log_warn "The retired yundera-auth network still has containers attached - leaving it for a later run"
+    fi
+fi
 
 # DEX MUST NOT START BEFORE AUTHELIA ANSWERS. Dex opens every connector once, at
 # startup, and drops any whose issuer does not answer — for the Local Account

@@ -53,7 +53,7 @@
 #
 # NETWORK: Dex's gRPC client-management API is UNAUTHENTICATED, so the rendered
 # config binds it to `dex-grpc:5557` — a network-scoped alias on the isolated
-# `yundera-auth` docker network — instead of 0.0.0.0. Only auth-registrar sits on
+# `dex-internal` docker network — instead of 0.0.0.0. Only auth-registrar sits on
 # that network; app containers (pcs network only) cannot reach gRPC. The alias is
 # declared in docker-compose.yml and consumed in dex.config.yaml.tmpl — keep the
 # two in sync. It is an alias rather than a pinned address on purpose; see the

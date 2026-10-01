@@ -159,11 +159,11 @@ services:
       - /DATA/AppData/auth/dex/frontend/themes/yundera:/srv/dex/web/themes/yundera:ro
     expose:
       - "5556"   # OIDC web endpoints (Caddy terminates TLS), bound on pcs
-      - "5557"   # gRPC client-mgmt API — UNAUTHENTICATED, bound to yundera-auth IP only
+      - "5557"   # gRPC client-mgmt API — UNAUTHENTICATED, bound to dex-internal only
     networks:
       pcs: null
       # gRPC (5557) is bound to `dex-grpc` in config.yaml.tmpl, so it is reachable
-      # ONLY by containers on yundera-auth (just auth-registrar).
+      # ONLY by containers on dex-internal (just auth-registrar).
       #
       # THE ALIAS IS THE WHOLE MECHANISM, and it must stay network-scoped. Dex is
       # multi-homed, so binding to its own container name is ambiguous — Docker's
@@ -171,7 +171,7 @@ services:
       # hand back the `pcs`-side address, which would publish an unauthenticated
       # client-minting API to every app on the box. An alias declared here and
       # nowhere else exists in exactly one network's DNS scope, so it has exactly
-      # one A record and `net.Listen` can only bind to the yundera-auth interface.
+      # one A record and `net.Listen` can only bind to the dex-internal interface.
       #
       # This replaced a pinned ipv4_address (172.31.7.2 on a /29). That address was
       # also the first one Docker's IPAM hands out dynamically, so any cycle where
@@ -179,7 +179,7 @@ services:
       # Dex forever on "Address already in use" — which is exactly what happened on
       # the 2026-08-27 demostaging2 provision. There is no pinned address left to
       # collide over; do not reintroduce one.
-      yundera-auth:
+      dex-internal:
         aliases:
           - dex-grpc
     # No `depends_on` for the connectors: authelia is in this stack but Dex must
@@ -289,7 +289,7 @@ services:
     environment:
       ISSUER_URL: https://auth-${DOMAIN}
       REGISTRAR_BACKEND: dex
-      # Dex gRPC is reachable only on the isolated yundera-auth net, under the
+      # Dex gRPC is reachable only on the isolated dex-internal net, under the
       # network-scoped alias Dex binds to. Resolving `dex` instead would be a bug:
       # both containers are on `pcs` too, so that name can resolve to the pcs-side
       # address, where nothing is listening.
@@ -324,7 +324,7 @@ services:
       - "9092"
     networks:
       pcs: null            # /register from app sidecars + PTR attestation
-      yundera-auth: null   # gRPC to Dex (no fixed address needed — dials the alias)
+      dex-internal: null   # gRPC to Dex (no fixed address needed — dials the alias)
     depends_on:
       - dex
 
@@ -469,14 +469,19 @@ networks:
   # IP for the dynamic allocator to collide with and no subnet to keep clear of
   # other host docker networks. See the alias note on the dex service.
   #
-  # THE NAME IS NAMESPACED ON PURPOSE. The security property of this network is
-  # "only auth-registrar is on it", on a box where the owner installs arbitrary
-  # store apps. A generic top-level name (`auth`) is claimable by any third-party
-  # compose file with `name:` or `external: true`, and the prize for landing here
-  # is unauthenticated OIDC-client minting. Renamed from `dex-internal`;
-  # migrations/2026-08-27-10-rename-dex-internal-network.sh drops the old one.
-  yundera-auth:
-    name: yundera-auth
+  # THE NAME IS SHARED WITH mesh-router-template-root, on purpose: one auth stack,
+  # one network name, so the stock mesh template can take this stack over without
+  # a network change (doc/mesh-stock-switch.md). It was `yundera-auth` from
+  # 2026-08-27 to 2026-10-01; ensure-auth-stack.sh sweeps that one once it is empty.
+  #
+  # The security property of this network is "only auth-registrar is on it", on a
+  # box where the owner installs arbitrary store apps, and the prize for landing
+  # here is unauthenticated OIDC-client minting. No name provides that by itself —
+  # a compose file can join any network it names with `external: true` — so never
+  # pick one a third-party stack would create or join BY ACCIDENT (`auth`,
+  # `internal`, `backend`).
+  dex-internal:
+    name: dex-internal
     internal: true
 
 # Tiles the stack in Maison's System grid: Maison refuses to stop or uninstall it
