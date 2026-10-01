@@ -22,7 +22,7 @@
 #
 # ORDERING: FIRST of the stacks. Everything else on the box is reached through
 # this Caddy, Dex's on-box issuer pin terminates on it, and mesh-router-agent
-# writes the mesh CA (data/ca) that the auth stack and every gate read. Must run
+# writes the mesh CA (data/ca) that Dex reads. Must run
 # after ensure-env-vars-valid.sh, which builds the .env deploy-stack.sh copies.
 set -euo pipefail
 

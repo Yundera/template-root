@@ -18,7 +18,7 @@ services:
   # below do not publish, and login dead-ends.
   # =============================================================================
   admin:
-    image: ghcr.io/yundera/appshield:3.0.2
+    image: ghcr.io/yundera/appshield:3.1.1
     container_name: admin
     hostname: admin
     restart: unless-stopped
@@ -76,53 +76,31 @@ services:
       #   api/perf, api/bench `pcs perf` reads them; RAM-cached snapshots
       #   api/brand           name/logo only, no secrets
       ALLOWED_PATHS: "api/health,api/perf,api/bench,api/brand"
-      # Trust the mesh-router CA *on top of* the image's baked-in roots. Required
-      # by the extra_hosts pin below: once this gate resolves auth-${DOMAIN}
-      # on-box, its back-channel TLS terminates at this PCS's own Caddy, which
-      # serves that host with the mesh-router CA (the `gateway_tls` snippet in
-      # caddy/Caddyfile) rather than a publicly-trusted certificate — the public
-      # path only ever validated because Cloudflare re-terminated TLS on the way
-      # through.
-      #
-      # SSL_CERT_DIR and NOT SSL_CERT_FILE: Go unions certFiles with
-      # certDirectories, so a directory ADDS roots, while SSL_CERT_FILE REPLACES
-      # the image's /etc/ssl/certs/ca-certificates.crt outright.
-      SSL_CERT_DIR: "/ca"
-    # KEEP THE OIDC BACK-CHANNEL ON THE BOX. The gate is handed
-    # `issuer_url: https://auth-${DOMAIN}` by auth-registrar and from then on does
-    # discovery, the code->token exchange and the JWKS fetch against that public
-    # hostname. Resolved publicly, those server-to-server calls leave the PCS,
-    # cross Cloudflare and the mesh-router CF Worker, and re-enter this same
-    # machine — a round trip through two proxies for traffic between two
-    # containers on this bridge, and one that has been observed answering ~70% of
-    # requests with an empty body. Pin the name to this host instead. The browser
-    # is untouched: it resolves auth-${DOMAIN} publicly as before and receives the
-    # same absolute authorize/logout URLs, and the issuer string does not change,
-    # so go-oidc's issuer check still passes.
+    # THE OIDC BACK-CHANNEL STAYS ON THE BOX, with nothing configured here.
+    # auth-registrar answers /register with `internal_issuer_url: http://dex:5556`
+    # beside the public issuer (INTERNAL_ISSUER_URL, auth stack), and AppShield
+    # >= 3.1.0 sends its discovery, code->token exchange and JWKS fetch there —
+    # container to container on `pcs` — while the issuer string, the tokens and
+    # every URL the browser sees stay https://auth-${DOMAIN}.
     #
-    # This gate is the one that matters most: it fronts the onboarding wizard, so
-    # a box whose SSO back-channel is flaky cannot be claimed at all.
+    # Resolved publicly, those calls left the PCS, crossed Cloudflare and the
+    # mesh-router CF Worker and re-entered this machine. On demostaging2
+    # (2026-09-15) that path answered ~70% of requests with an empty body: they
+    # carried the CF Worker's X-Request-ID but no `via: 1.1 Caddy`, so they never
+    # reached the box, and the broken Cloudflare colo was the one the PCS's own
+    # egress uses — invisible from anywhere except the machine living with it.
+    # This gate matters most: it fronts the onboarding wizard, so a box whose SSO
+    # back-channel is flaky cannot be claimed at all.
     #
-    # WHY THE PIN AND NOT SOMETHING SIMPLER. AppShield takes `issuer_url` from the
-    # registrar and hands it to go-oidc; there is no endpoint override, no
-    # skip-verify and no CA setting in its config (internal/config/config.go), so
-    # the only levers outside the binary are Docker's extra_hosts and the Go
-    # runtime's SSL_CERT_DIR. Plain HTTP is not one of them: the scheme is part of
-    # the issuer string, and go-oidc rejects a discovery document whose `issuer`
-    # does not match the URL it fetched — and that string is also what Dex signs
-    # into every token and what the browser must use.
+    # Until 3.1.0 this was done from outside the binary: an extra_hosts pin of
+    # auth-${DOMAIN} to host-gateway, plus SSL_CERT_DIR and a read-only mount of
+    # the mesh CA, because the pinned call terminated on this box's Caddy. Do not
+    # bring it back — it made every gate depend on a path inside the mesh stack's
+    # state. Dex still carries it, for the Local Account connector (auth stack).
     #
-    # Diagnosed on demostaging2 2026-09-15. The empty-body responses carried the CF
-    # Worker's X-Request-ID but no `via: 1.1 Caddy`: they never reached the box.
-    # The origin answered every direct request correctly and other Cloudflare colos
-    # were clean — the broken one was the colo the PCS's own egress uses, so the
-    # failure was invisible from anywhere except the machine living with it.
-    #
-    # THIS PAIR — extra_hosts + SSL_CERT_DIR + the /ca mount — is what every
-    # AppShield gate on a PCS needs. The others in this template are the maison,
-    # kopia and auth (auth-console) stacks; keep them in step.
-    extra_hosts:
-      - "auth-${DOMAIN}:host-gateway"
+    # A gate logging `back-channel via the public issuer` registered with a
+    # registrar that did not send the field (mesh-auth < 1.1.7, or the gate's
+    # first login beat the auth stack's deploy). Restarting the gate re-registers.
     volumes:
       # Gate state: persisted sessions (sessions.json). Without this mount a
       # container recreate signs everyone out regardless of SESSION_DURATION_HOURS.
@@ -138,14 +116,6 @@ services:
       - type: bind
         source: /DATA/AppData/yundera/admin/gate-data
         target: /data
-      # The mesh-router CA that SSL_CERT_DIR above points at. Written straight here
-      # by mesh-router-agent (CA_CERT_PATH, in the mesh stack) — its own directory precisely so
-      # the gates can mount it without also mounting key.pem. A CA certificate is
-      # public; the key beside it is not.
-      - type: bind
-        source: /DATA/AppData/mesh/data/ca
-        target: /ca
-        read_only: true
     expose:
       - "80"
     networks:

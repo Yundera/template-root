@@ -61,8 +61,8 @@ mkdir -p /DATA/AppData/yundera/log
 MESH_DATA="/DATA/AppData/mesh/data"
 mkdir -p "$MESH_DATA/certs"
 # data/ca holds only the mesh-router CA: mesh-router-agent writes it there
-# (CA_CERT_PATH) so the AppShield gates can mount a CA without also mounting the
-# key.pem beside it. Declared here with its sibling rather than left to Docker to
+# (CA_CERT_PATH) so Dex can mount a CA without also mounting the key.pem beside
+# it (the AppShield gates no longer read it — they reach Dex by container name). Declared here with its sibling rather than left to Docker to
 # invent on the agent's mount, so the layout is stated in one place and the chown
 # below covers it like the rest of the tree.
 mkdir -p "$MESH_DATA/ca"

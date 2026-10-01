@@ -204,7 +204,7 @@ services:
   # which is why the app verifies aud=mesh-console.
   # =============================================================================
   mesh-console:
-    image: ghcr.io/yundera/appshield:3.0.2
+    image: ghcr.io/yundera/appshield:3.1.1
     container_name: mesh-console
     hostname: mesh-console
     restart: unless-stopped
@@ -232,17 +232,15 @@ services:
       IDENTITY_ASSERTION_SECRET: "${MESH_CONSOLE_ASSERTION_SECRET}"
       # The only path that answers without a login: a liveness probe, no data.
       ALLOWED_PATHS: "api/health"
-      # The on-box OIDC back-channel, as on every gate here: trust the mesh CA
-      # on top of the image's roots, for the extra_hosts pin below. Full write-up
-      # on the `admin` gate in the yundera stack; keep the three in step.
-      SSL_CERT_DIR: "/ca"
-    extra_hosts:
-      - "auth-${DOMAIN}:host-gateway"
+    # The OIDC back-channel stays on the box with nothing configured here:
+    # auth-registrar hands the gate `internal_issuer_url` (http://dex:5556) and
+    # AppShield >= 3.1.0 sends its discovery, token and JWKS calls there. No
+    # extra_hosts pin, no SSL_CERT_DIR, no mesh CA mount — see the `admin` gate in
+    # the yundera stack's docker-compose.yml.
     volumes:
       # Inside this stack's own folder — deploy-stack.sh only ever writes
       # docker-compose.yml and .env there.
       - /DATA/AppData/mesh/mesh-console/gate-data:/data
-      - /DATA/AppData/mesh/data/ca:/ca:ro
     # Not auth-registrar: it is in the auth stack, and depends_on cannot name
     # another project's service. Nothing is lost — the gate registers on first
     # login, not at start, and retries then.

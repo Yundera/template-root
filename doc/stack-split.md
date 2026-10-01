@@ -61,7 +61,7 @@ and the scripts read the same paths on both templates.
 
 | Reader | Path | Why |
 |---|---|---|
-| dex, and every AppShield gate (admin, maison, kopia, both consoles) | `mesh/data/ca` `:ro` | on-box TLS to `auth-${DOMAIN}` terminates on the mesh CA |
+| dex | `mesh/data/ca` `:ro` | on-box TLS to `local-auth-${DOMAIN}` terminates on the mesh CA. The AppShield gates left this list on 2026-10-01: AppShield 3.1 reaches Dex at the registrar's `internal_issuer_url` (`http://dex:5556`) and mounts nothing |
 | mesh-router-caddy | `yundera/template/caddy` `:ro` | the Caddyfile is template, not state |
 | mesh-console-app | `yundera/template` `:ro`, `yundera/log` `:ro` | template revision, the tools it runs, the self-check log |
 | auth-console-app | `yundera/template` `:ro` | which tools exist |

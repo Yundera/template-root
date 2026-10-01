@@ -92,6 +92,15 @@ where the public path had Cloudflare's publicly-trusted certificate.
 `mesh-router-agent` writes that CA via `CA_CERT_PATH`, into a directory of its
 own so a gate can mount the CA without also mounting `key.pem`.
 
+**Superseded for the gates on 2026-10-01.** The pin made every gate mount a path
+inside the mesh stack's state, to work around AppShield having no endpoint
+override. AppShield 3.1 has one: `auth-registrar` (mesh-auth 1.1.7,
+`INTERNAL_ISSUER_URL=http://dex:5556`) returns `internal_issuer_url` beside the
+public issuer, and the gate sends its discovery, token and JWKS requests there —
+plain HTTP between two containers on `pcs`, the same hop Caddy already makes —
+while the issuer string stays public. The gates carry no `extra_hosts`, no
+`SSL_CERT_DIR` and no CA mount any more. Dex → Authelia still uses the pin.
+
 Shipped for the `admin`, `maison` and `kopia` AppShield gates in `b7f2984`, and
 for the Dex → Authelia connector afterwards. The Dex one is gated by a probe in
 `ensure-dex.sh`: the connector is only rendered once the CA exists and discovery
