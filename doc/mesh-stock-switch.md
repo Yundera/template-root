@@ -155,42 +155,72 @@ tests of the runner and of the state move. **Nothing has run on a box.**
 
 ## Still to do before the switch
 
-### 1. Port the rest of the generic fixes into the mesh template
+### 1. Port the rest of the generic fixes into the mesh template — DONE (2026-10-01)
 
-Shipping stock mesh before these is a regression for a PCS. Each needs a real-box test.
+Unstaged in the mesh template, tested on watch.nsl.sh from the working tree.
 
-| Item | Why it matters |
+| Item | Outcome |
 |---|---|
-| ~~Mesh CA (`CA_CERT_PATH`, `data/ca`), `SSL_CERT_DIR` + `extra_hosts: host-gateway` on Dex and every gate~~ | **done 2026-10-01**, tested on watch; the `(dex_router*)` Caddy snippets were not needed |
-| ~~Local Account back-channel probe in `ensure-dex.sh`~~ | **done**, as a warning only: the mesh template renders the connector either way, since it is usually the box's only one |
-| Reachability-probed `ensure-public-ip.sh` | an address bound locally but not routed must not be registered |
-| auth-console gate as `65534` + `gate-data` chown | the gate otherwise cannot persist sessions as non-root |
-| `cpu_shares` | on every service |
+| On-box OIDC back-channel | Gates: nothing to port — AppShield 3.1 takes `internal_issuer_url` from the registrar, on both templates. Dex → Authelia keeps the `host-gateway` pin and the mesh CA, which lives alone in `mesh/data/ca` (`CA_CERT_PATH`). |
+| Local Account back-channel probe | a warning only on the mesh side: it renders the connector either way, since it is usually the box's only one |
+| Public IP | `PUBLIC_IP_MODE=interface` is this template's detection (local interface, IPv6 fallback, drop what the backend cannot ping); the default `egress` stays the mesh template's. The probe URL comes from `PROVIDER_STR`. The netplan / `ens19` step stays here, as a host step. |
+| auth-console gate as `65534` | done, including the hand-over of an existing root-owned `sessions.json` |
+| `cpu_shares` | done, same weights |
 
-### 2. Compose seams for values that are really Yundera's
+Found on the way, and worth knowing here too: **the nsl.sh backend cannot ping any IPv6
+address** (Cloudflare's resolver included, 2026-10-01), so `/probe` reports every IPv6 as
+unreachable and this template's `ensure-public-ip.sh` clears `PUBLIC_IPV6` on every box —
+holyhorse has a global IPv6 and an empty key. Harmless while every PCS has its own IPv4; an
+IPv6-only box would be set to `127.0.0.1`. The mesh version sends a control address with each
+probe and discards the verdict for a family whose control fails.
 
-Stock compose files cannot carry these, and a forked compose defeats the point. Each wants an
-env default in the mesh compose (`${DEX_THEME:-mesh}` style) or an override-file mechanism —
-`deploy-stack.sh` passes `-f` explicitly, so an override file is not picked up today.
+### 2. Compose seams for values that are really Yundera's — DONE (2026-10-01)
 
-- Login theme (`yundera`) and the Authelia branding strings (TOTP issuer, mail sender/subject).
-- mesh-console: `PLATFORM_PROJECTS` (adds `yundera,kopia`), and the path knobs
-  (`MESH_HOST_ROOT`, `TEMPLATE_SCRIPTS`, `LOG_FILE`) — these disappear by themselves, since
-  the stock values point at the mesh root.
-- auth-console: `OPERATOR_API`, `TRUSTED_PUBKEY_HOST_SUFFIXES` (the support-key tag).
-- Maison: `BACKUP_ENGINE_CONTAINER`, and the `x-casaos` block.
-- Authelia JWKS `key_id` (`yundera-pcs` here, `pcs` there) — changing it on a live box rotates
-  the key Dex has cached; harmless, but do it once.
+As `.env` keys in the mesh template, each defaulting to that template's own behaviour:
+
+| Key | Value on a PCS | What it carries |
+|---|---|---|
+| `BRAND_NAME` | `Yundera` | TOTP issuer, reset-mail sender and subject tag |
+| `DEX_THEME_SRC` | `/DATA/AppData/yundera/template/dex-theme` | the login theme; `dex-theme/` therefore STAYS in this tree |
+| `PLATFORM_PROJECTS` | `mesh,auth,yundera,maison,kopia,terminal` | Mesh Console's Stack page |
+| `OPERATOR_API`, `TRUSTED_PUBKEY_HOST_SUFFIXES` | the orchestrator URL, `yundera.com` | the support-key tag on auth-console |
+| `BACKUP_ENGINE_CONTAINER` | `kopia-engine` | Maison's resident backup engine |
+| `PUBLIC_IP_MODE` | `interface` | see above |
+| `TERMINAL_USER` | `admin` | the Terminal's SSH user |
+
+Mesh Console's path knobs (`MESH_HOST_ROOT`, `TEMPLATE_SCRIPTS`, `LOG_FILE`) need no seam:
+the stock values point at the mesh root. Not seamed: the Authelia JWKS `key_id`
+(`yundera-pcs` here, `pcs` there — one key rotation at adoption) and the `x-casaos` blocks.
+
+### 2b. The `.env` direction — DONE (2026-10-01)
+
+`ensure-mesh-stack.sh` no longer regenerates `/DATA/AppData/mesh/.env`. It upserts the
+contract keys (`DEPLOY_ENV_KEYS`, `tools/deploy-stack.sh`) plus the constants above, and
+leaves every other line alone; a file still in the old wholesale-copy shape is rebuilt once
+from those keys, which drops `USER_JWT`, the backup credentials and the rest of the
+Yundera-only keys from it. The secrets the mesh template would mint for itself
+(`DEFAULT_PWD`, `AUTHELIA_DEX_SECRET`, `DEX_SESSION_KEY`, the two console secrets) are in
+the list, so every box carries them in the mesh `.env` before the switch — the first half
+of "Adopt the existing fleet" below.
+
+Two keys are in the list only until the switch: `UPDATE_URL` and `SELF_CHECK_CRON`. Mesh
+Console reads both from that file, and today they are this template's. The auth, maison,
+kopia and terminal stacks still get a full copy of the unified `.env`; after the switch the
+mesh template generates the first, second and fourth from its own.
+
+Tested on wisera by running the changed `ensure-mesh-stack.sh` directly: no container
+recreated, a second run leaves the file untouched, a key added by hand survives.
 
 ### 3. Adopt the existing fleet
 
 The riskiest piece, and the one to rehearse on holyhorse and wisera first. A running PCS has
 to be taken over in place:
 
-- **Seed the mesh `.env` before the first mesh run** with the secrets the box already has —
-  `DEFAULT_PWD`, `AUTHELIA_DEX_SECRET`, `DEX_SESSION_KEY`, `MESH_CONSOLE_ASSERTION_SECRET`,
-  `AUTH_CONSOLE_ASSERTION_SECRET` — or they are re-minted. A new `DEFAULT_PWD` breaks every
-  installed app.
+- ~~Seed the mesh `.env` before the first mesh run with the secrets the box already has.~~
+  Done by the upsert in §2b: once that has run on a box, `DEFAULT_PWD`, `AUTHELIA_DEX_SECRET`,
+  `DEX_SESSION_KEY` and the two console secrets are already in the mesh `.env`. What is left
+  at the switch is to stop sending `UPDATE_URL` / `SELF_CHECK_CRON` and write the mesh
+  template's own values for them.
 - State is already where the stock compose binds it (above). Left to reconcile: the
   Caddyfile (a directory mount from `yundera/template/caddy` here, a file at
   `mesh/Caddyfile` there), the theme directory name, and the two empty `template/`
