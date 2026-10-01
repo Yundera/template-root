@@ -161,8 +161,8 @@ Shipping stock mesh before these is a regression for a PCS. Each needs a real-bo
 
 | Item | Why it matters |
 |---|---|
-| Mesh CA (`CA_CERT_PATH`, `data/ca`), `SSL_CERT_DIR` + `extra_hosts: host-gateway` on Dex and every gate, `(dex_router*)` Caddy snippets | keeps OIDC back-channels on the box instead of hairpinning through the public gateway |
-| Local Account back-channel probe in `ensure-dex.sh` | never render a connector Dex cannot open; depends on the CA |
+| ~~Mesh CA (`CA_CERT_PATH`, `data/ca`), `SSL_CERT_DIR` + `extra_hosts: host-gateway` on Dex and every gate~~ | **done 2026-10-01**, tested on watch; the `(dex_router*)` Caddy snippets were not needed |
+| ~~Local Account back-channel probe in `ensure-dex.sh`~~ | **done**, as a warning only: the mesh template renders the connector either way, since it is usually the box's only one |
 | Reachability-probed `ensure-public-ip.sh` | an address bound locally but not routed must not be registered |
 | auth-console gate as `65534` + `gate-data` chown | the gate otherwise cannot persist sessions as non-root |
 | `cpu_shares` | on every service |
