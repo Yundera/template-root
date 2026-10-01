@@ -23,7 +23,7 @@
 # it, not that the box must always have it.
 #
 # ORDERING: must run AFTER self-check-reboot.sh has completed inside os-init.sh —
-# ensure-maison-stack.sh is what brings Maison up, and there is nothing to install
+# the mesh template's install (ensure-mesh-installed.sh) is what brings Maison up, and there is nothing to install
 # into before it has. Placed at the very end of os-init.sh, after the SSH-key
 # handover block: this is the least critical step on the box and the only one that
 # touches the network, and it has no business delaying an irreversible handover.
@@ -49,7 +49,7 @@ ENV_MANAGER="$YND_TEMPLATE/scripts/tools/env-file-manager.sh"
 # Maison's API container. NOT the `maison` container in front of it — that is the
 # AppShield gate, and it answers every unauthenticated request with a 302 to
 # /nhl-auth/oidc/login. maison-app has no auth of its own (see the SECURITY note in
-# ensure-maison-stack.sh) and is only reachable on the docker network, which is why
+# the mesh template's stacks/maison) and is only reachable on the docker network, which is why
 # a plain local call works and why its port is never published.
 MAISON_CONTAINER="maison-app"
 MAISON_PORT="8080"

@@ -1,6 +1,14 @@
 # =============================================================================
 # CADDY CONFIGURATION - PCS Template
 # =============================================================================
+# TRANSITION ONLY — NOT USED BY A SWITCHED BOX. Since the switch to the stock
+# mesh template (doc/mesh-stock-switch.md) Caddy reads the mesh template's own
+# /DATA/AppData/mesh/Caddyfile. This copy stays because a box that has not
+# switched yet runs a mesh-router-caddy with THIS DIRECTORY bind-mounted, and the
+# template sync (rsync --delete) would otherwise delete it from under that
+# container in the minutes between the sync and the adoption that recreates it.
+# Delete this directory once every box — staging and prod — has switched.
+# =============================================================================
 # Container routing is handled via Docker labels (caddy-docker-proxy)
 # This file defines global config and reusable snippets only
 # =============================================================================

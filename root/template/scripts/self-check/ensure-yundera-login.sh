@@ -9,9 +9,10 @@
 # (idempotent — stable across runs).
 #
 # This script owns the whole Yundera-Login perimeter and nothing else. It writes
-# a single drop-in, dex/connectors.d/yundera.yaml, which ensure-dex.sh
-# concatenates into the rendered Dex config. Dex knows nothing about Yundera and
-# neither does ensure-dex.sh — that script is a pure renderer/glue step now.
+# a single drop-in, /DATA/AppData/auth/dex/connectors.d/yundera.yaml, which the
+# mesh template's ensure-dex.sh concatenates into the rendered Dex config. Dex
+# knows nothing about Yundera and neither does the mesh template — the drop-in
+# directory is its generic seam (doc/mesh-stock-switch.md).
 #
 # Enable/disable with YUNDERA_LOGIN_ENABLED in .pcs.env (default: enabled).
 # Set it to 0/false/no on a PCS where the connector makes no sense — the demo
@@ -20,11 +21,11 @@
 # they have typed real credentials into a real login page. A dead end that asks
 # for a password is worse than no button.
 #
-# ORDER: must run BEFORE ensure-dex.sh, which is what actually renders and
-# restarts Dex. scripts-config.txt enforces that, and self-check.sh re-runs the
-# whole list when a sync changes it, so the order holds even on the cycle that
-# first delivers a script. A drop-in written out of band (this script invoked by
-# hand) reaches Dex when ensure-dex.sh next runs.
+# TRIGGER, DON'T WAIT. Dex is rendered and restarted by the mesh template, on
+# its own schedule. Whenever this script writes, changes or removes the drop-in
+# it runs the mesh ensure-dex.sh itself (under the mesh lock, library/mesh.sh),
+# so the login page changes now rather than at the next mesh self-check. That is
+# also what feature-yundera-login.sh relies on.
 #
 # FAIL-OPEN, ALWAYS. The drop-in is CACHE, never config: on any doubt — disabled,
 # no USER_JWT, IdP unreachable, registration refused, discovery not answering —
@@ -44,6 +45,7 @@ YND_ROOT="/DATA/AppData/yundera"
 
 YND_TEMPLATE="$YND_ROOT/template"
 source "$YND_TEMPLATE/scripts/library/log.sh"
+source "$YND_TEMPLATE/scripts/library/mesh.sh"
 
 DEX_ROOT="/DATA/AppData/auth/dex"
 CONNECTORS_D="$DEX_ROOT/connectors.d"
@@ -61,12 +63,27 @@ DEX_UID=1001
 
 mkdir -p "$CONNECTORS_D"
 
+# Re-render Dex when the drop-in changed, on every way out of this script. Never
+# fails it: a Dex that did not take the change now takes it at the next mesh run.
+DROPIN_CHANGED=0
+apply_to_dex() {
+    [ "$DROPIN_CHANGED" = 1 ] || return 0
+    if ! mesh_installed; then
+        log_info "Mesh template not installed yet; Dex picks the connector change up when it is"
+        return 0
+    fi
+    mesh_run self-check/ensure-dex.sh >/dev/null 2>&1 \
+        || log_warn "The mesh ensure-dex.sh failed; the connector change reaches Dex at the next mesh self-check"
+}
+trap apply_to_dex EXIT
+
 # Remove the drop-in (the fail-open path). Quiet when there was nothing to
 # remove — that is the steady state on a PCS where the connector is disabled.
 drop_connector() {
     local reason="$1"
     if [ -f "$DROPIN" ]; then
         rm -f "$DROPIN"
+        DROPIN_CHANGED=1
         log_warn "Removed the Yundera Login connector: $reason"
     else
         log_info "Yundera Login connector not configured: $reason"
@@ -185,6 +202,7 @@ if [ -f "$DROPIN" ] && cmp -s "$TMP" "$DROPIN"; then
 fi
 
 mv "$TMP" "$DROPIN"
+DROPIN_CHANGED=1
 chmod 600 "$DROPIN"
 chown "$DEX_UID:$DEX_UID" "$DROPIN" 2>/dev/null || true
 log_info "Wrote the Yundera Login connector (client ${CLIENT_ID})"

@@ -6,6 +6,8 @@ set -e
 YND_ROOT="/DATA/AppData/yundera"
 
 YND_TEMPLATE="$YND_ROOT/template"
+source "$YND_TEMPLATE/scripts/library/log.sh"
+source "$YND_TEMPLATE/scripts/library/mesh.sh"
 PCS_ENV_FILE="$YND_ROOT/.pcs.env"
 SECRET_ENV_FILE="$YND_ROOT/.pcs.secret.env"
 USER_ENV_FILE="$YND_ROOT/.ynd.user.env"
@@ -92,6 +94,30 @@ if [[ ${#missing_vars[@]} -gt 0 ]]; then
     exit 1
 fi
 
+# Keys the mesh template owns (library/mesh.sh, MESH_KEYS_READ_BACK): the public
+# addresses it detects, the default app Mesh Console sets, the owner name the
+# claim records. Read back from its .env and written LAST, after every source
+# that may still carry a stale copy from before the switch — and those copies are
+# filtered out of the sections above, so the file never holds a key twice.
+READ_BACK=""
+if [ -f "$MESH_ENV" ]; then
+    for key in $MESH_KEYS_READ_BACK; do
+        mesh_env_has "$key" || continue
+        READ_BACK+="${key}=$(mesh_env_get "$key")"$'\n'
+    done
+fi
+READ_BACK_KEYS="$(printf '%s' "$READ_BACK" | cut -d= -f1 | paste -sd'|' -)"
+
+# A source file, minus the keys read back from the mesh .env.
+emit_source() {
+    [ -f "$1" ] || return 0
+    if [ -n "$READ_BACK_KEYS" ]; then
+        grep -Ev "^(${READ_BACK_KEYS})=" "$1" || true
+    else
+        cat "$1"
+    fi
+}
+
 # Generate combined .env file for Docker Compose.
 #
 # Perms first, content second: this file concatenates .pcs.secret.env verbatim
@@ -109,6 +135,7 @@ chmod 600 "$OUTPUT_ENV_FILE"
     echo "#   - .pcs.env"
     echo "#   - .pcs.secret.env"
     echo "#   - .ynd.user.env"
+    echo "#   - /DATA/AppData/mesh/.env (the keys the mesh template owns)"
     echo "# Any changes will be overwritten on next system update."
     echo "#"
     echo "# To modify environment variables, edit the source files above."
@@ -116,17 +143,24 @@ chmod 600 "$OUTPUT_ENV_FILE"
     echo "# ============================================"
     echo "# From .pcs.env (system configuration)"
     echo "# ============================================"
-    cat "$PCS_ENV_FILE" 2>/dev/null || true
+    emit_source "$PCS_ENV_FILE"
     echo ""
     echo "# ============================================"
     echo "# From .pcs.secret.env (secrets)"
     echo "# ============================================"
-    cat "$SECRET_ENV_FILE" 2>/dev/null || true
+    emit_source "$SECRET_ENV_FILE"
     echo ""
     echo "# ============================================"
     echo "# From .ynd.user.env (user data)"
     echo "# ============================================"
-    cat "$USER_ENV_FILE" 2>/dev/null || true
+    emit_source "$USER_ENV_FILE"
+    if [ -n "$READ_BACK" ]; then
+        echo ""
+        echo "# ============================================"
+        echo "# From /DATA/AppData/mesh/.env (mesh-owned)"
+        echo "# ============================================"
+        printf '%s' "$READ_BACK"
+    fi
 } > "$OUTPUT_ENV_FILE"
 
 echo "All required environment variables are valid"

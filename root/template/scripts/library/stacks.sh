@@ -4,10 +4,9 @@
 # The platform is several compose projects that share one Docker host and one
 # `pcs` network (see doc/stack-split.md):
 #
-#   mesh     /DATA/AppData/mesh     tunnel, agent, caddy, smtp, mesh-console (stacks/mesh)
-#   auth     /DATA/AppData/auth     dex, authelia, auth-registrar (stacks/auth)
-#   yundera  /DATA/AppData/yundera  admin, admin-app            (the root compose)
-#   + maison, kopia, terminal
+#   mesh, auth, maison, terminal   the stock mesh template's (/DATA/AppData/mesh, …)
+#   yundera  /DATA/AppData/yundera  admin, admin-app   (the root compose)
+#   kopia    /DATA/AppData/kopia    (stacks/kopia)
 #
 # Moving a service from one project to another is the dangerous operation here:
 # container names are host-wide, while `up --remove-orphans` and `down` only ever
@@ -18,10 +17,6 @@
 
 YND_ROOT="${YND_ROOT:-/DATA/AppData/yundera}"
 YND_TEMPLATE="${YND_TEMPLATE:-$YND_ROOT/template}"
-
-# The platform stacks shipped under template/stacks/ that took services over from
-# the yundera project. Read by yundera_handover_pending below.
-PLATFORM_HANDOVER_STACKS="mesh auth"
 
 # Create the shared `pcs` network if it does not exist.
 #
@@ -83,97 +78,4 @@ evict_name_squatters() {
     done < <(sed -n 's/^ *container_name: *//p' <<<"$config" | tr -d "\"'")
 
     return "$rc"
-}
-
-# Hand a named network over to <project> when another project created it.
-#
-# Compose only WARNS when a project declares a network another project created,
-# and then uses it (verified on compose v5.3.1) — so nothing breaks, but the
-# stale owner label stays forever: the warning repeats on every up, and the old
-# owner's `down` is the one that would try to delete it. Removing it while it is
-# empty lets compose recreate it with the right labels on the next `up`.
-#
-# Run it AFTER evict_name_squatters, which is what empties it on the tick a
-# stack takes a network over. A network that still has containers attached is
-# left alone: it is in use, and the warning is harmless.
-#
-# Usage: adopt_network <network-name> <project>
-adopt_network() {
-    local net="$1" project="$2" owner attached
-    owner="$(docker network inspect -f '{{index .Labels "com.docker.compose.project"}}' "$net" 2>/dev/null)" || return 0
-    [ "$owner" = "$project" ] && return 0
-    attached="$(docker network inspect -f '{{len .Containers}}' "$net" 2>/dev/null || echo 1)"
-    if [ "$attached" != "0" ]; then
-        log_warn "network '$net' belongs to '${owner:-no compose project}', not '$project', and is still in use - leaving it"
-        return 0
-    fi
-    log_info "network '$net' belonged to '${owner:-no compose project}' - removing it so '$project' recreates it"
-    docker network rm "$net" >/dev/null || return 1
-}
-
-# True (exit 0) while a yundera-project container still runs a service that one of
-# PLATFORM_HANDOVER_STACKS now declares — i.e. the move out of the yundera stack has
-# not completed on this box.
-#
-# The yundera stack-up must NOT pass --remove-orphans then: those containers ARE
-# the box's routing and login until mesh/auth take them over, and removing them
-# early leaves it dark. That window is real, not theoretical: on the tick that
-# first delivers the split, self-check.sh finishes its first pass over the OLD
-# scripts-config.txt, which brings the yundera stack up (from the new, admin-only
-# compose) before ensure-mesh-stack.sh has ever run. It also covers a mesh or auth
-# deploy that failed. Once the owning stack has evicted them, nothing matches and
-# orphan removal resumes.
-yundera_handover_pending() {
-    local stack svc names="" running
-    for stack in $PLATFORM_HANDOVER_STACKS; do
-        [ -f "$YND_TEMPLATE/stacks/$stack/docker-compose.yml" ] || continue
-        # --env-file /dev/null: only the service keys are wanted; unset variables
-        # are warnings, not errors, for `config --services`.
-        names+=" $(docker compose -f "$YND_TEMPLATE/stacks/$stack/docker-compose.yml" \
-            --env-file /dev/null config --services 2>/dev/null | tr '\n' ' ')"
-    done
-    running="$(docker ps -a --filter label=com.docker.compose.project=yundera \
-        --format '{{.Label "com.docker.compose.service"}}' 2>/dev/null)"
-    for svc in $running; do
-        case " $names " in *" $svc "*) return 0 ;; esac
-    done
-    return 1
-}
-
-# Sets ORPHANS_FLAG to the --remove-orphans flag for the yundera stack's up/down,
-# or to nothing while a handover is pending (see above). A variable rather than
-# output because log_* writes to stdout.
-#
-#   yundera_orphans_flag; docker compose ... up -d $ORPHANS_FLAG
-yundera_orphans_flag() {
-    if yundera_handover_pending; then
-        log_warn "yundera stack still holds services now owned by the mesh/auth stacks - not removing orphans until they are taken over"
-        ORPHANS_FLAG=""
-    else
-        ORPHANS_FLAG="--remove-orphans"
-    fi
-}
-
-# `docker restart <container>`, but only when it already binds <host-dir>.
-# Returns 1 when it did not restart: no such container (cold boot), or one bound
-# somewhere else.
-#
-# For the config-reload restarts in ensure-authelia.sh / ensure-dex.sh. When a
-# migration renames a state directory (2026-10-01-10-move-state-into-stack-folders.sh),
-# the running container keeps working on it — a bind mount holds the inode — until
-# the stack deploy recreates it on the new path. STARTING it again in between is
-# what breaks: Docker re-resolves the bind by path, finds nothing, and creates an
-# empty directory there, so the service comes up on no state and leaves a stray
-# directory behind. Such a container is skipped; the deploy that follows picks up
-# whatever the restart was for.
-#
-# Usage: restart_if_bound <container> <host-dir>
-restart_if_bound() {
-    local name="$1" dir="$2" sources
-    sources="$(docker container inspect -f '{{range .Mounts}}{{println .Source}}{{end}}' "$name" 2>/dev/null)" || return 1
-    if ! grep -qxF "$dir" <<<"$sources"; then
-        log_info "$name does not bind $dir - not restarting it; the stack deploy recreates it"
-        return 1
-    fi
-    docker restart "$name" >/dev/null 2>&1 || true
 }

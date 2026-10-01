@@ -2,20 +2,20 @@
 # deploy-stack.sh <stack-name> <dest-dir> [EXTRA_KEY=value ...]
 #
 # Deploys one of the auxiliary compose stacks shipped under
-# /DATA/AppData/yundera/template/stacks/<stack-name>/ (currently `mesh`, `auth`, `maison`, `kopia`
-# and `terminal`) to its own project directory:
+# /DATA/AppData/yundera/template/stacks/<stack-name>/ (currently `kopia` alone — the mesh,
+# auth, maison and terminal stacks are the stock mesh template's, see
+# doc/mesh-stock-switch.md) to its own project directory:
 #
 #   1. copy stacks/<stack-name>/docker-compose.yml -> <dest-dir>/docker-compose.yml
 #   1b. copy stacks/<stack-name>/icon.<ext> -> <dest-dir>/.icon.<ext>, the file
 #      Maison renders the stack's tile from
 #   2. generate <dest-dir>/.env from the yundera unified .env, plus any extra
-#      KEY=value pairs given on the command line — or, with DEPLOY_ENV_KEYS set,
-#      only upsert those keys into a file the stack owns (see step 2 below)
+#      KEY=value pairs given on the command line
 #   3. docker compose pull, then up -d --remove-orphans (both with backoff). Between
-#      the two: make sure the shared `pcs` network exists, evict containers from other
-#      projects that hold this stack's container names, and take over the networks
-#      named in DEPLOY_ADOPT_NETWORKS (see library/stacks.sh). After the pull, so the
-#      window where an evicted service is down is the `up` alone, not the download.
+#      the two: make sure the shared `pcs` network exists and evict containers from
+#      other projects that hold this stack's container names (library/stacks.sh).
+#      After the pull, so the window where an evicted service is down is the `up`
+#      alone, not the download.
 #
 # The unified .env is the ONLY source of environment truth: it is assembled by
 # ensure-env-vars-valid.sh from .pcs.env + .pcs.secret.env + .ynd.user.env. Copying
@@ -115,60 +115,8 @@ if [ -n "$SRC_ICON" ] && ! cmp -s "$SRC_ICON" "$DEST_ICON"; then
 fi
 
 # --- 2. .env ---------------------------------------------------------------
-# Two modes.
-#
-# COPY (the default): <dest>/.env is the unified .env plus the KEY=value
-# arguments, regenerated whenever it differs. The stack owns nothing in it.
-#
-# UPSERT (DEPLOY_ENV_KEYS set, a space-separated key list): <dest>/.env BELONGS
-# TO THE STACK. Only the listed keys are written, each from the unified .env and
-# only when it is present there, plus the KEY=value arguments; every other line
-# in the file is left exactly as it is. This is the direction the mesh stack
-# needs (doc/mesh-stock-switch.md): the mesh template treats its .env as its own
-# source of truth and mints secrets into it, so this template may hand it inputs
-# but must not regenerate it. A file that still carries the COPY header — or no
-# file — is rebuilt once from the listed keys alone, which is also what clears
-# out the Yundera-only keys (USER_JWT, the backup credentials, ...) the old
-# wholesale copy left there.
-ENV_MGR="$YND_TEMPLATE/scripts/tools/env-file-manager.sh"
-UPSERT_MARK="# OWNED BY THE '$STACK_NAME' STACK."
-
-upsert_env() {
-    local key="$1" value="$2"
-    if "$ENV_MGR" exists "$key" "$DEST_ENV" && [ "$("$ENV_MGR" get "$key" "$DEST_ENV")" = "$value" ]; then
-        return 0
-    fi
-    "$ENV_MGR" set "$key" "$value" "$DEST_ENV"
-    ENV_CHANGED=1
-}
-
-if [ -n "${DEPLOY_ENV_KEYS:-}" ]; then
-    ENV_CHANGED=0
-    if [ ! -f "$DEST_ENV" ] || ! grep -qF "$UPSERT_MARK" "$DEST_ENV"; then
-        TMP_ENV="$(mktemp)"
-        chmod 600 "$TMP_ENV"
-        {
-            echo "$UPSERT_MARK"
-            echo "# /DATA/AppData/yundera/template/scripts/tools/deploy-stack.sh sets a fixed list"
-            echo "# of keys here on every self-check and touches nothing else. To change one of"
-            echo "# those, edit its source: /DATA/AppData/yundera/{.pcs.env,.pcs.secret.env,.ynd.user.env}"
-        } > "$TMP_ENV"
-        mv "$TMP_ENV" "$DEST_ENV"
-        chmod 600 "$DEST_ENV"
-        ENV_CHANGED=1
-        log_info "Rebuilt $DEST_ENV: from now on only its listed keys are managed"
-    fi
-    for key in $DEPLOY_ENV_KEYS; do
-        "$ENV_MGR" exists "$key" "$UNIFIED_ENV" || continue
-        upsert_env "$key" "$("$ENV_MGR" get "$key" "$UNIFIED_ENV")"
-    done
-    for kv in "$@"; do
-        upsert_env "${kv%%=*}" "${kv#*=}"
-    done
-    if [ "$ENV_CHANGED" = 1 ]; then
-        log_info "Updated $DEST_ENV"
-    fi
-else
+# The unified .env plus the KEY=value arguments, regenerated whenever it differs.
+# The stack owns nothing in it.
 TMP_ENV="$(mktemp)"
 chmod 600 "$TMP_ENV"
 {
@@ -195,7 +143,6 @@ if ! cmp -s "$TMP_ENV" "$DEST_ENV"; then
     log_info "Regenerated $DEST_ENV"
 else
     rm -f "$TMP_ENV"
-fi
 fi
 
 # Unconditional (not inside the branch above): the file may already exist with the
@@ -239,9 +186,6 @@ ensure_pcs_network || log_warn "[$STACK_NAME] could not create the pcs network; 
 # conflict itself.
 evict_name_squatters --project-directory "$DEST_DIR" -f "$DEST_COMPOSE" \
     || log_warn "[$STACK_NAME] could not evict every container holding this stack's names"
-for net in ${DEPLOY_ADOPT_NETWORKS:-}; do
-    adopt_network "$net" "$STACK_NAME" || log_warn "[$STACK_NAME] could not take over network '$net'"
-done
 
 run_with_backoff "up" up_once
 

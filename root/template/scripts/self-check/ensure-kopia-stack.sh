@@ -24,8 +24,8 @@
 # ORDERING: must run AFTER ensure-backup-config.sh, which writes the repository.config
 # this reads the engine's hostname out of. A box provisioned before that file exists
 # would otherwise bake in the synthetic fallback hostname and keep it until the stack is
-# next brought up. It must also run after ensure-mesh-stack.sh and ensure-auth-stack.sh
-# — the gate joins the `pcs` network and gets its OIDC client from auth-registrar.
+# next brought up. It must also run after ensure-mesh-installed.sh — the gate joins
+# the `pcs` network and gets its OIDC client from the mesh template's auth-registrar.
 set -euo pipefail
 
 YND_ROOT="/DATA/AppData/yundera"
@@ -87,8 +87,8 @@ if [ ! -f "$KOPIA_ENGINE_DIR/repository.config" ]; then
 fi
 
 # The engine stamps its container timezone from TZ, so log timestamps inside it match
-# the host's. The unified .env does not carry it. Same derivation as
-# ensure-maison-stack.sh.
+# the host's. The unified .env does not carry it. Same derivation as the mesh
+# template's ensure-maison-stack.sh.
 if [ -f /etc/timezone ]; then
     TZ="$(cat /etc/timezone 2>/dev/null || echo UTC)"
 elif [ -L /etc/localtime ]; then

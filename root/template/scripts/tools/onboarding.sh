@@ -69,17 +69,23 @@ COMPLETED_MARKER="$ONBOARDING_ROOT/completed"
 # on the box's root domain is not walked straight past onboarding. Its PRESENCE
 # is the whole state — Maison reads it and nothing else.
 #
-# ensure-maison-stack.sh is what actually decides whether it should be there: it
+# ensure-maison-onboarding.sh is what actually decides whether it should be there: it
 # reconciles the file against `status` below on every self-check, so a box
 # claimed from the terminal, restored from a backup or migrated from another host
 # converges on its own. The removal in `run` is only a fast path, so the gate
 # clears the moment the wizard succeeds instead of at the next tick.
 MAISON_ONBOARDING="/DATA/AppData/maison/onboarding.json"
 
-USER_MGR="$YND_TEMPLATE/scripts/tools/authelia-user-manager.sh"
 ENV_MGR="$YND_TEMPLATE/scripts/tools/env-file-manager.sh"
 SELF_CHECK="$YND_TEMPLATE/scripts/self-check"
 PCS_ENV="$YND_ROOT/.pcs.env"
+
+# The local accounts are the mesh template's (Authelia, its user manager, its
+# Dex render); this script is Yundera's onboarding state around them. The owner
+# name lives in the mesh .env, written there by the claim.
+source "$YND_TEMPLATE/scripts/library/log.sh"
+source "$YND_TEMPLATE/scripts/library/mesh.sh"
+USER_MGR="$MESH_SCRIPTS/tools/authelia-user-manager.sh"
 
 # --- deployment override ------------------------------------------------------
 # Same seam as dex/connectors.d: the override lives in the RUNTIME data dir, not
@@ -115,7 +121,7 @@ cmd_status() {
     [ -f "$COMPLETED_MARKER" ] && completed="true"
 
     # Best-effort: the recorded owner, so the wizard can greet a returning user.
-    username="$("$ENV_MGR" get LOCAL_ADMIN_USER "$PCS_ENV" 2>/dev/null || echo "")"
+    username="$(mesh_env_get LOCAL_ADMIN_USER)"
     if [ -z "$username" ] && is_claimed; then
         username="$(yq -r '[.users | to_entries[] | select(.value.disabled != true)][0].key // ""' "$USERS_DB" 2>/dev/null || echo "")"
     fi
@@ -172,7 +178,7 @@ cmd_run() {
 
     # Open Maison's gate immediately rather than at the next self-check: the owner
     # is being sent back there right now. Best-effort — the reconcile in
-    # ensure-maison-stack.sh is the authority and will remove it anyway.
+    # ensure-maison-onboarding.sh is the authority and will remove it anyway.
     rm -f "$MAISON_ONBOARDING" 2>/dev/null || true
 
     # Pass the claim's JSON straight through (it carries the generated password
@@ -184,7 +190,7 @@ cmd_run() {
 # is reachable again. For testing and for re-provisioning a box by hand.
 #
 # ALSO EXPOSED in the admin app ("Re-run onboarding", POST
-# /api/admin/onboarding-reset). Unclaiming is a self-lockout button: ensure-dex.sh
+# /api/admin/onboarding-reset). Unclaiming is a self-lockout button: the mesh ensure-dex.sh
 # withdraws the Local Account connector, so on a PCS whose Yundera Login is absent
 # or broken the only way back in is the support SSH key. The route refuses while
 # Yundera Login is off, requires a typed confirmation, and revokes the other admin
@@ -217,36 +223,32 @@ cmd_reset() {
 
     rm -f "$COMPLETED_MARKER"
 
-    # Cleared BEFORE the re-seed: ensure-authelia.sh reads LOCAL_ADMIN_USER to
-    # decide whose block to stamp the owner email onto, and a stale value would
-    # re-seed the placeholder under the previous owner's name.
+    # Cleared BEFORE the re-seed: the mesh ensure-authelia.sh reads
+    # LOCAL_ADMIN_USER to decide whose block to stamp the owner email onto, and a
+    # stale value would re-seed the placeholder under the previous owner's name.
+    # The .pcs.env copy is a pre-switch leftover; cleared too so nothing reads it.
+    "$ENV_MGR" delete LOCAL_ADMIN_USER "$MESH_ENV" >/dev/null 2>&1 || true
     "$ENV_MGR" delete LOCAL_ADMIN_USER "$PCS_ENV" >/dev/null 2>&1 || true
 
     # Removing the file is what re-arms the seed: ensure-authelia.sh's one-shot
     # check is a pure "has this been written yet?" test on a `password:` field.
-    # It restarts Authelia itself, so no separate restart here.
-    [ -x "$SELF_CHECK/ensure-authelia.sh" ] || error "ensure-authelia.sh not found; cannot re-seed"
-    if ! "$SELF_CHECK/ensure-authelia.sh" >/dev/null 2>&1; then
+    # It restarts Authelia itself, so no separate restart here. Both mesh scripts
+    # run under the mesh lock, so they never interleave with the mesh cron.
+    if ! mesh_run self-check/ensure-authelia.sh >/dev/null 2>&1; then
         error "ensure-authelia.sh failed${backup:+; previous users_database.yml kept at $backup}"
     fi
 
     # Withdraw the Local Account connector now rather than at the next tick — an
     # unclaimed PCS must not advertise a login that cannot work.
-    if [ -x "$SELF_CHECK/ensure-dex.sh" ]; then
-        "$SELF_CHECK/ensure-dex.sh" >/dev/null 2>&1 \
-            || echo "WARNING: ensure-dex.sh failed; the Local Account connector goes away at the next self-check" >&2
-    fi
+    mesh_run self-check/ensure-dex.sh >/dev/null 2>&1 \
+        || echo "WARNING: ensure-dex.sh failed; the Local Account connector goes away at the next mesh self-check" >&2
 
-    # Re-arm Maison's gate for the same reason, and through the same script that
-    # owns it — this box is unclaimed again, so its dashboard must send the next
-    # arrival back to the wizard. Not written directly from here: the file's URL
-    # is built from the deployment's domain, which ensure-maison-stack.sh already
-    # resolves. Redeploying the stack is a heavier step than the two above; it is
-    # affordable because reset is a rare, deliberate command, and it is what makes a
-    # reset box identical to one a self-check just reconciled.
-    if [ -x "$SELF_CHECK/ensure-maison-stack.sh" ]; then
-        "$SELF_CHECK/ensure-maison-stack.sh" >/dev/null 2>&1 \
-            || echo "WARNING: ensure-maison-stack.sh failed; Maison re-gates at the next self-check" >&2
+    # Re-arm Maison's gate for the same reason, through the script that owns it —
+    # this box is unclaimed again, so its dashboard must send the next arrival
+    # back to the wizard.
+    if [ -x "$SELF_CHECK/ensure-maison-onboarding.sh" ]; then
+        "$SELF_CHECK/ensure-maison-onboarding.sh" >/dev/null 2>&1 \
+            || echo "WARNING: ensure-maison-onboarding.sh failed; Maison re-gates at the next self-check" >&2
     fi
 
     if is_claimed; then

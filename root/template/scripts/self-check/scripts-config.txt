@@ -30,9 +30,6 @@ ensure-common-tools-installed.sh
 # System configuration
 ensure-ssh.sh
 
-# Network configuration
-ensure-public-ip.sh
-
 # Storage setup
 ensure-swap.sh
 
@@ -43,46 +40,41 @@ ensure-logrotate.sh
 
 # Docker and application setup
 ensure-docker-installed.sh
+# Backup (BACKUP-STORAGE-PLAN.md §6). Both MUST stay after
+# ensure-yundera-user-data.sh, which supplies and rotates the USER_JWT the
+# credentials call needs, and BEFORE ensure-mesh-installed.sh, whose stack-up is
+# Maison's first boot: a freshly provisioned box then finds a connected
+# repository (/DATA/AppData/kopia/engine) instead of coming up "not configured"
+# and waiting a day. They need Docker and nothing of the mesh template.
+#
+# ensure-backup-credentials.sh MUST run before ensure-backup-config.sh: it writes
+# the BACKUP_* values the second one renders. It does NOT call the API every night —
+# every call mints a key and revokes the previous one, so it only calls when the
+# credential is absent, near expiry, or was refused by the storage.
+ensure-backup-credentials.sh
+ensure-backup-config.sh
+# The provider's IPv6 interface, so the mesh template's own ensure-public-ip.sh
+# (PUBLIC_IP_MODE=interface) finds the address on its first run below.
+ensure-ipv6-interface.sh
+# THE STOCK MESH TEMPLATE (doc/mesh-stock-switch.md). The mesh, auth, maison and
+# terminal stacks are Yundera/mesh-router-template-root's, unmodified, in
+# /DATA/AppData/mesh — with their own self-check, cron (03:30), lock, log and
+# update channel. This step installs it once through its install.sh (a fresh VM,
+# an adoption, an identity change) and otherwise only writes the keys this
+# template owns into its .env, running the mesh self-check when one changed.
+# A failed install fails the self-check, and so a PCS create.
+#
+# BEFORE ensure-env-vars-valid.sh, which reads the keys the mesh template owns
+# (public IP, default app, owner name) back into the unified .env; and before
+# every gate below, since they all register with its auth-registrar. Its own
+# inputs come straight from .pcs.env / .pcs.secret.env / .ynd.user.env, which
+# ensure-yundera-user-data.sh above has filled.
+ensure-mesh-installed.sh
 ensure-env-vars-valid.sh
-# The mesh stack (tunnel, agent, caddy, smtp) — FIRST of the stacks: everything
-# else is reached through its Caddy, and its agent writes the mesh CA the auth
-# stack and every gate read. It also creates the shared `pcs` network, which no
-# stack owns (ensure_pcs_network, library/stacks.sh). Nothing above renders
-# anything it reads, so it does not wait for the auth block.
-#
-# On the tick that first ships the split it takes its four containers over from
-# the yundera project by name (deploy-stack.sh); see stacks/mesh.
-ensure-mesh-stack.sh
-# RENDER EVERYTHING, *THEN* BRING THE STACK UP. The auth block below mints
-# secrets and renders config files that services read at startup, so all of it
-# must stay ahead of ensure-auth-stack.sh (and ADMIN_ASSERTION_SECRET ahead of
-# ensure-user-compose-stack-up.sh).
-#
-# Stack-up used to sit above this block, which meant the first up started Dex
-# against a /DATA/AppData/auth/dex/config.yaml that ensure-dex.sh had not
-# written yet.
-# `dex serve` on a missing config exits immediately, so Dex crash-looped under
-# restart:unless-stopped for the ~2m45s until ensure-dex.sh ran — and on
-# 2026-08-27 that loop lost Dex's then-pinned gRPC address to auth-registrar and
-# wedged the whole provision. The address is gone (see docker-compose.yml), so
-# the loop can no longer wedge anything, but a service that crash-loops on every
-# cold provision is a standing liability. Keep this order.
-#
-# ensure-authelia.sh MUST run before ensure-dex.sh: it mints AUTHELIA_DEX_SECRET
-# into .pcs.secret.env / .env, which ensure-dex.sh interpolates into the Dex
-# "Local Account" connector's clientSecret.
-ensure-authelia.sh
-# ensure-yundera-login.sh writes dex/connectors.d/yundera.yaml, which
-# ensure-dex.sh concatenates into the rendered config — so it MUST run before it.
-# A drop-in written after the render sits unused until the next cycle.
+# The "Yundera Login" Dex connector: a drop-in in the mesh template's
+# /DATA/AppData/auth/dex/connectors.d/. Runs the mesh ensure-dex.sh itself
+# whenever the drop-in changes.
 ensure-yundera-login.sh
-# Cold-boot safe: ensure-dex.sh's trailing `docker restart dex` is guarded on the
-# container existing, so running it before the stack has ever come up is a no-op.
-ensure-dex.sh
-# The auth stack (dex, authelia, auth-registrar) — right after the renders it
-# reads, and before any gate: admin, maison, kopia and terminal all get their OIDC
-# client from auth-registrar. Needs the mesh stack above (Caddy, the mesh CA).
-ensure-auth-stack.sh
 # ensure-admin-gate-secret.sh MUST run before ensure-user-compose-stack-up.sh: it
 # mints ADMIN_ASSERTION_SECRET into .pcs.secret.env / .env, which the admin gate
 # and the admin app both interpolate. Without it the dashboard authenticates
@@ -93,45 +85,29 @@ ensure-admin-gate-secret.sh
 ensure-user-compose-pulled.sh
 ensure-user-compose-stack-up.sh
 
-# Backup (BACKUP-STORAGE-PLAN.md §6). Both MUST stay after
-# ensure-yundera-user-data.sh, which supplies and rotates the USER_JWT the
-# credentials call needs, and before ensure-maison-stack.sh, so a freshly
-# provisioned box finds a connected repository on Maison's first boot rather than
-# coming up "not configured" and waiting a day.
-#
-# ensure-backup-credentials.sh MUST run before ensure-backup-config.sh: it writes
-# the BACKUP_* values the second one renders. It does NOT call the API every night —
-# every call mints a key and revokes the previous one, so it only calls when the
-# credential is absent, near expiry, or was refused by the storage.
-ensure-backup-credentials.sh
-ensure-backup-config.sh
-
-# The kopia stack — the resident backup engine, plus kopia's own web UI behind an
-# AppShield gate — deployed as its own stack alongside maison. MUST stay after
-# ensure-backup-config.sh: it reads the engine's hostname out of the repository.config
-# that script writes, and a box that ran this first would bake in the synthetic fallback
-# hostname instead; the UI's entrypoint reads the password and credentials that script
-# writes as well. Nothing depends on it succeeding — Maison falls back to starting a
-# one-shot engine container per command when the stack is absent or down, which is the
-# behaviour that predates it.
-#
-# Its gate joins `pcs` and registers with auth-registrar — both up by now (mesh and
-# auth stacks above). It is above ensure-maison-stack.sh only because the ordering it
-# is pinned to is the backup config's.
+# The kopia stack — the resident backup engine Maison execs into
+# (BACKUP_ENGINE_CONTAINER=kopia-engine in the mesh .env), plus kopia's own web UI
+# behind an AppShield gate, which joins `pcs` and registers with the mesh
+# template's auth-registrar. MUST stay after ensure-backup-config.sh: it reads the
+# engine's hostname out of the repository.config that script writes, and a box
+# that ran this first would bake in the synthetic fallback hostname instead.
+# Nothing depends on it succeeding — Maison falls back to a one-shot engine
+# container per command when the stack is absent or down.
 ensure-kopia-stack.sh
 
-# Auxiliary stack — Maison (doc/maison-migration.md). MUST stay after
-# ensure-mesh-stack.sh and ensure-auth-stack.sh: its gate joins `pcs` and gets its
-# OIDC client from auth-registrar.
-ensure-maison-stack.sh
+# Maison's onboarding gate: writes or removes /DATA/AppData/maison/onboarding.json
+# from `onboarding.sh status`. After the mesh install (the folder is the mesh
+# template's) and ensure-env-vars-valid.sh (DOMAIN).
+ensure-maison-onboarding.sh
 
-# The web Terminal (ttyd behind an AppShield gate) — the store's Terminal app shipped
-# as a platform stack. Same constraint as maison: its gate joins `pcs` and registers
-# with auth-registrar, so it MUST stay after the mesh and auth stacks. Nothing depends
-# on it; opt out per box with
-# TERMINAL_ENABLED=false in .pcs.env.
-ensure-terminal-stack.sh
-
+# Retired at the switch to the stock mesh template (2026-10-01): this template's
+# own copies of the mesh, auth, maison and terminal stacks and of the scripts that
+# rendered and deployed them — ensure-mesh-stack.sh, ensure-authelia.sh,
+# ensure-dex.sh (now a wrapper, not a step), ensure-auth-stack.sh,
+# ensure-maison-stack.sh, ensure-terminal-stack.sh, ensure-public-ip.sh. Their
+# generic behaviour lives in the mesh template, in its best version; do not
+# reintroduce a copy here.
+#
 # Retired with the CasaOS removal, and listed here only so nobody reintroduces
 # one: ensure-casaos-stack.sh (phase 3, 2026-08-02) and the two mirrors,
 # ensure-maison-app-mirror.sh / ensure-maison-yundera-mirror.sh (2026-09-08).

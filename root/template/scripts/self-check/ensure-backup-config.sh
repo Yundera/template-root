@@ -16,7 +16,7 @@
 # two markers, and a descriptor naming the image.
 #
 # MUST RUN AFTER ensure-backup-credentials.sh (which fetches BACKUP_*) and BEFORE
-# ensure-maison-stack.sh, so a box that is being provisioned for the first time finds
+# ensure-mesh-installed.sh (whose install is Maison's first boot), so a box that is being provisioned for the first time finds
 # a connected repository on Maison's first boot instead of coming up "not configured"
 # and waiting a day.
 #

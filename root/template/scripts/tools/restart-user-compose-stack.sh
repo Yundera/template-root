@@ -10,13 +10,9 @@ source "$COMPOSE_DIR/template/scripts/library/stacks.sh"
 
 sync
 
-# The yundera stack is the admin app alone since the mesh/auth split, so this
-# restarts the admin app — routing and login (mesh, auth) stay up throughout.
-#
-# Without --remove-orphans while a handover to mesh/auth is pending: `down` with
-# it would take the box's routing and login down with the admin app, and `up`
-# would never bring them back. See yundera_handover_pending.
-yundera_orphans_flag
+# The yundera stack is the admin app alone, so this restarts the admin app —
+# routing and login (the mesh template's stacks) stay up throughout.
+ORPHANS_FLAG="--remove-orphans"
 ensure_pcs_network || echo "WARN: could not create the pcs network; up will say why"
 
 # Stop any existing containers (with error suppression)

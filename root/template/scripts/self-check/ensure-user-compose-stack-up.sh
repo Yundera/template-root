@@ -20,9 +20,8 @@ if [ ! -f "$COMPOSE_FILE" ]; then
     exit 1
 fi
 
-# The yundera stack is the admin app alone since the mesh/auth split
-# (template/stacks/{mesh,auth}); the Dex frontend provisioning that used to sit
-# here went to ensure-auth-stack.sh with Dex.
+# The yundera stack is the admin app alone; routing, login and the dashboard are
+# the stock mesh template's stacks (ensure-mesh-installed.sh).
 source "$COMPOSE_DIR/template/scripts/library/log.sh"
 source "$COMPOSE_DIR/template/scripts/library/stacks.sh"
 
@@ -30,9 +29,7 @@ source "$COMPOSE_DIR/template/scripts/library/stacks.sh"
 # stack's deploy has made it by now, but this must not depend on that.
 ensure_pcs_network || echo "WARN: could not create the pcs network; up will say why"
 
-# --remove-orphans, except while services moved to the mesh/auth stacks still
-# run under this project — see yundera_handover_pending.
-yundera_orphans_flag
+ORPHANS_FLAG="--remove-orphans"
 
 backoff="$INITIAL_BACKOFF"
 attempt=1

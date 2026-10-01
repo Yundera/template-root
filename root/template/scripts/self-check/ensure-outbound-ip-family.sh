@@ -19,7 +19,7 @@ set -e
 # dual-stack hostnames; v6-only destinations are unaffected.
 #
 # Applies on all providers: Scaleway only needs IPv6 for the inbound bind
-# (handled by ensure-public-ip.sh), never for outbound.
+# (the mesh template's ensure-public-ip.sh, after ensure-ipv6-interface.sh), never for outbound.
 
 if [ -f /.dockerenv ]; then
     echo "→ Inside Docker - dev environment detected. Skipping setup."
