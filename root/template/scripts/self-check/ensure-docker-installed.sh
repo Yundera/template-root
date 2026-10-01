@@ -67,10 +67,16 @@ install_docker() {
 
     # Install Docker packages
     if ! { DEBIAN_FRONTEND=noninteractive apt-get install -qq -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin; } >/dev/null 2>&1; then
-        echo "✗ Docker package installation failed. Running with verbose output for debugging:"
+        # The retry decides, not the first attempt: an apt/dpkg lock taken between
+        # the update above and the install fails the quiet run and is gone by the
+        # time this one starts. Exiting 1 after a retry that installed Docker
+        # failed the whole provisioning of a box that was in fact fine.
+        echo "✗ Quiet Docker package installation failed. Retrying with verbose output..."
         [ -x "$YND_TEMPLATE/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_TEMPLATE/scripts/tools/wait-for-apt-lock.sh"
-        DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-        exit 1
+        if ! DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin; then
+            echo "✗ Failed to install Docker packages"
+            exit 1
+        fi
     fi
 
     # Add operator + admin to docker group

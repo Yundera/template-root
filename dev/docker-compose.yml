@@ -66,8 +66,8 @@ services:
         echo ''
         echo '  # Test Dex provisioning (renders config, seeds break-glass admin):'
         echo '  bash /DATA/AppData/yundera/scripts/self-check/ensure-dex.sh'
-        echo '  ls -la /DATA/AppData/yundera/dex/'
-        echo '  cat /DATA/AppData/yundera/dex/config.yaml'
+        echo '  ls -la /DATA/AppData/auth/dex/'
+        echo '  cat /DATA/AppData/auth/dex/config.yaml'
         echo ''
 
         tail -f /dev/null

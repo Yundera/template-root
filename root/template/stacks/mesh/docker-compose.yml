@@ -14,10 +14,13 @@
 # which also writes the .env beside it from the unified yundera .env. DO NOT edit
 # the deployed copy — it is overwritten on every self-check.
 #
-# THE DATA DID NOT MOVE. Every bind below still points into /DATA/AppData/yundera
-# (data/certs, data/ca, data/caddy, template/caddy), exactly as when these services
-# lived in the root compose: only the compose project changed. Moving the state is
-# a separate migration, if it is ever worth one.
+# THE STATE IS IN THIS STACK'S FOLDER: /DATA/AppData/mesh/data/{certs,ca,caddy},
+# the same relative layout as the mesh template. Until 2026-10-01 it sat in the
+# yundera root (data/); a migration renames it across on a box that still has it
+# there, before this file is delivered
+# (scripts/migrations/2026-10-01-10-move-state-into-stack-folders.sh). The one bind that
+# still points into the yundera root is template/caddy — the Caddyfile is part of
+# the synced template tree, not state.
 #
 # CONTAINER NAMES ARE LOAD-BEARING and did not change either: the auth stack, the
 # gates and the Caddyfile all reach these by name on `pcs`, and deploy-stack.sh's
@@ -90,7 +93,7 @@ services:
       # mount here, and is why no self-check script has to copy anything.
       - CA_CERT_PATH=/app/ca/ca-cert.pem
     volumes:
-      - /DATA/AppData/yundera/data/certs:/app/data
+      - /DATA/AppData/mesh/data/certs:/app/data
       # Read-write: this is where the agent WRITES the CA, per CA_CERT_PATH above.
       #
       # ensure-pcs-user.sh declares this directory alongside data/certs, but do
@@ -105,7 +108,7 @@ services:
       # root-owned directory. A future container that needs a pre-created,
       # correctly-owned mount and does NOT run as root will fail on the tick it
       # is introduced. Fix the ordering before relying on the pre-create.
-      - /DATA/AppData/yundera/data/ca:/app/ca
+      - /DATA/AppData/mesh/data/ca:/app/ca
     networks:
       pcs: null
 
@@ -134,9 +137,9 @@ services:
       # field as an eight-week-old Caddyfile behind a correct-looking config.
       # The dir also cannot be the app root — .pcs.secret.env lives there.
       - /DATA/AppData/yundera/template/caddy:/etc/caddy:ro
-      - /DATA/AppData/yundera/data/certs:/certs:ro
-      - /DATA/AppData/yundera/data/caddy/data:/data
-      - /DATA/AppData/yundera/data/caddy/config:/config
+      - /DATA/AppData/mesh/data/certs:/certs:ro
+      - /DATA/AppData/mesh/data/caddy/data:/data
+      - /DATA/AppData/mesh/data/caddy/config:/config
     environment:
       - CADDY_DOCKER_CADDYFILE_PATH=/etc/caddy/Caddyfile
       - CADDY_INGRESS_NETWORKS=pcs
@@ -239,7 +242,7 @@ services:
       # Inside this stack's own folder — deploy-stack.sh only ever writes
       # docker-compose.yml and .env there.
       - /DATA/AppData/mesh/mesh-console/gate-data:/data
-      - /DATA/AppData/yundera/data/ca:/ca:ro
+      - /DATA/AppData/mesh/data/ca:/ca:ro
     # Not auth-registrar: it is in the auth stack, and depends_on cannot name
     # another project's service. Nothing is lost — the gate registers on first
     # login, not at start, and retries then.
@@ -265,7 +268,7 @@ services:
     container_name: mesh-console-app
     hostname: mesh-console-app
     restart: unless-stopped
-    # Root: it reads the unified .env (mode 600) and talks to the Docker socket.
+    # Root: it reads this stack's .env (mode 600) and talks to the Docker socket.
     # The socket already makes it root-equivalent on the host.
     user: "0:0"
     cpu_shares: 40
@@ -275,17 +278,20 @@ services:
       IDENTITY_ASSERTION_AUDIENCE: "mesh-console"
       # THIS TEMPLATE'S LAYOUT, which is not the mesh template's. The console
       # assumes one directory holding the stack's compose, its .env, the
-      # self-check log, the certs and template/.revision.json. Here those live in
-      # the yundera root, except the mesh stack's compose (see the mounts below).
+      # self-check log, the certs and template/.revision.json. Here the mesh
+      # stack's folder has the first two and the certs; the template tree and the
+      # log belong to the yundera root and are mounted in (see the mounts below).
       #
       # Host actions run in the host's mount namespace, so these are HOST paths.
+      # MESH_HOST_ROOT is only what TEMPLATE_SCRIPTS is taken relative to
+      # (template/scripts), to find the tools under the /mesh mount.
       MESH_HOST_ROOT: "/DATA/AppData/yundera"
       # The template's scripts: the console runs self-check.sh and
       # tools/set-default-app.sh from here and knows nothing else about this
       # layout — where the default app is stored (.pcs.env) and what applying it
       # recreates is that tool's business. VERSION-COUPLED: mesh-console >= 1.2.0.
       TEMPLATE_SCRIPTS: "/DATA/AppData/yundera/template/scripts"
-      LOG_FILE: "/mesh/log/yundera.log"
+      LOG_FILE: "/yundera-log/yundera.log"
       # The compose projects listed as platform containers.
       PLATFORM_PROJECTS: "mesh,auth,yundera,maison,kopia,terminal"
     expose:
@@ -293,15 +299,21 @@ services:
     networks:
       pcs: null
     volumes:
-      # Read-only: .env, log/yundera.log, data/certs/cert.pem,
-      # template/.revision.json. Every write goes through a host action, never
+      # Read-only, and THIS STACK'S FOLDER ONLY — not the yundera root, which also
+      # holds the provisioning secrets and the admin gate's sessions. Read through
+      # it: .env, docker-compose.yml (the Stack page's image pins) and
+      # data/certs/cert.pem. Every write goes through a host action, never
       # through this mount.
-      - /DATA/AppData/yundera:/mesh:ro
-      # ...except docker-compose.yml, read for the Stack page's image pins: the
-      # one at the yundera root is the admin app's. This one is the mesh stack's.
-      # A FILE mount is pinned to its inode, which is fine here: deploy-stack.sh
-      # updates it with `cp`, which rewrites in place.
-      - /DATA/AppData/mesh/docker-compose.yml:/mesh/docker-compose.yml:ro
+      #
+      # A DIRECTORY, because .env is replaced by rename and a file mount would
+      # stay on the old inode.
+      - /DATA/AppData/mesh:/mesh:ro
+      # The template tree (scripts and .revision.json; no state, no secrets).
+      # Nested in a read-only mount, so its mountpoint has to exist already:
+      # ensure-mesh-stack.sh creates /DATA/AppData/mesh/template.
+      - /DATA/AppData/yundera/template:/mesh/template:ro
+      # The self-check log, for LOG_FILE above.
+      - /DATA/AppData/yundera/log:/yundera-log:ro
       - /var/run/docker.sock:/var/run/docker.sock
       # The self-check log is written in host local time and the console parses
       # it in time.Local.

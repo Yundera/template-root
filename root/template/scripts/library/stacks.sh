@@ -153,3 +153,27 @@ yundera_orphans_flag() {
         ORPHANS_FLAG="--remove-orphans"
     fi
 }
+
+# `docker restart <container>`, but only when it already binds <host-dir>.
+# Returns 1 when it did not restart: no such container (cold boot), or one bound
+# somewhere else.
+#
+# For the config-reload restarts in ensure-authelia.sh / ensure-dex.sh. When a
+# migration renames a state directory (2026-10-01-10-move-state-into-stack-folders.sh),
+# the running container keeps working on it — a bind mount holds the inode — until
+# the stack deploy recreates it on the new path. STARTING it again in between is
+# what breaks: Docker re-resolves the bind by path, finds nothing, and creates an
+# empty directory there, so the service comes up on no state and leaves a stray
+# directory behind. Such a container is skipped; the deploy that follows picks up
+# whatever the restart was for.
+#
+# Usage: restart_if_bound <container> <host-dir>
+restart_if_bound() {
+    local name="$1" dir="$2" sources
+    sources="$(docker container inspect -f '{{range .Mounts}}{{println .Source}}{{end}}' "$name" 2>/dev/null)" || return 1
+    if ! grep -qxF "$dir" <<<"$sources"; then
+        log_info "$name does not bind $dir - not restarting it; the stack deploy recreates it"
+        return 1
+    fi
+    docker restart "$name" >/dev/null 2>&1 || true
+}

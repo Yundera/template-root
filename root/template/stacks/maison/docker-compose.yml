@@ -144,7 +144,7 @@ services:
       # by mesh-router-agent (CA_CERT_PATH in the yundera stack) — its own directory
       # precisely so the gates can mount it without also mounting key.pem. A CA
       # certificate is public; the key beside it is not.
-      - /DATA/AppData/yundera/data/ca:/ca:ro
+      - /DATA/AppData/mesh/data/ca:/ca:ro
     depends_on:
       - maison-app
     networks:

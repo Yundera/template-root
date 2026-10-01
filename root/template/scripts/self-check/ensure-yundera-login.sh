@@ -45,7 +45,7 @@ YND_ROOT="/DATA/AppData/yundera"
 YND_TEMPLATE="$YND_ROOT/template"
 source "$YND_TEMPLATE/scripts/library/log.sh"
 
-DEX_ROOT="/DATA/AppData/yundera/dex"
+DEX_ROOT="/DATA/AppData/auth/dex"
 CONNECTORS_D="$DEX_ROOT/connectors.d"
 DROPIN="$CONNECTORS_D/yundera.yaml"
 

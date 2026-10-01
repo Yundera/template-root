@@ -4,8 +4,9 @@
 #
 # These three used to be services of the yundera stack. They are their own project
 # now — identity as one unit, on this template and on mesh-router-template-root
-# alike — with the same container names, and their state still under
-# /DATA/AppData/yundera/{auth,dex}. See the header of stacks/auth/docker-compose.yml.
+# alike — with the same container names. Their state is in the stack's own folder
+# too: /DATA/AppData/auth/{authelia,dex}, moved there from the yundera root by
+# migrations/2026-10-01-10-move-state-into-stack-folders.sh.
 #
 # THE HANDOVER: on the tick that first ships this, the containers and the
 # `yundera-auth` network still belong to the yundera project. deploy-stack.sh
@@ -29,6 +30,10 @@ YND_TEMPLATE="$YND_ROOT/template"
 source "$YND_TEMPLATE/scripts/library/log.sh"
 source "$YND_TEMPLATE/scripts/library/authelia-ready.sh"
 source "$YND_TEMPLATE/scripts/library/secrets.sh"
+
+# auth-console-app mounts this folder read-only and the template tree inside it;
+# the nested mount needs its mountpoint to exist (see ensure-mesh-stack.sh).
+mkdir -p /DATA/AppData/auth/template
 
 # `dex` bind-mounts two individual FILES from dex/frontend/templates/. Docker
 # creates a missing bind source as a DIRECTORY, after which dex can never start

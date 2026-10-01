@@ -10,10 +10,133 @@ three stacks, matching mesh-router-template-root rather than the five folders be
 | `yundera` → `/DATA/AppData/yundera` | admin, admin-app (Account and Access moved to auth-console) | `yundera` |
 
 Deployed from `template/stacks/{mesh,auth}` by the rsync/self-check path, **not** the store
-model of "Two update mechanisms collide" below. The data did **not** move: every bind still points
-into `/DATA/AppData/yundera/{auth,dex,data}`; the per-app data tables below are still the target,
-not the state. The live-box handover is in `library/stacks.sh`; `CLAUDE.md` ("Runtime update
-sequence") has the mechanics. The rest of this document is the original proposal.
+model of "Two update mechanisms collide" below. The live-box handover of the containers is in
+`library/stacks.sh`; `CLAUDE.md` ("Runtime update sequence") has the mechanics.
+
+**The state moved too (2026-10-01).** Each stack's persisted data is in the folder named after
+the stack — see "Where the state is now" directly below. Everything after that section is the
+original proposal, kept for its reasoning: its "What is on disk today" is the layout *before*
+any of this, and its per-app tables use the proposal's folder names (`accounts`, `router`,
+`nsl-provider`), not the ones that shipped.
+
+## Where the state is now
+
+```
+/DATA/AppData/
+├── mesh/                          project "mesh"
+│   ├── docker-compose.yml .env .icon.png   written by deploy-stack.sh on every self-check
+│   ├── data/
+│   │   ├── certs/                 mesh certificate + key   (agent writes, Caddy reads :ro)
+│   │   ├── ca/                    the mesh CA alone        (agent writes; dex + every gate :ro)
+│   │   └── caddy/{data,config}    Caddy's own state
+│   ├── mesh-console/gate-data/    the console gate's sessions
+│   └── template/                  EMPTY — mountpoint for the console's template mount
+├── auth/                          project "auth"
+│   ├── docker-compose.yml .env .icon.svg   written by deploy-stack.sh on every self-check
+│   ├── authelia/                  users_database.yml, db.sqlite, configuration.yml, secrets/, oidc/
+│   ├── dex/                       dex.db, config.yaml, connectors.d/, frontend/
+│   ├── auth-console/gate-data/    the console gate's sessions
+│   └── template/                  EMPTY — mountpoint for the console's template mount
+└── yundera/                       project "yundera" (admin, admin-app) + the host layer
+    ├── docker-compose.yml .icon.svg
+    ├── .pcs.env .pcs.secret.env .ynd.user.env   provisioning input
+    ├── .env                       their union; the source of every stack's .env
+    ├── template/                  the synced tree — the only thing `rsync --delete` touches
+    ├── admin/                     admin-app's /app/data; admin/gate-data = the gate's sessions
+    ├── log/  migration-markers/  onboarding/  (onboarding.d/)
+
+docker volume  mesh_smtp-data      mail delivery stats — the only named volume
+```
+
+| Was (yundera root) | Is | Owner |
+|---|---|---|
+| `yundera/data/` | `mesh/data/` | mesh |
+| `yundera/auth/` | `auth/authelia/` | auth |
+| `yundera/dex/` | `auth/dex/` | auth |
+
+`mesh/data` keeps the mesh template's relative layout (`data/{certs,ca,caddy}`), so the console
+and the scripts read the same paths on both templates.
+
+**Who reaches across a stack boundary**, which is the list to shrink:
+
+| Reader | Path | Why |
+|---|---|---|
+| dex, and every AppShield gate (admin, maison, kopia, both consoles) | `mesh/data/ca` `:ro` | on-box TLS to `auth-${DOMAIN}` terminates on the mesh CA |
+| mesh-router-caddy | `yundera/template/caddy` `:ro` | the Caddyfile is template, not state |
+| mesh-console-app | `yundera/template` `:ro`, `yundera/log` `:ro` | template revision, the tools it runs, the self-check log |
+| auth-console-app | `yundera/template` `:ro` | which tools exist |
+| every stack | its own `.env` | a **full copy** of the unified `.env` — see "Environment: fan-out replaces union"; not done |
+
+Both consoles used to mount the whole yundera root. They now mount their own stack's folder
+read-only, with the template tree nested inside it — hence the empty `template/` directories
+above: a mount nested in a read-only mount needs its mountpoint to exist, and Docker cannot
+create it. A console knob for the template directory would retire both.
+
+### How a live box gets there
+
+`template/scripts/migrations/2026-10-01-10-move-state-into-stack-folders.sh`. The move is a **rename**
+on one filesystem, done while the containers keep running: a bind mount holds the inode, not
+the path, so nothing is stopped. It runs inside `ensure-template-sync.sh`, before the rsync
+delivers the compose files that bind the new paths; `ensure-mesh-stack.sh` and
+`ensure-auth-stack.sh` then recreate the containers there later in the same self-check — on
+the same directories.
+
+- **It fails hard.** A non-zero exit aborts the sync, so the box keeps its old tree and old
+  compose files, which still agree with where the state is. All three renames or none: every
+  pair is checked before anything is touched. It refuses when the old and the
+  new path both hold files, or when they are on different filesystems. A new path holding only
+  empty directories (`ensure-pcs-user.sh`'s `mkdir -p`) counts as absent.
+- **It is not in the pre-subtree shim** (`root/scripts/migrations/`). A box still on that layout
+  would cross over without running it, and its stacks would then come up on empty folders.
+  Accepted: the whole fleet has crossed over (confirmed 2026-10-01).
+- **`restart_if_bound`** (`library/stacks.sh`) covers the window between the rename and the
+  deploy: the config-reload restarts in `ensure-authelia.sh` / `ensure-dex.sh` skip a container
+  still bound to the old path, because starting it again makes Docker create the missing bind
+  source as an empty directory. A host reboot inside that window does exactly that; the deploy
+  still lands the stacks on the real state, and what is left is a stray near-empty
+  `yundera/{data,auth,dex}` to delete by hand.
+
+`root/.ignore` still lists `/auth/**`, `/dex/` and `/data/`. Only a pre-subtree box's old
+whole-root `rsync --delete` reads that file, so with the fleet crossed over the lines are
+inert — and stay, like the rest of that file.
+
+Outside this repo, one consumer of the old path: the demo's "Open Entry" connector
+(`demo/src/lib/DemoManager.ts`), which now probes `auth/dex` before `yundera/dex`.
+
+### Rolling the state move back
+
+A template that predates the move binds the old paths, and Docker creates them **empty**: the
+box comes up unclaimed and on a fresh certificate while the real state sits untouched in the
+stack folders. Move it back first:
+
+```bash
+Y=/DATA/AppData/yundera
+docker rm -f authelia dex mesh-router-caddy mesh-router-agent
+mv /DATA/AppData/mesh/data     $Y/data
+mv /DATA/AppData/auth/authelia $Y/auth
+mv /DATA/AppData/auth/dex      $Y/dex
+# then sync the older template and run self-check.sh
+```
+
+### Decided
+
+- **`auth/authelia` is not backed up, on purpose.** `view: system` stacks are skipped by the
+  nightly backup. A lost password is recovered by Authelia's mail reset; a lost folder drops the
+  box back to unclaimed and the owner re-claims. This settles "Scheduled backup skips system
+  apps" below for the identity state.
+- **Rolling back past the state move is a manual step** (above). Accepted.
+
+### Still open from the proposal
+
+- **Per-stack `.env`** (fan-out). Each stack's `.env` is the whole unified file, so every stack
+  folder carries every secret on the box.
+- **`router` vs `nsl-provider`** are still one `mesh` stack.
+- **The store model** for these stacks, and Maison `folders` / `pre_up` hooks in place of the
+  `ensure-*` scripts.
+- **mesh-router-template-root** has the same two stacks with the state still in its root
+  (`/DATA/AppData/mesh/{auth,dex}`); the auth half of this move applies there unchanged.
+
+---
 
 Companion to
 [`maison-migration.md`](./maison-migration.md), which took the dashboard from CasaOS to
@@ -67,7 +190,9 @@ reads.
 
 ---
 
-## What is on disk today
+## What was on disk when this was written
+
+> Historical. The current layout is "Where the state is now" at the top.
 
 Three things, where the model says there should be one.
 

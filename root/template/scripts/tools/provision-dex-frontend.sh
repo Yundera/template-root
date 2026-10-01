@@ -38,7 +38,7 @@ THEME_SRC="$YND_TEMPLATE/dex-theme"
 #
 # The old location, $YND_ROOT/dex-frontend, is swept by
 # migrations/2026-09-18-10-move-dex-frontend-into-dex.sh.
-DEX_FRONTEND="$YND_ROOT/dex/frontend"
+DEX_FRONTEND="/DATA/AppData/auth/dex/frontend"
 
 if [ ! -d "$THEME_SRC" ]; then
     echo "dex-theme/ not found in template; Dex will use its stock login UI"

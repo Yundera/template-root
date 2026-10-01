@@ -1,21 +1,24 @@
-# rsync exclude patterns for ensure-template-sync.sh (`--exclude-from`).
+# rsync exclude patterns for the PRE-SUBTREE ensure-template-sync.sh
+# (`--exclude-from`).
 #
-# Everything NOT listed here is replaced from the template on every sync, and
-# anything in the destination that the template does not have is DELETED
-# (`rsync -a --delete`). Excluded paths are exempt from both: they are neither
-# transferred nor deleted.
+# WHO STILL READS THIS. Not the current sync: since the template-subtree split
+# (2026-09-16, doc/template-subtree.md) ensure-template-sync.sh runs
+# `rsync --delete` over template/ only, where there is no state to protect, and
+# takes no exclude list. This file is read by exactly one thing — the OLD sync
+# script on a box that has not crossed over yet, which reads it out of the tree it
+# just downloaded and then runs `rsync -a --delete` over the whole of
+# /DATA/AppData/yundera.
 #
-# THIS FILE IS THE ONLY THING STANDING BETWEEN `--delete` AND THE PCS'S LIVE
-# STATE. Since the root move (2026-09-08) the destination is
-# /DATA/AppData/yundera, which is not just the template tree — it is also where
-# Authelia's user database, Dex's sqlite store, the TLS certs and the admin
-# gate's sessions live. Before the move those sat safely outside the synced
-# directory. Now a missing line here is a data-loss bug.
-#
-# It is also the ONLY thing standing there. ensure-template-sync.sh used to carry
-# a PROTECTED_RE second opinion; it was removed 2026-09-16 because it could not be
-# one — see the comment where it used to live. The backstop is the pre-sync copy of
-# the whole root that script takes into /var/backups/yundera before rsync runs.
+# For that one run it is the only thing standing between `--delete` and the box's
+# live state: everything NOT listed here is replaced from the template, and
+# anything the template does not have is DELETED. Such a box still keeps Authelia's
+# user database, Dex's store, the TLS certs and the admin gate's sessions in that
+# directory: the migration that moves the first three to their stacks' own folders
+# (scripts/migrations/2026-10-01-10-move-state-into-stack-folders.sh) is not in the
+# shim the old script runs, so on such a box they are still there when it rsyncs.
+# Every state line below is permanent, for the reason the crossover block gives: there is
+# no date after which an old box can no longer arrive. A missing line is a
+# data-loss bug on exactly the boxes nobody is watching.
 #
 # `+ ` lines are INCLUDES and must come before the exclude they carve out of.
 # Note the `/auth/**` form: excluding `/auth/` itself would stop rsync
@@ -118,7 +121,12 @@
 # cron on a box that was being migrated away from.
 /.self-check-cron-disabled
 
-# --- runtime state now living inside the synced directory --------------------
+# --- runtime state in the synced directory -----------------------------------
+# auth/, dex/ and data/ are where a box that predates 2026-10-01 keeps the auth
+# and mesh stacks' state; on a current box they are /DATA/AppData/auth/{authelia,
+# dex} and /DATA/AppData/mesh/data, and these three lines match nothing. KEEP
+# THEM: see "WHO STILL READS THIS" at the top.
+#
 # Authelia: users_database.yml, db.sqlite, secrets/, oidc/, clients.d/. Losing
 # it drops the PCS back to UNCLAIMED — the owner's only local credential.
 /auth/**

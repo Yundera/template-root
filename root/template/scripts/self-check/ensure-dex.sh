@@ -23,7 +23,9 @@
 # ensure-yundera-login.sh, and only "Local Account" is still rendered inline
 # here (it is the one connector whose secret this script already holds).
 #
-# Storage layout (host /DATA/AppData/yundera/):
+# Storage layout (host /DATA/AppData/auth/ — the auth stack's own folder;
+# migrations/2026-10-01-10-move-state-into-stack-folders.sh moves dex/ there
+# from the yundera root on a box that predates it):
 #   dex/config.yaml          rendered Dex config (re-rendered each run)
 #   dex/connectors.d/*.yaml  drop-in connectors, concatenated into config.yaml
 #   dex/dex.db               Dex sqlite store (clients, codes, refresh tokens, keys)
@@ -38,7 +40,7 @@
 #   - dex.db is rebuilt automatically on loss. Apps re-register on their next
 #     login (the AppShield/hash-lock sidecars hold no persisted creds), and users
 #     simply log in again (Dex regenerates its signing keys, invalidating old
-#     tokens). Deleting /DATA/AppData/yundera/dex is therefore safe — this script
+#     tokens). Deleting /DATA/AppData/auth/dex is therefore safe — this script
 #     reconstructs config.yaml and the rest self-heals through normal logins.
 #   - ONE EXCEPTION: connectors.d/ (below) is not cache. It is whatever the
 #     deployment dropped in, and nothing here regenerates it. Wiping the dex dir
@@ -64,8 +66,9 @@ YND_ROOT="/DATA/AppData/yundera"
 YND_TEMPLATE="$YND_ROOT/template"
 source "$YND_TEMPLATE/scripts/library/log.sh"
 source "$YND_TEMPLATE/scripts/library/secrets.sh"
+source "$YND_TEMPLATE/scripts/library/stacks.sh"
 
-DEX_ROOT="/DATA/AppData/yundera/dex"
+DEX_ROOT="/DATA/AppData/auth/dex"
 TEMPLATE="$YND_TEMPLATE/dex.config.yaml.tmpl"
 CONFIG_OUT="$DEX_ROOT/config.yaml"
 # Drop-in connectors, consumed near the end of this script. Declared here because
@@ -167,7 +170,7 @@ CONNECTOR_COUNT=0
 # hide the owner's only door; guessing "claimed" on a fresh box merely restores
 # the old cosmetic wart. The asymmetry is deliberate.
 # ---------------------------------------------------------------------------
-USERS_DB="/DATA/AppData/yundera/auth/users_database.yml"
+USERS_DB="/DATA/AppData/auth/authelia/users_database.yml"
 LOCAL_ACCOUNT_CLAIMED=1
 if [ -f "$USERS_DB" ] && command -v yq >/dev/null 2>&1; then
     if ENABLED="$(yq -e '[.users[] | select(.disabled != true)] | length' "$USERS_DB" 2>/dev/null)"; then
@@ -215,10 +218,10 @@ fi
 # dex container will take (127.0.0.1:443 here, host-gateway:443 there; both are
 # Caddy's published port) validated against the same CA file.
 #
-# NOTE the path split: the CA lives under YND_ROOT (runtime data written by the
-# agent), not YND_TEMPLATE (synced tree).
+# NOTE the path split: the CA is the mesh stack's runtime data (written by the
+# agent), not part of YND_TEMPLATE (synced tree).
 # ---------------------------------------------------------------------------
-CA_CERT="$YND_ROOT/data/ca/ca-cert.pem"
+CA_CERT="/DATA/AppData/mesh/data/ca/ca-cert.pem"
 
 # The probe RETRIES. A single shot made this check a race against the previous
 # script in scripts-config.txt: ensure-authelia.sh restarts Authelia, and until it
@@ -337,7 +340,7 @@ elif [ "$LOCAL_ACCOUNT_CLAIMED" != "1" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Drop-in connectors — /DATA/AppData/yundera/dex/connectors.d/*.yaml
+# Drop-in connectors — /DATA/AppData/auth/dex/connectors.d/*.yaml
 #
 # A generic extension point, deliberately shaped like Authelia's clients.d/*.yml:
 # a deployment can federate Dex to something this template does not ship without
@@ -449,9 +452,8 @@ chmod 755 "$DEX_ROOT" 2>/dev/null || true
 
 # Pick up the re-rendered config if Dex is already running. A mounted-file change
 # does not trigger a compose recreate, so an explicit restart is needed. Silent
-# on cold boot when the container does not exist yet.
-if docker inspect dex >/dev/null 2>&1; then
-    docker restart dex >/dev/null 2>&1 || true
-fi
+# on cold boot when the container does not exist yet, and skipped for a container
+# still bound to the pre-move directory (see restart_if_bound, library/stacks.sh).
+restart_if_bound dex "$DEX_ROOT" || true
 
 log_info "Dex provisioning complete (data root: $DEX_ROOT)"

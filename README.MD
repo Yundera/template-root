@@ -107,7 +107,7 @@ The template tree is intentionally mutable after first install — every self-ch
 All triggers run the same three-step sequence at the end of `scripts-config.txt`:
 
 1. **`self-check/ensure-template-sync.sh`** (RUNS FIRST)
-   Downloads `UPDATE_URL`, runs **migrations from the new tree** first, then rsyncs over `/DATA/AppData/yundera/` (honouring `root/.ignore`). A failed migration aborts the sync and restores the previous tree from backup.
+   Downloads `UPDATE_URL`, runs **migrations from the new tree** first, then rsyncs the `template/` subtree over `/DATA/AppData/yundera/template/` (plus the root compose file and icon). A failed migration aborts the sync and restores the previous tree from backup.
 
 2. **`self-check/ensure-user-compose-pulled.sh`**
    `docker compose pull` for the user stack — fetches image versions pinned by the new template.

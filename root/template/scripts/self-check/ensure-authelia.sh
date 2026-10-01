@@ -21,7 +21,9 @@
 #   - restart authelia so a re-rendered config is picked up, and WAIT for it to
 #     serve again before returning (ensure-dex.sh probes it moments later).
 #
-# Storage layout (host /DATA/AppData/yundera/auth/, mounted at /config):
+# Storage layout (host /DATA/AppData/auth/authelia/, mounted at /config — the
+# auth stack's own folder; migrations/2026-10-01-10-move-state-into-stack-folders.sh
+# moves it there from the yundera root on a box that predates it):
 #   secrets/{session,storage,reset,oidc-hmac}  generate-once (chmod 600)
 #   secrets/dex-client-hash                     pbkdf2 hash of AUTHELIA_DEX_SECRET
 #   oidc/private.pem                            RSA-4096 JWKS signing key
@@ -33,7 +35,9 @@
 # keeping. Losing it drops the PCS back to the UNCLAIMED state on the next run
 # — the Local Account connector disappears from Dex and the owner re-claims via
 # Yundera Login or over SSH (`tools/authelia-user-manager.sh claim`), so it is
-# not a dead end, but back it up with the rest of /DATA/AppData/yundera.
+# not a dead end. NOT BACKED UP, BY DESIGN: the auth stack is `view: system`,
+# which the nightly backup skips. The recovery path for a lost password is the
+# mail reset on Authelia's own portal; for a lost folder, the re-claim above.
 
 set -euo pipefail
 
@@ -42,8 +46,9 @@ YND_ROOT="/DATA/AppData/yundera"
 YND_TEMPLATE="$YND_ROOT/template"
 source "$YND_TEMPLATE/scripts/library/log.sh"
 source "$YND_TEMPLATE/scripts/library/secrets.sh"
+source "$YND_TEMPLATE/scripts/library/stacks.sh"
 
-AUTH_ROOT="/DATA/AppData/yundera/auth"
+AUTH_ROOT="/DATA/AppData/auth/authelia"
 SECRETS_DIR="$AUTH_ROOT/secrets"
 OIDC_DIR="$AUTH_ROOT/oidc"
 TEMPLATE="$YND_TEMPLATE/auth/configuration.yml.tmpl"
@@ -358,9 +363,10 @@ fi
 
 # Restart Authelia if running so the re-rendered config is picked up. SIGHUP is
 # NOT safe (Authelia 4.39 exits on it); docker restart is a clean SIGTERM +
-# start (~3s). Silent on cold boot when the container does not exist yet.
-if docker inspect authelia >/dev/null 2>&1; then
-    docker restart authelia >/dev/null 2>&1 || true
+# start (~3s). Silent on cold boot when the container does not exist yet, and
+# skipped for a container still bound to the pre-move directory — restarting that
+# one would start it on an empty folder; ensure-auth-stack.sh recreates it.
+if restart_if_bound authelia "$AUTH_ROOT"; then
     # Do NOT return before it answers: ensure-dex.sh runs seconds from now and
     # fail-closes on a discovery probe against this very service. See
     # wait_for_authelia above.

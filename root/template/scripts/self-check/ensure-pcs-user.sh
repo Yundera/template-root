@@ -54,19 +54,24 @@ fi
 # Ensure basic folders exist
 mkdir -p /DATA/AppData/yundera/template/scripts
 mkdir -p /DATA/AppData/yundera/log
-mkdir -p /DATA/AppData/yundera/data/certs
+
+# The mesh stack's runtime data lives in the mesh stack's folder (moved out of
+# the yundera root by migrations/2026-10-01-10-move-state-into-stack-folders.sh,
+# which treats this skeleton of empty directories as nothing in its way).
+MESH_DATA="/DATA/AppData/mesh/data"
+mkdir -p "$MESH_DATA/certs"
 # data/ca holds only the mesh-router CA: mesh-router-agent writes it there
 # (CA_CERT_PATH) so the AppShield gates can mount a CA without also mounting the
 # key.pem beside it. Declared here with its sibling rather than left to Docker to
 # invent on the agent's mount, so the layout is stated in one place and the chown
 # below covers it like the rest of the tree.
-mkdir -p /DATA/AppData/yundera/data/ca
-mkdir -p /DATA/AppData/yundera/data/caddy/data
-mkdir -p /DATA/AppData/yundera/data/caddy/config
+mkdir -p "$MESH_DATA/ca"
+mkdir -p "$MESH_DATA/caddy/data"
+mkdir -p "$MESH_DATA/caddy/config"
 
 touch /DATA/AppData/yundera/log/yundera.log
 
 chown -R pcs:pcs /DATA/AppData/yundera/
-chown -R pcs:pcs /DATA/AppData/yundera/
+chown -R pcs:pcs "$MESH_DATA"
 
 echo "✓ User '$USER_NAME' exist and has sudo privileges."

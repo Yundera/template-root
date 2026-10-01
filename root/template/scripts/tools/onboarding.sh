@@ -41,7 +41,7 @@
 #                cosmetic.
 #
 # Deriving the first is what keeps a restored backup or a migrated PCS honest. A
-# marker is state that drifts: migration copies /DATA/AppData/yundera/auth/ to the
+# marker is state that drifts: migration copies /DATA/AppData/auth/authelia/ to the
 # destination box, so a marker-driven wizard would either nag forever on a claimed
 # box or — much worse — refuse to appear on an unclaimed one, leaving an owner with
 # no credential, no Local Account connector, and no way to make one. Being wrong
@@ -58,7 +58,7 @@ set -euo pipefail
 YND_ROOT="/DATA/AppData/yundera"
 
 YND_TEMPLATE="$YND_ROOT/template"
-AUTH_ROOT="/DATA/AppData/yundera/auth"
+AUTH_ROOT="/DATA/AppData/auth/authelia"
 USERS_DB="$AUTH_ROOT/users_database.yml"
 
 ONBOARDING_ROOT="/DATA/AppData/yundera/onboarding"

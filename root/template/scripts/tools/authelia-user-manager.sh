@@ -35,13 +35,14 @@
 
 set -euo pipefail
 
-AUTH_ROOT="/DATA/AppData/yundera/auth"
-USERS_DB="$AUTH_ROOT/users_database.yml"
-LOCK_FILE="$AUTH_ROOT/.users-db.lock"
-
 YND_ROOT="/DATA/AppData/yundera"
 
 YND_TEMPLATE="$YND_ROOT/template"
+
+AUTH_ROOT="/DATA/AppData/auth/authelia"
+USERS_DB="$AUTH_ROOT/users_database.yml"
+LOCK_FILE="$AUTH_ROOT/.users-db.lock"
+
 PCS_ENV="$YND_ROOT/.pcs.env"
 ENV_MGR="$YND_TEMPLATE/scripts/tools/env-file-manager.sh"
 

@@ -13,16 +13,20 @@
 # which also writes the .env beside it from the unified yundera .env. DO NOT edit
 # the deployed copy — it is overwritten on every self-check.
 #
-# THE DATA DID NOT MOVE. Authelia's database and Dex's state still live in
-# /DATA/AppData/yundera/auth and /DATA/AppData/yundera/dex, rendered there by
-# ensure-authelia.sh and ensure-dex.sh — which is why those two run before this
-# stack comes up (scripts-config.txt). Only the compose project changed.
+# THE STATE IS IN THIS STACK'S FOLDER: Authelia's database in
+# /DATA/AppData/auth/authelia and Dex's in /DATA/AppData/auth/dex, rendered there
+# by ensure-authelia.sh and ensure-dex.sh — which is why those two run before this
+# stack comes up (scripts-config.txt). Until 2026-10-01 both sat in the yundera
+# root (auth/, dex/); a migration renames them across on a box that still has
+# them there, before this file is delivered
+# (scripts/migrations/2026-10-01-10-move-state-into-stack-folders.sh).
 #
 # CROSS-STACK, ONE WAY: this stack needs the mesh stack, never the reverse.
 #   - Caddy (mesh) routes auth-* and local-auth-* here by container name; the
 #     TLS choice and the Dex routing rules are the (dex_router*) snippets in
 #     template/caddy/Caddyfile.
-#   - Dex reads the mesh CA from data/ca, which mesh-router-agent writes.
+#   - Dex reads the mesh CA from /DATA/AppData/mesh/data/ca, which
+#     mesh-router-agent writes.
 #   - Dex's extra_hosts pin terminates on the host's :443, i.e. mesh-router-caddy.
 #   - Authelia mails password resets through `smtp`.
 # Hence ensure-mesh-stack.sh runs first.
@@ -49,7 +53,7 @@ services:
   # App clients are registered dynamically by auth-registrar over
   # Dex's gRPC API — no static client list. Config + sqlite + issued client
   # secrets are provisioned by scripts/self-check/ensure-dex.sh into
-  # /DATA/AppData/yundera/dex/.
+  # /DATA/AppData/auth/dex/.
   # =============================================================================
   dex:
     # PINNED BY DIGEST TO A `master` BUILD, DELIBERATELY — not a release tag.
@@ -133,10 +137,10 @@ services:
       # working. Only the pinned Local Account connector would fail to open —
       # which is exactly what the probe in ensure-dex.sh prevents from being
       # rendered in the first place.
-      - /DATA/AppData/yundera/data/ca:/ca:ro
+      - /DATA/AppData/mesh/data/ca:/ca:ro
       # config.yaml (rendered) + dex.db (sqlite). This is CACHE, not precious
       # data — see the recovery note in scripts/self-check/ensure-dex.sh.
-      - /DATA/AppData/yundera/dex:/data
+      - /DATA/AppData/auth/dex:/data
       # Custom "yundera" frontend, overlaid onto the stock image (no frontend.dir,
       # so all other stock templates/static stay intact). ensure-dex.sh renders
       # these from the template's dex-theme/ before the stack comes up.
@@ -150,9 +154,9 @@ services:
       # stack root instead of two. Moved here from the sibling dex-frontend/ on
       # 2026-09-18; migrations/2026-09-18-10-move-dex-frontend-into-dex.sh sweeps
       # the old path.
-      - /DATA/AppData/yundera/dex/frontend/templates/login.html:/srv/dex/web/templates/login.html:ro
-      - /DATA/AppData/yundera/dex/frontend/templates/header.html:/srv/dex/web/templates/header.html:ro
-      - /DATA/AppData/yundera/dex/frontend/themes/yundera:/srv/dex/web/themes/yundera:ro
+      - /DATA/AppData/auth/dex/frontend/templates/login.html:/srv/dex/web/templates/login.html:ro
+      - /DATA/AppData/auth/dex/frontend/templates/header.html:/srv/dex/web/templates/header.html:ro
+      - /DATA/AppData/auth/dex/frontend/themes/yundera:/srv/dex/web/themes/yundera:ro
     expose:
       - "5556"   # OIDC web endpoints (Caddy terminates TLS), bound on pcs
       - "5557"   # gRPC client-mgmt API — UNAUTHENTICATED, bound to yundera-auth IP only
@@ -224,7 +228,7 @@ services:
   # Serves its own login UI at local-auth-${DOMAIN} — which carries the built-in
   # "Reset password?" link and drives the email reset flow through the local
   # smtp relay. Config + secrets + users_database.yml are provisioned by
-  # scripts/self-check/ensure-authelia.sh into /DATA/AppData/yundera/auth/.
+  # scripts/self-check/ensure-authelia.sh into /DATA/AppData/auth/authelia/.
   # =============================================================================
   authelia:
     image: authelia/authelia:4.39.20
@@ -239,7 +243,7 @@ services:
     volumes:
       # configuration.yml (rendered) + db.sqlite + users_database.yml + secrets.
       # Unlike the dex dir this holds the local account — back it up.
-      - /DATA/AppData/yundera/auth:/config
+      - /DATA/AppData/auth/authelia:/config
     expose:
       - "9091"
     networks:
@@ -385,7 +389,7 @@ services:
       - "auth-${DOMAIN}:host-gateway"
     volumes:
       - /DATA/AppData/auth/auth-console/gate-data:/data
-      - /DATA/AppData/yundera/data/ca:/ca:ro
+      - /DATA/AppData/mesh/data/ca:/ca:ro
     depends_on:
       - auth-console-app
       - auth-registrar
@@ -411,7 +415,7 @@ services:
     container_name: auth-console-app
     hostname: auth-console-app
     restart: unless-stopped
-    # Root: it reads the unified .env (mode 600) and talks to the Docker socket,
+    # Root: it reads this stack's .env (mode 600) and talks to the Docker socket,
     # which already makes it root-equivalent on the host.
     user: "0:0"
     cpu_shares: 40
@@ -421,7 +425,9 @@ services:
       IDENTITY_ASSERTION_AUDIENCE: "auth-console"
       APPSHIELD_GATE_URL: "http://auth-console"
       # The yundera root as the HOST sees it. Host actions run in the host's mount
-      # namespace, so they need these paths, not the /host-root mount below.
+      # namespace, so they need these paths, not the /host-root mount below. The
+      # console maps HOST_SCRIPTS onto that mount by its path relative to
+      # HOST_ROOT (template/scripts), which is what the nested mount provides.
       HOST_ROOT: "/DATA/AppData/yundera"
       HOST_SCRIPTS: "/DATA/AppData/yundera/template/scripts"
       # Enables the support-key tag and toggle on the Access page.
@@ -433,9 +439,19 @@ services:
     networks:
       pcs: null
     volumes:
-      # Read-only: the unified .env (DOMAIN, LOCAL_ADMIN_USER) and which scripts
-      # exist. Every write goes through a host action, never through this mount.
-      - /DATA/AppData/yundera:/host-root:ro
+      # Read-only, and THIS STACK'S FOLDER ONLY — not the yundera root, which also
+      # holds the provisioning secrets and the admin gate's sessions. The console
+      # reads two things through it: .env (DOMAIN, LOCAL_ADMIN_USER — the copy
+      # deploy-stack.sh writes beside this file) and which scripts exist. Every
+      # write goes through a host action, never through this mount.
+      #
+      # A DIRECTORY, because .env is replaced by rename and a file mount would
+      # stay on the old inode.
+      - /DATA/AppData/auth:/host-root:ro
+      # The template tree (scripts, no state, no secrets), where HOST_SCRIPTS
+      # lands under the mount. Nested in a read-only mount, so its mountpoint has
+      # to exist already: ensure-auth-stack.sh creates /DATA/AppData/auth/template.
+      - /DATA/AppData/yundera/template:/host-root/template:ro
       - /var/run/docker.sock:/var/run/docker.sock
 
 networks:
