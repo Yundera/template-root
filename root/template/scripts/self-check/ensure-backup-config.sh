@@ -77,13 +77,14 @@ YND_TEMPLATE="$YND_ROOT/template"
 source "$YND_TEMPLATE/scripts/library/log.sh"
 
 SECRET_ENV="$YND_ROOT/.pcs.secret.env"
-UNIFIED_ENV="$YND_ROOT/.env"
 PCS_ENV="$YND_ROOT/.pcs.env"
 ENV_MGR="$YND_TEMPLATE/scripts/tools/env-file-manager.sh"
 
 # ENGINE_ID, ENGINE_IMAGE, ENGINE_BINARY and the two repository.config readers come from
 # the library below; it is sourced early because ENGINE_DIR is derived from ENGINE_ID.
 source "$YND_TEMPLATE/scripts/library/kopia.sh"
+# MESH_ENV, for PUID/PGID below.
+source "$YND_TEMPLATE/scripts/library/mesh.sh"
 
 ENGINE="$ENGINE_ID"
 ENGINE_DIR="$KOPIA_ENGINE_DIR"
@@ -221,8 +222,9 @@ fi
 # Maison runs the engine container as PUID:PGID, so everything here must be readable
 # and writable by that uid rather than by root. cache/ and logs/ are excluded from the
 # user-data backup set by pattern on Maison's side.
-PUID="$(env_get PUID "$UNIFIED_ENV")"; PUID="${PUID:-1000}"
-PGID="$(env_get PGID "$UNIFIED_ENV")"; PGID="${PGID:-1000}"
+# PUID/PGID are mesh constants (library/mesh.sh), so they live in the mesh .env.
+PUID="$(env_get PUID "$MESH_ENV")"; PUID="${PUID:-1000}"
+PGID="$(env_get PGID "$MESH_ENV")"; PGID="${PGID:-1000}"
 
 mkdir -p "$ENGINE_DIR/cache" "$ENGINE_DIR/logs"
 # Not recursive: the cache is multi-gigabyte and turns over between runs, and this

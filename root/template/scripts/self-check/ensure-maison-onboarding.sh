@@ -39,13 +39,9 @@ set -euo pipefail
 YND_ROOT="/DATA/AppData/yundera"
 YND_TEMPLATE="$YND_ROOT/template"
 source "$YND_TEMPLATE/scripts/library/log.sh"
+source "$YND_TEMPLATE/scripts/library/mesh.sh"
 
 MAISON_DIR="/DATA/AppData/maison"
-UNIFIED_ENV="$YND_ROOT/.env"
-
-env_get() {
-    "$YND_TEMPLATE/scripts/tools/env-file-manager.sh" get "$1" "$UNIFIED_ENV" 2>/dev/null || true
-}
 
 if [ ! -d "$MAISON_DIR" ]; then
     log_warn "$MAISON_DIR does not exist yet (the mesh template deploys it); nothing to gate"
@@ -54,7 +50,7 @@ fi
 
 ONBOARDING_SH="$YND_TEMPLATE/scripts/tools/onboarding.sh"
 ONBOARDING_FILE="$MAISON_DIR/onboarding.json"
-DOMAIN="$(env_get DOMAIN)"
+DOMAIN="$(ynd_source_get DOMAIN || true)"
 
 onboarding_claimed() {
     local out

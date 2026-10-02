@@ -4,35 +4,36 @@ This folder contains idempotent setup scripts that ensure various system compone
 
 ## Script Responsibilities
 
-Listed in execution order from `scripts-config.txt`. Four scripts marked **(proxmox-only)** early-exit on non-Proxmox hosts (detected via `is_proxmox_host` in `library/common.sh`, which checks for the data_vg LVM volume or ≥1.1GB of unallocated `/dev/sda` space).
+Listed in execution order from `scripts-config.txt`.
 
 | Script | Purpose |
 |--------|---------|
 | `ensure-pcs-user.sh` | Creates 'pcs' user with sudo privileges and required directory structure |
 | `ensure-script-executable.sh` | Makes all scripts executable and sets proper ownership to the pcs user |
 | `ensure-admin-user.sh` | Configures the admin user account inside the PCS |
-| `ensure-template-sync.sh` | Downloads `UPDATE_URL`, runs migrations from the new tree, then rsyncs over `/DATA/AppData/yundera/` |
-| `ensure-yundera-user-data.sh` | Materialises user-specific state from `.ynd.user.env` |
+| `ensure-support-key.sh` | Authorises the operator's support SSH key (operator-controllable, `ENSURE_SUPPORT_KEY` in `.pcs.env`) |
+| `ensure-template-sync.sh` | Downloads `UPDATE_URL`, runs migrations from the new tree, then rsyncs `template/` over `/DATA/AppData/yundera/template/` |
+| `ensure-outbound-ip-family.sh` | Prefers IPv4 for dual-stack outbound connections (gai.conf) — the GHCR IPv6 path is unreliable |
+| `ensure-yundera-user-data.sh` | Fetches `/user/info` from `OPERATOR_API`: `UID`/`DOMAIN`/`EMAIL` into `.ynd.user.env`, `PROVIDER_STR`/`USER_JWT` into `.pcs.secret.env` |
 | `ensure-ubuntu-up-to-date.sh` | Updates package lists and displays available system upgrades |
 | `ensure-common-tools-installed.sh` | Installs essential system tools (htop, vim, etc.) |
 | `ensure-ssh.sh` | Installs and configures OpenSSH server |
-| `ensure-vm-scalable.sh` | **(proxmox-only)** Configures VM for CPU and RAM hotplug capabilities |
-| `ensure-qemu-agent.sh` | **(proxmox-only)** Installs and starts QEMU guest agent for VM integration |
-| `ensure-public-ip.sh` | Detects and stores public IP addresses (IPv4/IPv6) in environment |
-| `ensure-data-partition.sh` | **(proxmox-only)** Creates and mounts resizable LVM partition with bind mounts for `/DATA` and `/var/lib/docker` |
-| `ensure-data-partition-size.sh` | **(proxmox-only)** Automatically extends the DATA partition when additional disk space becomes available |
 | `ensure-swap.sh` | Creates and configures swap file with optimised swappiness settings |
 | `ensure-self-check-at-reboot.sh` | Installs the `@reboot` cron entry that runs `self-check-reboot.sh` |
-| `ensure-nightly-self-check.sh` | Installs the nightly cron entry that runs `self-check.sh` directly |
+| `ensure-nightly-self-check.sh` | Installs the nightly cron entry that runs `self-check.sh` directly (`SELF_CHECK_CRON` in `.pcs.env`) |
 | `ensure-logrotate.sh` | Configures daily log rotation for `yundera.log` (7-day retention) |
 | `ensure-docker-installed.sh` | Installs and configures Docker CE with proper user permissions |
-| `ensure-env-vars-valid.sh` | Validates required env vars across `.pcs.env`, `.pcs.secret.env`, `.ynd.user.env` |
-| `ensure-support-key.sh` | Authorises the operator's support SSH key (operator-controllable) |
-| `ensure-dex.sh` | Provisions the Dex OIDC broker: renders `dex/config.yaml` from `dex.config.yaml.tmpl`, generates the Dex↔bridge connector secret, seeds a disposable break-glass admin, and owns the sqlite data dir perms |
-| `ensure-mesh-stack.sh` | Deploys the `mesh` stack (mesh-router-tunnel/-agent/-caddy, smtp, mesh-console) to `/DATA/AppData/mesh` — first of the stacks; creates the shared `pcs` network and mints `MESH_CONSOLE_ASSERTION_SECRET` |
-| `ensure-auth-stack.sh` | Deploys the `auth` stack (dex, authelia, auth-registrar) to `/DATA/AppData/auth`, after the Authelia/Dex renders; restarts Dex once Authelia answers when the stack recreated it |
-| `ensure-user-compose-pulled.sh` | Pulls latest images for the user's Docker Compose services |
-| `ensure-user-compose-stack-up.sh` | Starts the `yundera` stack (admin app) in detached mode; holds back `--remove-orphans` while mesh/auth have not yet taken their services over |
+| `ensure-backup-credentials.sh` | Fetches/rotates the S3 backup credential into `.pcs.secret.env` (`BACKUP_*`) |
+| `ensure-backup-config.sh` | Connects the kopia repository from those `BACKUP_*` values |
+| `ensure-ipv6-interface.sh` | Configures the provider's IPv6 interface so the mesh template finds the address |
+| `ensure-mesh-installed.sh` | Installs the stock mesh template once, and writes this template's inputs into its `.env` (`library/mesh.sh`) |
+| `ensure-env-vars-valid.sh` | Validates required env vars across `.pcs.env`, `.pcs.secret.env`, `.ynd.user.env` and writes the yundera stack's `.env`: the keys `docker-compose.yml` interpolates (`library/env.sh`) |
+| `ensure-connector-yundera.sh` | Writes the "Yundera Login" Dex connector drop-in (`YUNDERA_LOGIN_ENABLED` in `.pcs.env`) |
+| `ensure-admin-gate-secret.sh` | Mints `ADMIN_ASSERTION_SECRET`, shared by the admin gate and the admin app |
+| `ensure-user-compose-pulled.sh` | Pulls latest images for the `yundera` stack |
+| `ensure-user-compose-stack-up.sh` | Starts the `yundera` stack (admin gate + admin app) in detached mode |
+| `ensure-kopia-stack.sh` | Deploys the `kopia` stack to `/DATA/AppData/kopia` through `tools/deploy-stack.sh` |
+| `ensure-maison-onboarding.sh` | Writes or removes Maison's onboarding gate (`/DATA/AppData/maison/onboarding.json`) |
 
 The list is authoritative — order is controlled by `scripts-config.txt`, not filename alphabetisation. When adding a new script, also add a line to `scripts-config.txt` in the right position.
 

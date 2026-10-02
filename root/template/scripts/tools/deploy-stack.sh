@@ -9,21 +9,23 @@
 #   1. copy stacks/<stack-name>/docker-compose.yml -> <dest-dir>/docker-compose.yml
 #   1b. copy stacks/<stack-name>/icon.<ext> -> <dest-dir>/.icon.<ext>, the file
 #      Maison renders the stack's tile from
-#   2. generate <dest-dir>/.env from the yundera unified .env, plus any extra
-#      KEY=value pairs given on the command line
+#   2. generate <dest-dir>/.env with the keys the stack's compose file interpolates
+#      (library/env.sh), plus any extra KEY=value pairs given on the command line
 #   3. docker compose pull, then up -d --remove-orphans (both with backoff). Between
 #      the two: make sure the shared `pcs` network exists and evict containers from
 #      other projects that hold this stack's container names (library/stacks.sh).
 #      After the pull, so the window where an evicted service is down is the `up`
 #      alone, not the download.
 #
-# The unified .env is the ONLY source of environment truth: it is assembled by
-# ensure-env-vars-valid.sh from .pcs.env + .pcs.secret.env + .ynd.user.env. Copying
-# it wholesale (rather than cherry-picking keys) means a new variable added to any
-# source file is automatically available to these stacks with no change here.
+# The .env holds only what the stack's compose file interpolates, from the same
+# sources as the yundera .env (.pcs.env + .pcs.secret.env + .ynd.user.env, and the
+# mesh-owned keys from the mesh .env) — library/env.sh. It used to be a wholesale
+# copy of the yundera union, so every stack folder carried every secret on the box
+# (USER_JWT, PROVIDER_STR, DEFAULT_PWD, the S3 keys) for a compose file that read
+# two of them. A new ${VAR} in a stack's compose file is still delivered with no
+# change here, as long as a source carries it.
 #
-# The generated <dest-dir>/.env is chmod 600: it carries DEFAULT_PWD, PROVIDER_STR,
-# USER_JWT and friends, exactly as the yundera .env does. It is chowned to 1000:1000
+# The generated <dest-dir>/.env is chmod 600 regardless, and chowned to 1000:1000
 # (pcs, who owns /DATA) rather than left root-owned. KEEP THE CHOWN, but not for the
 # reason it was written: it was casaos-app-management, which ran as uid 1000,
 # enumerated every compose project and dropped any whose .env it could not read.
@@ -42,13 +44,13 @@ YND_ROOT="/DATA/AppData/yundera"
 YND_TEMPLATE="$YND_ROOT/template"
 source "$YND_TEMPLATE/scripts/library/log.sh"
 source "$YND_TEMPLATE/scripts/library/stacks.sh"
+source "$YND_TEMPLATE/scripts/library/env.sh"
 
 STACK_NAME="${1:?usage: deploy-stack.sh <stack-name> <dest-dir> [KEY=value ...]}"
 DEST_DIR="${2:?usage: deploy-stack.sh <stack-name> <dest-dir> [KEY=value ...]}"
 shift 2
 
 SRC_COMPOSE="$YND_TEMPLATE/stacks/$STACK_NAME/docker-compose.yml"
-UNIFIED_ENV="$YND_ROOT/.env"
 DEST_COMPOSE="$DEST_DIR/docker-compose.yml"
 DEST_ENV="$DEST_DIR/.env"
 
@@ -60,8 +62,8 @@ if [ ! -f "$SRC_COMPOSE" ]; then
     log_error "Stack template not found: $SRC_COMPOSE"
     exit 1
 fi
-if [ ! -f "$UNIFIED_ENV" ]; then
-    log_error "Unified .env not found: $UNIFIED_ENV (ensure-env-vars-valid.sh must run first)"
+if [ ! -f "$YND_ROOT/.ynd.user.env" ]; then
+    log_error "Source env not found: $YND_ROOT/.ynd.user.env (ensure-yundera-user-data.sh must run first)"
     exit 1
 fi
 
@@ -115,8 +117,8 @@ if [ -n "$SRC_ICON" ] && ! cmp -s "$SRC_ICON" "$DEST_ICON"; then
 fi
 
 # --- 2. .env ---------------------------------------------------------------
-# The unified .env plus the KEY=value arguments, regenerated whenever it differs.
-# The stack owns nothing in it.
+# The compose file's keys plus the KEY=value arguments, regenerated whenever it
+# differs. The stack owns nothing in it.
 TMP_ENV="$(mktemp)"
 chmod 600 "$TMP_ENV"
 {
@@ -125,7 +127,7 @@ chmod 600 "$TMP_ENV"
     echo "# Regenerated on every self-check; edit the sources instead:"
     echo "#   /DATA/AppData/yundera/{.pcs.env,.pcs.secret.env,.ynd.user.env}"
     echo ""
-    cat "$UNIFIED_ENV"
+    env_emit_for_compose "$SRC_COMPOSE"
     if [ "$#" -gt 0 ]; then
         echo ""
         echo "# ============================================"

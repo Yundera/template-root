@@ -71,10 +71,8 @@ READY_TIMEOUT=120
 # and the app finishes either way.
 SETTLE_TIMEOUT=180
 
-PREINSTALL_APPS="$("$ENV_MANAGER" get PREINSTALL_APPS "$YND_ROOT/.env")"
-if [ -z "$PREINSTALL_APPS" ]; then
-    PREINSTALL_APPS="$("$ENV_MANAGER" get PREINSTALL_APPS "$YND_ROOT/.pcs.env")"
-fi
+# From the source file: the yundera .env only carries what its compose file reads.
+PREINSTALL_APPS="$("$ENV_MANAGER" get PREINSTALL_APPS "$YND_ROOT/.pcs.env")"
 
 if [ -z "$PREINSTALL_APPS" ]; then
     log "PREINSTALL_APPS is empty - nothing to preinstall"

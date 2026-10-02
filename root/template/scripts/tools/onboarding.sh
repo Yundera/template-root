@@ -36,8 +36,8 @@
 #
 #   claimed    - is there a usable local credential? DERIVED, never cached: it is
 #                "at least one non-disabled user in users_database.yml", the same
-#                predicate the mesh ensure-connector-local-account.sh gates the
-#                Local Account connector on.
+#                predicate the mesh ensure-authelia.sh gates the Local Account
+#                connector on.
 #   completed  - has the wizard been through once? A MARKER FILE, and purely
 #                cosmetic.
 #
@@ -107,7 +107,7 @@ command -v yq >/dev/null 2>&1 || error "yq not found (installed by self-check/en
 
 # Claimed = at least one user that is not disabled. Kept identical to is_claimed
 # in authelia-user-manager.sh and the check in the mesh
-# ensure-connector-local-account.sh — if you change one, change all three.
+# ensure-authelia.sh — if you change one, change all three.
 is_claimed() {
     local enabled
     [ -f "$USERS_DB" ] || return 1
@@ -192,7 +192,7 @@ cmd_run() {
 #
 # ALSO EXPOSED in the admin app ("Re-run onboarding", POST
 # /api/admin/onboarding-reset). Unclaiming is a self-lockout button: the mesh
-# ensure-connector-local-account.sh withdraws the Local Account connector, so on a PCS whose Yundera Login is absent
+# ensure-authelia.sh withdraws the Local Account connector, so on a PCS whose Yundera Login is absent
 # or broken the only way back in is the support SSH key. The route refuses while
 # Yundera Login is off, requires a typed confirmation, and revokes the other admin
 # gate sessions; from a terminal none of that applies, so --confirm stays
@@ -233,18 +233,17 @@ cmd_reset() {
 
     # Removing the file is what re-arms the seed: ensure-authelia.sh's one-shot
     # check is a pure "has this been written yet?" test on a `password:` field.
-    # It restarts Authelia itself, so no separate restart here. Both mesh scripts
-    # run under the mesh lock, so they never interleave with the mesh cron.
+    # It restarts Authelia itself, so no separate restart here, and it withdraws
+    # the Local Account connector's drop-in on the now-unclaimed account. Both
+    # mesh scripts run under the mesh lock, so they never interleave with the
+    # mesh cron.
     if ! mesh_run self-check/ensure-authelia.sh >/dev/null 2>&1; then
         error "ensure-authelia.sh failed${backup:+; previous users_database.yml kept at $backup}"
     fi
 
-    # Withdraw the Local Account connector now rather than at the next tick — an
-    # unclaimed PCS must not advertise a login that cannot work. Its drop-in goes
-    # first, then Dex re-renders; with no other connector left, Dex is removed
-    # (it cannot run on none) and the gates show "sign-in unavailable".
-    mesh_run self-check/ensure-connector-local-account.sh >/dev/null 2>&1 \
-        || echo "WARNING: ensure-connector-local-account.sh failed; the Local Account connector goes away at the next mesh self-check" >&2
+    # Then Dex re-renders now rather than at the next tick — an unclaimed PCS must
+    # not advertise a login that cannot work. With no other connector left, Dex is
+    # removed (it cannot run on none) and the gates show "sign-in unavailable".
     mesh_run self-check/ensure-dex.sh >/dev/null 2>&1 \
         || echo "WARNING: ensure-dex.sh failed; the Local Account connector goes away at the next mesh self-check" >&2
 

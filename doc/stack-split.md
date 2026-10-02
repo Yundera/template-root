@@ -65,7 +65,7 @@ and the scripts read the same paths on both templates.
 | mesh-router-caddy | `yundera/template/caddy` `:ro` | the Caddyfile is template, not state |
 | mesh-console-app | `yundera/template` `:ro`, `yundera/log` `:ro` | template revision, the tools it runs, the self-check log |
 | auth-console-app | `yundera/template` `:ro` | which tools exist |
-| every stack | its own `.env` | a **full copy** of the unified `.env` — see "Environment: fan-out replaces union"; not done |
+| every stack | its own `.env` | only the keys its compose file interpolates (`library/env.sh`, 2026-10-02) — no longer a copy of the union |
 
 Both consoles used to mount the whole yundera root. They now mount their own stack's folder
 read-only, with the template tree nested inside it — hence the empty `template/` directories
@@ -128,8 +128,11 @@ mv /DATA/AppData/auth/dex      $Y/dex
 
 ### Still open from the proposal
 
-- **Per-stack `.env`** (fan-out). Each stack's `.env` is the whole unified file, so every stack
-  folder carries every secret on the box.
+- ~~**Per-stack `.env`** (fan-out).~~ Done 2026-10-02: each stack's `.env` (the yundera one included)
+  holds only the keys its own compose file interpolates — `library/env.sh`, derived by grepping the
+  compose file, so there is no list to maintain. Leftover keys in the source files on older boxes
+  (`PUBLIC_IP*`, `LOCAL_ADMIN_USER`, `DEFAULT_SERVICE_*`, pre-switch secrets) are not pruned; they no
+  longer reach any stack.
 - **`router` vs `nsl-provider`** are still one `mesh` stack.
 - **The store model** for these stacks, and Maison `folders` / `pre_up` hooks in place of the
   `ensure-*` scripts.

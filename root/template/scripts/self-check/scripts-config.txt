@@ -65,7 +65,7 @@ ensure-ipv6-interface.sh
 # A failed install fails the self-check, and so a PCS create.
 #
 # BEFORE ensure-env-vars-valid.sh, which reads the keys the mesh template owns
-# (public IP, default app, owner name) back into the unified .env; and before
+# (public IP, default app, owner name) back into the yundera .env; and before
 # every gate below, since they all register with its auth-registrar. Its own
 # inputs come straight from .pcs.env / .pcs.secret.env / .ynd.user.env, which
 # ensure-yundera-user-data.sh above has filled.
@@ -97,7 +97,7 @@ ensure-kopia-stack.sh
 
 # Maison's onboarding gate: writes or removes /DATA/AppData/maison/onboarding.json
 # from `onboarding.sh status`. After the mesh install (the folder is the mesh
-# template's) and ensure-env-vars-valid.sh (DOMAIN).
+# template's).
 ensure-maison-onboarding.sh
 
 # Retired at the switch to the stock mesh template (2026-10-01): this template's

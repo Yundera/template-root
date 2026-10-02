@@ -217,10 +217,12 @@ services:
       # value forward were retired 2026-09-08, once every box carried the new
       # name (see scripts/migrations/README.md).
       OPERATOR_API: ${OPERATOR_API}
-      # Current value of the root-domain target, shown by the Domain panel's
-      # default-app editor. Writes go to .pcs.env on the host over SSH, not here.
-      DEFAULT_SERVICE_HOST: ${DEFAULT_SERVICE_HOST}
-      DEFAULT_SERVICE_PORT: ${DEFAULT_SERVICE_PORT}
+      # Optional per-PCS override of the support-report recipient
+      # (support-send-report.ts); set it in .pcs.env. Empty = the brand's address.
+      # (DEFAULT_SERVICE_HOST/_PORT used to be passed here for the Domain panel's
+      # default-app editor; that editor is Mesh Console's now and nothing in the
+      # app reads them.)
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:-}
     volumes:
       # The admin app SSHes back to the host as the `admin` sudoer (created by
       # ensure-admin-user.sh). Privileged work goes through `sudo -n …` on the

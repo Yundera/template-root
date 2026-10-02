@@ -8,7 +8,10 @@
 # into the unified .env on EVERY call, minted this run or not — because
 # ensure-env-vars-valid.sh rebuilds that file from its sources, so a secret
 # minted after that rebuild would otherwise be missing from the file compose
-# actually reads. Forgetting that mirror is the bug this function exists to make
+# actually reads. That file only keeps the keys docker-compose.yml interpolates
+# (library/env.sh), so a secret the yundera compose does not reference is dropped
+# again at the next rebuild — mirroring it is harmless, but it reaches no
+# container. Forgetting that mirror is the bug this function exists to make
 # impossible; it was previously re-implemented, and re-explained, in every
 # script that owned a secret.
 #
