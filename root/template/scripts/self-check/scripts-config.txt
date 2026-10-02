@@ -74,7 +74,7 @@ ensure-env-vars-valid.sh
 # The "Yundera Login" Dex connector: a drop-in in the mesh template's
 # /DATA/AppData/auth/dex/connectors.d/. Runs the mesh ensure-dex.sh itself
 # whenever the drop-in changes.
-ensure-yundera-login.sh
+ensure-connector-yundera.sh
 # ensure-admin-gate-secret.sh MUST run before ensure-user-compose-stack-up.sh: it
 # mints ADMIN_ASSERTION_SECRET into .pcs.secret.env / .env, which the admin gate
 # and the admin app both interpolate. Without it the dashboard authenticates

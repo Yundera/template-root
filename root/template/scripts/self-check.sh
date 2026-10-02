@@ -128,7 +128,7 @@ run_scripts 1 "${STARTED_WITH[@]}"
 # therefore false on the one cycle that mattered: the cycle that first delivers
 # the script. Scripts compensated individually, by re-invoking the peers they
 # had just invalidated (ensure-admin-gate-secret.sh called
-# ensure-user-compose-stack-up.sh; ensure-yundera-login.sh called
+# ensure-user-compose-stack-up.sh; ensure-yundera-login.sh, now ensure-connector-yundera.sh, called
 # ensure-dex.sh), which made real execution order emergent instead of
 # configured, and cost a bespoke workaround per ordered script. Fixing it here
 # once let both of those be deleted.

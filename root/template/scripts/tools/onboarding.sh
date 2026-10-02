@@ -36,7 +36,8 @@
 #
 #   claimed    - is there a usable local credential? DERIVED, never cached: it is
 #                "at least one non-disabled user in users_database.yml", the same
-#                predicate ensure-dex.sh gates the Local Account connector on.
+#                predicate the mesh ensure-connector-local-account.sh gates the
+#                Local Account connector on.
 #   completed  - has the wizard been through once? A MARKER FILE, and purely
 #                cosmetic.
 #
@@ -105,8 +106,8 @@ error() {
 command -v yq >/dev/null 2>&1 || error "yq not found (installed by self-check/ensure-common-tools-installed.sh)"
 
 # Claimed = at least one user that is not disabled. Kept identical to is_claimed
-# in authelia-user-manager.sh and the check in ensure-dex.sh — if you change one,
-# change all three.
+# in authelia-user-manager.sh and the check in the mesh
+# ensure-connector-local-account.sh — if you change one, change all three.
 is_claimed() {
     local enabled
     [ -f "$USERS_DB" ] || return 1
@@ -190,8 +191,8 @@ cmd_run() {
 # is reachable again. For testing and for re-provisioning a box by hand.
 #
 # ALSO EXPOSED in the admin app ("Re-run onboarding", POST
-# /api/admin/onboarding-reset). Unclaiming is a self-lockout button: the mesh ensure-dex.sh
-# withdraws the Local Account connector, so on a PCS whose Yundera Login is absent
+# /api/admin/onboarding-reset). Unclaiming is a self-lockout button: the mesh
+# ensure-connector-local-account.sh withdraws the Local Account connector, so on a PCS whose Yundera Login is absent
 # or broken the only way back in is the support SSH key. The route refuses while
 # Yundera Login is off, requires a typed confirmation, and revokes the other admin
 # gate sessions; from a terminal none of that applies, so --confirm stays
@@ -239,7 +240,11 @@ cmd_reset() {
     fi
 
     # Withdraw the Local Account connector now rather than at the next tick — an
-    # unclaimed PCS must not advertise a login that cannot work.
+    # unclaimed PCS must not advertise a login that cannot work. Its drop-in goes
+    # first, then Dex re-renders; with no other connector left, Dex is removed
+    # (it cannot run on none) and the gates show "sign-in unavailable".
+    mesh_run self-check/ensure-connector-local-account.sh >/dev/null 2>&1 \
+        || echo "WARNING: ensure-connector-local-account.sh failed; the Local Account connector goes away at the next mesh self-check" >&2
     mesh_run self-check/ensure-dex.sh >/dev/null 2>&1 \
         || echo "WARNING: ensure-dex.sh failed; the Local Account connector goes away at the next mesh self-check" >&2
 

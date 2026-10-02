@@ -1,5 +1,5 @@
 #!/bin/bash
-# ensure-yundera-login.sh - Provision the "Yundera Login" Dex connector.
+# ensure-connector-yundera.sh - Provision the "Yundera Login" Dex connector.
 #
 # Lets the PCS owner sign in with their Yundera (cloud) account. The IdP is the
 # orchestrator's OIDC service (issuer ${OPERATOR_API}/auth); unlike the Authelia
@@ -156,7 +156,7 @@ TMP="$(mktemp)"
 chmod 600 "$TMP"
 cat > "$TMP" <<YAML
   # Yundera Login — the operator's cloud account, federated from the
-  # orchestrator's OIDC IdP. Written by ensure-yundera-login.sh; do not edit.
+  # orchestrator's OIDC IdP. Written by ensure-connector-yundera.sh; do not edit.
   - type: oidc
     id: yundera
     name: Yundera Login

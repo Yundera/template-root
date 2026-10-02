@@ -89,7 +89,7 @@ services:
   # takes the app's public name; the backend gets the suffix. Same shape as the maison
   # stack, and as AppStoreLab's AppShieldSecurityDemo.
   kopia:
-    image: ghcr.io/yundera/appshield:3.1.2
+    image: ghcr.io/yundera/appshield:3.2.0
     container_name: kopia
     hostname: kopia
     restart: unless-stopped

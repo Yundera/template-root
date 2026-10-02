@@ -6,7 +6,7 @@
 # Lets the owner sign in with their Yundera cloud account instead of (or as well
 # as) the PCS-local credential Authelia holds.
 #
-# ensure-yundera-login.sh does all the work — client registration, the issuer
+# ensure-connector-yundera.sh does all the work — client registration, the issuer
 # probe, writing or removing dex/connectors.d/yundera.yaml, re-rendering Dex — and
 # already honours YUNDERA_LOGIN_ENABLED in .pcs.env. This script writes the flag
 # and re-runs it so the login page changes now rather than at the next tick.
@@ -25,14 +25,14 @@ YND_ROOT="/DATA/AppData/yundera"
 YND_TEMPLATE="$YND_ROOT/template"
 PCS_ENV="$YND_ROOT/.pcs.env"
 ENV_MGR="$YND_TEMPLATE/scripts/tools/env-file-manager.sh"
-ENSURE="$YND_TEMPLATE/scripts/self-check/ensure-yundera-login.sh"
+ENSURE="$YND_TEMPLATE/scripts/self-check/ensure-connector-yundera.sh"
 FLAG="YUNDERA_LOGIN_ENABLED"
 
 error() { echo "ERROR: $1" >&2; exit 1; }
 
 env_get() { "$ENV_MGR" get "$1" "$PCS_ENV" 2>/dev/null || echo ""; }
 
-# Polarity matches ensure-yundera-login.sh:86 — absent/true/1/yes/on = on,
+# Polarity matches ensure-connector-yundera.sh:86 — absent/true/1/yes/on = on,
 # false/0/no/off = off, anything else on. Keep the two in agreement.
 enabled() {
     case "$(env_get "$FLAG" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
@@ -49,12 +49,12 @@ case "${1:-}" in
         ;;
     enable)
         "$ENV_MGR" set "$FLAG" true "$PCS_ENV" >/dev/null
-        "$ENSURE" >/dev/null || error "flag set, but ensure-yundera-login.sh failed"
+        "$ENSURE" >/dev/null || error "flag set, but ensure-connector-yundera.sh failed"
         emit true
         ;;
     disable)
         "$ENV_MGR" set "$FLAG" false "$PCS_ENV" >/dev/null
-        "$ENSURE" >/dev/null || error "flag set, but ensure-yundera-login.sh failed"
+        "$ENSURE" >/dev/null || error "flag set, but ensure-connector-yundera.sh failed"
         emit false
         ;;
     *)

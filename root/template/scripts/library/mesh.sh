@@ -182,6 +182,15 @@ mesh_write_contract() {
         upsert_mesh_env "${kv%%=*}" "${kv#*=}"
     done < <(mesh_constants)
 
+    # Where the owner finishes setup: the onboarding wizard on the admin app (the
+    # same URL ensure-maison-onboarding.sh gates Maison to). The mesh registrar
+    # hands it to every AppShield gate while Dex is absent for want of a connector
+    # — an unclaimed box with Yundera Login off, or before ensure-connector-yundera.sh
+    # has run — so the sign-in page links to it instead of a dead end. Derived
+    # from DOMAIN, so every run like the constants.
+    value="$(ynd_source_get DOMAIN 2>/dev/null || true)"
+    [ -z "$value" ] || upsert_mesh_env SETUP_URL "https://admin-$value/"
+
     for key in $MESH_KEYS_SEED_ONCE; do
         mesh_env_has "$key" && continue
         value="$(ynd_source_get "$key")" || continue

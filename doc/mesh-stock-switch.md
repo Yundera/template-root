@@ -69,7 +69,7 @@ only Yundera has. The Yundera self-check is a **strict addition** over the mesh 
   unclaimed. A non-zero exit fails the self-check, and so a create (`PCS_PROVISIONING=1`).
 - **Otherwise only inputs.** Every run upserts the contract keys into the mesh `.env`; when one
   changed, it runs the mesh `self-check.sh` right away ("trigger, don't wait").
-- **Trigger, don't wait** for drop-ins too: `ensure-yundera-login.sh` runs the mesh
+- **Trigger, don't wait** for drop-ins too: `ensure-connector-yundera.sh` (was `ensure-yundera-login.sh`) runs the mesh
   `ensure-dex.sh` when its connector file changes; `onboarding.sh reset` runs the mesh
   `ensure-authelia.sh` and `ensure-dex.sh`.
 - **One lock per template.** A mesh script run from this template goes through `mesh_run`, under
@@ -147,7 +147,7 @@ them), `DEFAULT_SERVICE_HOST` / `_PORT`, `LOCAL_ADMIN_USER`.
 | `tools/authelia-user-manager.sh` | a **wrapper** that `exec`s the mesh copy — the path every runbook names |
 | `tools/set-default-app.sh`, `tools/provision-dex-frontend.sh` | **deleted**: nothing calls them any more (Mesh Console calls the mesh copy) |
 | `tools/onboarding.sh` | stays (Yundera's onboarding state); claims through the mesh user manager, reads the owner from the mesh `.env`, `reset` runs the mesh `ensure-authelia.sh` / `ensure-dex.sh` |
-| `ensure-yundera-login.sh` | stays; runs the mesh `ensure-dex.sh` when the drop-in changes |
+| `ensure-connector-yundera.sh` (renamed from `ensure-yundera-login.sh` 2026-10-02) | stays; runs the mesh `ensure-dex.sh` when the drop-in changes |
 | the onboarding gate of `ensure-maison-stack.sh` | `ensure-maison-onboarding.sh`, which only writes or removes `onboarding.json` |
 | `stacks/{mesh,auth,maison,terminal}`, `auth/`, `dex.config.yaml.tmpl`, `library/authelia-ready.sh` | **deleted** |
 | `caddy/` | **kept for the transition only.** A box that has not switched runs a Caddy that bind-mounts this directory; the sync would otherwise delete it from under that container in the minutes before the adoption recreates it. Delete once every box has switched. |
