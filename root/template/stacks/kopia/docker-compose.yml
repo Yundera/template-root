@@ -49,12 +49,16 @@
 #
 # THE ENGINE IS OPTIONAL, AND WHAT THAT NOW MEANS
 #
-# If this stack is missing or stopped, Maison starts a one-shot adapter container per
-# command instead — six to seven seconds slower, correct in every other respect. What it
-# no longer does is fall back when the container is present but the ENGINE cannot be
-# reached: that is reported as an incident, because a backup that quietly lands somewhere
-# other than where the user was told is worse than one that stops. See
-# maison/docs/backup.md § The engine adapter.
+# Maison starts a one-shot adapter container per command instead whenever the resident
+# one is unusable — missing, stopped, paused, restarting, or with a hostname that
+# disagrees with adapter.json (engine.Runner.Run / residentUsable) — six to seven seconds
+# slower, correct in every other respect. Same image, same repository, same identity, so
+# the one-shot is a slower route to the SAME destination, not a substitute for it.
+#
+# A command that starts in this container and then fails is NOT re-run elsewhere: it
+# fails, and the backup run is recorded as failed. Raising a dedicated incident for an
+# unreachable engine (`backup.engine:<id>`) is designed but not built yet — see
+# maison/docs/backup.md, its status note and § An unreachable engine is an incident.
 #
 # NOTHING BUT THE GATE IS ON THE `pcs` NETWORK, and that is a rule rather than
 # tidiness. Two reasons, and either alone would be enough:

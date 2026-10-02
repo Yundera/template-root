@@ -29,9 +29,8 @@ Listed in execution order from `scripts-config.txt`.
 | `ensure-mesh-installed.sh` | Installs the stock mesh template once, and writes this template's inputs into its `.env` (`library/mesh.sh`) |
 | `ensure-env-vars-valid.sh` | Validates required env vars across `.pcs.env`, `.pcs.secret.env`, `.ynd.user.env` and writes the yundera stack's `.env`: the keys `docker-compose.yml` interpolates (`library/env.sh`) |
 | `ensure-connector-yundera.sh` | Writes the "Yundera Login" Dex connector drop-in (`YUNDERA_LOGIN_ENABLED` in `.pcs.env`) |
-| `ensure-admin-gate-secret.sh` | Mints `ADMIN_ASSERTION_SECRET`, shared by the admin gate and the admin app |
 | `ensure-user-compose-pulled.sh` | Pulls latest images for the `yundera` stack |
-| `ensure-user-compose-stack-up.sh` | Starts the `yundera` stack (admin gate + admin app) in detached mode |
+| `ensure-user-compose-stack-up.sh` | Mints `ADMIN_ASSERTION_SECRET` (shared by the admin gate and the admin app) and the gate's session dir, then starts the `yundera` stack (admin gate + admin app) in detached mode |
 | `ensure-kopia-stack.sh` | Deploys the `kopia` stack to `/DATA/AppData/kopia` through `tools/deploy-stack.sh` |
 | `ensure-maison-onboarding.sh` | Writes or removes Maison's onboarding gate (`/DATA/AppData/maison/onboarding.json`) |
 

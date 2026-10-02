@@ -10,7 +10,7 @@ services:
   # (AppShield) fronts every platform app — Maison, store apps, this — so there is
   # one auth surface to review instead of one per app.
   #
-  # NAMING IS LOAD-BEARING, exactly as in stacks/maison: the auth-registrar derives
+  # NAMING IS LOAD-BEARING, exactly as in the maison stack: the auth-registrar derives
   # an app's client_id from a PTR lookup of the CALLER's container name on the pcs
   # network, and only ever issues redirect URIs under `<client_id>-<suffix>`. So
   # the gate must be the container named `admin`, and the app takes the suffixed
@@ -24,7 +24,7 @@ services:
     restart: unless-stopped
     # The image's own default, written down HERE because something on the host has
     # to chown the gate-data bind below to match it, and an image repin must not
-    # be able to silently move the target (ensure-admin-gate-secret.sh chowns to
+    # be able to silently move the target (ensure-user-compose-stack-up.sh chowns to
     # this exact uid). The maison and kopia gates pin "0:0" instead; this one stays
     # unprivileged — it needs to write nothing but its own session file.
     user: "65534:65534"
@@ -108,7 +108,7 @@ services:
       #
       # OWNERSHIP IS LOAD-BEARING: the gate runs as 65534 (pinned above) and writes
       # sessions.json through a temp file in this directory, so it needs the DIR
-      # writable, not just the file. ensure-admin-gate-secret.sh chowns it. Found
+      # writable, not just the file. ensure-user-compose-stack-up.sh chowns it. Found
       # on wisera 2026-09-28 owned 1000:1000 with a 0600 sessions.json from
       # 2026-08-19: every login logged "[session] save failed: permission denied"
       # and the 720h SESSION_DURATION_HOURS above was fiction for this one app —
@@ -175,7 +175,7 @@ services:
       # control tokens the app uses to ask the gate to revoke sessions when an
       # account is deleted or its password reset (backend/auth/gateControl.ts).
       #
-      # Minted once by ensure-admin-gate-secret.sh. Were it missing, this app would
+      # Minted once by ensure-user-compose-stack-up.sh. Were it missing, this app would
       # authenticate nobody — the correct failure direction, and the reason the gate
       # must never be the only thing checking.
       IDENTITY_ASSERTION_SECRET: ${ADMIN_ASSERTION_SECRET}
@@ -275,13 +275,11 @@ services:
   # survives as a plain directory of dead data, including the stale pre-2026-09-08
   # copy of this stack at apps/yundera. See doc/maison-migration.md.
   #
-  # NOTE: mesh-router-tunnel, -agent, -caddy and smtp now live in the `mesh` stack
-  # (template/stacks/mesh), and dex, authelia and auth-registrar in the `auth` stack
-  # (template/stacks/auth) — same container names, same data paths. What is left
-  # here is the admin app. On the tick that first ships that split, this stack comes
-  # up from the new file BEFORE mesh/auth have taken their services over, so its
-  # stack-up holds back --remove-orphans until they have (yundera_handover_pending
-  # in library/stacks.sh) — removing those orphans early would take the box dark.
+  # NOTE: mesh-router-tunnel, -agent, -caddy and smtp live in the `mesh` stack, and
+  # dex, authelia and auth-registrar in the `auth` stack — both the stock
+  # mesh-router-template-root's, installed into /DATA/AppData/mesh by
+  # ensure-mesh-installed.sh (doc/mesh-stock-switch.md). This template no longer
+  # ships its own copies. What is left here is the admin app.
 
 networks:
   # Shared by every stack and owned by none: created by ensure_pcs_network
@@ -332,12 +330,12 @@ x-compose-app:
   category: pcs
   developer: Yundera Team
   # This stack is the admin app — mesh-router and auth have their own stacks and
-  # tiles now (template/stacks/{mesh,auth}). `system` puts its tile in Maison's
+  # tiles now (the mesh template's `mesh` and `auth`). `system` puts its tile in Maison's
   # System grid and, the part that matters, makes Maison refuse to stop or
   # uninstall it and the nightly backup skip it. It
   # replaces the maison stack's PROTECTED_APPS env, removed at Maison 1.1.5;
   # an older image ignores the key entirely, so the guard travels with the pin
-  # in stacks/maison/docker-compose.yml. Restart is still offered.
+  # in the mesh template's stacks/maison/docker-compose.yml. Restart is still offered.
   #
   # Since the root move this file IS /DATA/AppData/yundera/docker-compose.yml,
   # so Maison's stat(AppsDir/<project>/docker-compose.yml) makes the tile managed

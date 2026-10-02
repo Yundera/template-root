@@ -288,6 +288,12 @@ if rsync -a --delete "$SRC_TEMPLATE/" "$YND_TEMPLATE/" >/dev/null \
         "$(printf '%s' "$UPDATE_URL" | tr -d '"\\')" "$COMMIT_JSON" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         > "$YND_TEMPLATE/.revision.json" || echo "WARN: could not write $YND_TEMPLATE/.revision.json"
     echo "Template revision: ${TEMPLATE_COMMIT:-unknown}"
+    # The yundera stack's README beside its compose file (the kopia stack gets its
+    # own from deploy-stack.sh). Documentation only: best effort, never fails the sync.
+    if [ -f "$TEMPLATE_ROOT/README.md" ]; then
+        rsync -a "$TEMPLATE_ROOT/README.md" "$YND_ROOT/README.md" \
+            || echo "WARN: could not copy the yundera stack README"
+    fi
     # Keep this backup and prune the oldest. `ls -1d` sorts the epoch-suffixed
     # names lexically, which for a fixed-width epoch is chronological.
     ls -1d "${BACKUP_ROOT}"/root-backup-* 2>/dev/null \

@@ -2,25 +2,49 @@
 
 This folder contains the template system for Yundera Personal Cloud Server (PCS) provisioning, including first-install bootstrap, periodic self-checks, and continuous template/app updates. Hypervisor-specific behaviour (LVM partition carving, qemu-guest-agent, CPU/RAM hotplug) is gated at runtime by `is_proxmox_host` in `library/common.sh`, which inspects the actual disk layout — no `.pcs.env`-style provider tag is needed.
 
+## Stacks
+
+This template deploys two compose stacks of its own. The `mesh`, `auth`, `maison` and
+`terminal` stacks belong to the stock **mesh-router-template-root**, which
+`ensure-mesh-installed.sh` installs into `/DATA/AppData/mesh` (see
+`doc/mesh-stock-switch.md`), and each of those has its own README in that repo. Every
+stack's README sits next to its compose file, and the self-check copies it into the
+stack's folder on the box.
+
+| Stack | Services | Source | On the box |
+|---|---|---|---|
+| `yundera` | admin (AppShield gate), admin-app | `root/docker-compose.yml` | `/DATA/AppData/yundera` — [README](root/README.md) |
+| `kopia` | kopia (gate), kopia-app, kopia-engine | `root/template/stacks/kopia/` | `/DATA/AppData/kopia` — [README](root/template/stacks/kopia/README.md) |
+
+This template also adds the **Yundera Login** Dex connector to the mesh template's
+`auth` stack, as a drop-in at `/DATA/AppData/auth/dex/connectors.d/yundera.yaml`. See
+the yundera stack README.
+
 ## Folder Structure
 
 ```
-root/                        # Files installed to /DATA/AppData/yundera
-├── .pcs.env                 # PCS configuration environment variables
-├── .pcs.secret.env          # Secret environment variables (JWT, passwords, etc.)
-├── .ynd.user.env            # User-specific environment variables
-├── docker-compose.yml       # `yundera` stack: admin (AppShield gate) + admin-app. mesh-router-*/smtp are the `mesh` stack and dex/authelia/auth-registrar the `auth` stack, under template/stacks/
-├── Caddyfile                # Caddy gateway global config (per-app routes come from container labels)
-├── dex.config.yaml.tmpl     # Dex OIDC broker config template (rendered each self-check)
-└── scripts/
-    ├── pcs-init.sh          # First-install bootstrap (fetched from jsDelivr by the orchestrator)
-    ├── self-check.sh        # Core iterator over scripts-config.txt (used by nightly cron + admin app)
-    ├── self-check-reboot.sh # @reboot wrapper: lock + self-check + compose restart
-    ├── self-check/          # Idempotent ensure-*.sh scripts + scripts-config.txt (order matters)
-    ├── migrations/          # Version-bump update scripts (run before each template rsync)
-    ├── tools/               # CLI / one-shot utilities (os-init, run-migrations, env-file-manager, ...)
-    └── library/             # Sourced helpers (common.sh, log.sh)
+root/                        # Delivered to /DATA/AppData/yundera
+├── docker-compose.yml       # `yundera` stack (admin gate + admin-app) — rsynced to the root
+├── README.md                # the yundera stack's README — rsynced beside it
+├── icon.svg                 # → .icon.svg, the Maison tile
+└── template/                # → /DATA/AppData/yundera/template (rsync --delete, nothing else)
+    ├── .pcs.env.example  .pcs.secret.env.example  .ynd.user.env.example
+    ├── dex-theme/           # branded Dex login theme — the mesh template renders it (DEX_THEME_SRC, library/mesh.sh)
+    ├── caddy/               # pre-switch Caddyfile, kept until every box has switched (doc/mesh-stock-switch.md)
+    ├── stacks/kopia/        # the kopia stack (compose, icon, README)
+    └── scripts/
+        ├── pcs-init.sh          # First-install bootstrap (fetched from jsDelivr by the orchestrator)
+        ├── self-check.sh        # Core iterator over scripts-config.txt (used by nightly cron + admin app)
+        ├── self-check-reboot.sh # @reboot wrapper: lock + self-check + compose restart
+        ├── self-check/          # Idempotent ensure-*.sh scripts + scripts-config.txt (order matters)
+        ├── migrations/          # Version-bump update scripts (run before each template rsync)
+        ├── tools/               # CLI / one-shot utilities (os-init, run-migrations, env-file-manager, ...)
+        └── library/             # Sourced helpers (common.sh, log.sh, env.sh, mesh.sh, stacks.sh, kopia.sh)
 ```
+
+The provisioning inputs `.pcs.env`, `.pcs.secret.env` and `.ynd.user.env` live in
+`/DATA/AppData/yundera/`, next to the compose file. They are written by the
+orchestrator and `ensure-yundera-user-data.sh`, not shipped.
 
 ## Script Categories
 

@@ -9,6 +9,7 @@
 #   1. copy stacks/<stack-name>/docker-compose.yml -> <dest-dir>/docker-compose.yml
 #   1b. copy stacks/<stack-name>/icon.<ext> -> <dest-dir>/.icon.<ext>, the file
 #      Maison renders the stack's tile from
+#   1c. copy stacks/<stack-name>/README.md -> <dest-dir>/README.md
 #   2. generate <dest-dir>/.env with the keys the stack's compose file interpolates
 #      (library/env.sh), plus any extra KEY=value pairs given on the command line
 #   3. docker compose pull, then up -d --remove-orphans (both with backoff). Between
@@ -114,6 +115,17 @@ if [ -n "$SRC_ICON" ] && ! cmp -s "$SRC_ICON" "$DEST_ICON"; then
     cp "$SRC_ICON" "$DEST_ICON"
     chown 1000:1000 "$DEST_ICON" 2>/dev/null || true
     log_info "Updated $DEST_ICON from template"
+fi
+
+# --- 1c. README ------------------------------------------------------------
+# The stack's README beside its live compose file, so whoever opens the folder on
+# the box finds what the services are and how they are built. Documentation only:
+# nothing reads it.
+SRC_README="$YND_TEMPLATE/stacks/$STACK_NAME/README.md"
+if [ -f "$SRC_README" ] && ! cmp -s "$SRC_README" "$DEST_DIR/README.md"; then
+    cp "$SRC_README" "$DEST_DIR/README.md"
+    chown 1000:1000 "$DEST_DIR/README.md" 2>/dev/null || true
+    log_info "Updated $DEST_DIR/README.md from template"
 fi
 
 # --- 2. .env ---------------------------------------------------------------

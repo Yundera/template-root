@@ -17,9 +17,10 @@
 # one-shot adapter container per command instead — slower, correct in every other
 # respect. So this exits 0 on every path that is merely "not applicable here".
 #
-# That is NOT a fallback for an engine that is reachable but broken: Maison reports that
-# as an incident rather than quietly doing the work somewhere else. What survives here is
-# only "the resident container is absent", which costs latency.
+# The one-shot uses the same image, repository and identity, so it is a slower route
+# to the same destination, never a different one. A command that starts in the resident
+# container and fails there is not re-run: the backup fails. (Maison's dedicated
+# incident for an unreachable engine is designed but not built — maison docs/backup.md.)
 #
 # ORDERING: must run AFTER ensure-backup-config.sh, which writes the repository.config
 # this reads the engine's hostname out of. A box provisioned before that file exists

@@ -75,13 +75,6 @@ ensure-env-vars-valid.sh
 # /DATA/AppData/auth/dex/connectors.d/. Runs the mesh ensure-dex.sh itself
 # whenever the drop-in changes.
 ensure-connector-yundera.sh
-# ensure-admin-gate-secret.sh MUST run before ensure-user-compose-stack-up.sh: it
-# mints ADMIN_ASSERTION_SECRET into .pcs.secret.env / .env, which the admin gate
-# and the admin app both interpolate. Without it the dashboard authenticates
-# nobody (it fails closed). Enforced by order alone — self-check.sh re-runs this
-# whole list when a sync changes it, so a newly-delivered script lands in its
-# configured position rather than at the end.
-ensure-admin-gate-secret.sh
 ensure-user-compose-pulled.sh
 ensure-user-compose-stack-up.sh
 
