@@ -432,7 +432,7 @@ may become a hard dependency of the claim.
 The earlier plan here — pre-claim each demo box with a published password — was
 **superseded and should not be revived**. `demo/src/lib/DemoManager.ts`
 (`buildOpenEntryAuthCommand()`) instead deploys `navikt/mock-oauth2-server` to
-`/DATA/AppData/.demo-auth` and drops an "Open Entry" connector into Dex's
+`/DATA/AppData/demo-auth` (a protected Maison system app) and drops an "Open Entry" connector into Dex's
 `connectors.d/`. A visitor is in without typing anything.
 
 That is strictly better here: no published credential to rotate, no shared
