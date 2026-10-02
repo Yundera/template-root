@@ -41,6 +41,12 @@ MESH_KEYS_EVERY_RUN="EMAIL DEFAULT_PWD TERMINAL_ENABLED SMTP_TO APPSTORE_URL OPE
 # "Configuration (.env keys)"). EMAIL_SYNC=false because on a PCS the
 # orchestrator's EMAIL is authoritative and upserted above; the mesh template's
 # backend lookup would otherwise write its own value back on every run.
+#
+# The two MIGRATE_* keys plug this template into the mesh migrate.sh (its README,
+# "Moving the box to another machine"): run this template's self-check on the
+# target after the mesh one (users, SSH, backups, user stacks), and hold this
+# template's lock on the source for the whole run so its nightly self-check does
+# not restart the apps the migration stopped.
 mesh_constants() {
     cat <<EOF
 DATA_ROOT=/DATA
@@ -54,6 +60,8 @@ PLATFORM_PROJECTS=mesh,auth,yundera,maison,kopia,terminal
 TRUSTED_PUBKEY_HOST_SUFFIXES=yundera.com
 BACKUP_ENGINE_CONTAINER=kopia-engine
 EMAIL_SYNC=false
+MIGRATE_TARGET_SELF_CHECK=$YND_TEMPLATE/scripts/self-check.sh
+MIGRATE_HOLD_LOCKS=/var/run/yundera-self-check.lock
 EOF
 }
 

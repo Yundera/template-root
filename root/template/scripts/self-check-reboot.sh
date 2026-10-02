@@ -18,6 +18,16 @@ if [ -f "$MARKER_FILE" ]; then
     exit 0
 fi
 
+# A box the mesh migrate.sh moved away from is RETIRED: its domain is served by
+# the new machine, and the mesh keeps this one off the routes. Nothing here may
+# bring it back to life - restarting the user stacks would also restart their
+# backups into the same repository as the new box. Deleting MESH_ROUTING_HOLD from
+# the mesh .env is the rollback, and re-enables this self-check.
+if grep -q '^MESH_ROUTING_HOLD=retired:' /DATA/AppData/mesh/.env 2>/dev/null; then
+    echo "This box is retired ($(grep '^MESH_ROUTING_HOLD=' /DATA/AppData/mesh/.env | cut -d= -f2-)), skipping"
+    exit 0
+fi
+
 # Hold the lock for the entire reboot sequence (self-check + compose restart).
 exec 200>"$LOCK_FILE"
 if ! flock -n 200; then

@@ -219,6 +219,9 @@ Known, and deliberately not blocking:
   through the public URL.
 - `install.ps1` creates its data folders under `AppData/yundera/…` rather than
   `AppData/mesh/…`.
-- settings-center-app's Migration and DockerUpdate code is broken by the stack split, and its
-  `dev/run/bootstrap.sh` calls scripts this template no longer has; migration is to move to the
-  mesh side (the mesh template's `doc/migration.md`, design only).
+- settings-center-app's DockerUpdate card was removed (1.4.12). Its Migration code is broken by
+  the stack split and is being replaced by the mesh template's `scripts/tools/migrate.sh` (its
+  `doc/migration.md`): this template feeds it `MIGRATE_TARGET_SELF_CHECK` / `MIGRATE_HOLD_LOCKS`
+  through `library/mesh.sh`, and `self-check.sh` / `self-check-reboot.sh` skip a box the mesh
+  marks retired. The admin-app pipeline goes once the orchestrator speaks `migrate.sh`. Its
+  `dev/run/bootstrap.sh` still calls scripts this template no longer has.
