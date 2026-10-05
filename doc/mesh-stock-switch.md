@@ -128,7 +128,11 @@ back what they changed.
 | `SELF_CHECK_CRON` | `30 3 * * *` — after this template's 03:00 |
 | `DEFAULT_SERVICE_HOST` / `_PORT` | from `.pcs.env`; Mesh Console's default-app editor owns them afterwards |
 | `LOCAL_ADMIN_USER` | from `.pcs.env`; the claim owns it afterwards |
-| `AUTHELIA_DEX_SECRET`, `DEX_SESSION_KEY`, `MESH_CONSOLE_ASSERTION_SECRET`, `AUTH_CONSOLE_ASSERTION_SECRET` | from `.pcs.secret.env` when this template minted them before the switch — what keeps them stable across it |
+| `MESH_CONSOLE_ASSERTION_SECRET` | from `.pcs.secret.env` when this template minted it before the switch — what keeps it stable across it |
+
+`AUTHELIA_DEX_SECRET`, `DEX_SESSION_KEY` and `AUTH_CONSOLE_ASSERTION_SECRET` were seeded the same way
+until the mesh template moved them into the auth stack's own `/DATA/AppData/auth/.stack.env` (2026-10);
+they are no longer seeded, or the mesh would delete what this template put back every night.
 
 **Read back** — the mesh template owns them; `ensure-env-vars-valid.sh` takes them from the mesh
 `.env` into the unified `.env`, over any stale `.pcs.env` copy: `PUBLIC_IP*` (the mesh detects

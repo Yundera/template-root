@@ -3,7 +3,7 @@
 #
 # Phase 1 of the backup design (BACKUP-STORAGE-PLAN.md §6 step 4). It exchanges the
 # box's USER_JWT for a per-device, bucket- and prefix-restricted B2 application key
-# and parks it in .pcs.secret.env as BACKUP_*. It renders nothing and starts nothing:
+# and parks it as BACKUP_* in the kopia stack's own /DATA/AppData/kopia/.stack.env. It renders nothing and starts nothing:
 # ensure-backup-config.sh turns these values into an engine configuration.
 #
 # MUST RUN AFTER ensure-yundera-user-data.sh, which supplies (and rotates) USER_JWT
@@ -21,7 +21,7 @@
 # Enable/disable with BACKUP_ENABLED in .pcs.env (default: enabled). Set it to
 # 0/false/no on a box that must not consume a backup space at all. The demo box is
 # the case that motivated the knob: it is destroyed and rebuilt daily, and a rebuilt
-# box arrives with a fresh .pcs.secret.env and therefore a fresh BACKUP_DEVICE_ID, so
+# box arrives with no kopia .stack.env and therefore a fresh BACKUP_DEVICE_ID, so
 # every rebuild mints a key that nothing ever revokes -- revocation is per-device and
 # only ever kills the SAME device's previous key. At a 90-day TTL that accumulates
 # roughly one live orphan key per day, against a space whose owner is the demo
@@ -53,10 +53,15 @@ ENV_MGR="$YND_TEMPLATE/scripts/tools/env-file-manager.sh"
 # This script runs BEFORE ensure-backup-config.sh, and that is the script which moves the
 # engine directory here on a box that has not migrated yet. So on that one cycle the
 # marker is looked for at a path that does not exist yet. Harmless and self-correcting:
-# need_refresh() falls through to the key and expiry checks against .pcs.secret.env,
-# which does not move, and the marker is read at the new path from the next cycle on.
+# need_refresh() falls through to the key and expiry checks against the kopia
+# .stack.env, which does not move, and the marker is read at the new path from the next cycle on.
 source "$YND_TEMPLATE/scripts/library/kopia.sh"
+# stack_env_set / stack_env_adopt.
+source "$YND_TEMPLATE/scripts/library/env.sh"
 ENGINE_DIR="$KOPIA_ENGINE_DIR"
+# Where BACKUP_* lives: the kopia stack's own .stack.env (library/kopia.sh). USER_JWT
+# and DOMAIN, the inputs, stay in the hand-off files.
+STACK_ENV="$KOPIA_STACK_ENV"
 REFRESH_MARKER="$ENGINE_DIR/needs-credentials"
 
 # The key's TTL is 90 days server-side. Renewing at 30 days left gives a box that is
@@ -65,6 +70,10 @@ REFRESH_MARKER="$ENGINE_DIR/needs-credentials"
 RENEW_WINDOW_DAYS=30
 
 env_get() { "$ENV_MGR" get "$1" "$2" 2>/dev/null || echo ""; }
+
+# Before anything reads BACKUP_*, and before the BACKUP_ENABLED gate, so a disabled box
+# moves them too: an older template kept them in .pcs.secret.env.
+kopia_adopt_backup_env
 
 # --- is it wanted here? ------------------------------------------------------
 #
@@ -106,10 +115,10 @@ fi
 # entire backup history, so it is minted here and treated as immutable afterwards.
 #
 # 32 lowercase hex characters, inside the server's 8-64 hex contract.
-BACKUP_DEVICE_ID="$(env_get BACKUP_DEVICE_ID "$SECRET_ENV")"
+BACKUP_DEVICE_ID="$(env_get BACKUP_DEVICE_ID "$STACK_ENV")"
 if [ -z "$BACKUP_DEVICE_ID" ]; then
     BACKUP_DEVICE_ID="$(openssl rand -hex 16)"
-    "$ENV_MGR" set BACKUP_DEVICE_ID "$BACKUP_DEVICE_ID" "$SECRET_ENV"
+    stack_env_set BACKUP_DEVICE_ID         "$BACKUP_DEVICE_ID"  "$STACK_ENV"
     log_info "Minted BACKUP_DEVICE_ID for this box"
 fi
 
@@ -122,13 +131,13 @@ need_refresh() {
     fi
 
     local key expires_at expires_epoch now_epoch
-    key="$(env_get BACKUP_ACCESS_KEY_ID "$SECRET_ENV")"
+    key="$(env_get BACKUP_ACCESS_KEY_ID "$STACK_ENV")"
     if [ -z "$key" ]; then
         log_info "No backup credential on this box yet"
         return 0
     fi
 
-    expires_at="$(env_get BACKUP_EXPIRES_AT "$SECRET_ENV")"
+    expires_at="$(env_get BACKUP_EXPIRES_AT "$STACK_ENV")"
     if [ -z "$expires_at" ]; then
         log_info "Backup credential has no recorded expiry - refreshing"
         return 0
@@ -225,18 +234,18 @@ case "$PREFIX" in
         ;;
 esac
 
-"$ENV_MGR" set BACKUP_SPACE_ID          "$SPACE_ID"          "$SECRET_ENV"
-"$ENV_MGR" set BACKUP_ENDPOINT          "$ENDPOINT"          "$SECRET_ENV"
-"$ENV_MGR" set BACKUP_REGION            "$REGION"            "$SECRET_ENV"
-"$ENV_MGR" set BACKUP_BUCKET            "$BUCKET"            "$SECRET_ENV"
-"$ENV_MGR" set BACKUP_PREFIX            "$PREFIX"            "$SECRET_ENV"
-"$ENV_MGR" set BACKUP_ACCESS_KEY_ID     "$ACCESS_KEY_ID"     "$SECRET_ENV"
-"$ENV_MGR" set BACKUP_SECRET_ACCESS_KEY "$SECRET_ACCESS_KEY" "$SECRET_ENV"
-"$ENV_MGR" set BACKUP_EXPIRES_AT        "$EXPIRES_AT"        "$SECRET_ENV"
-"$ENV_MGR" set BACKUP_STATUS            "${STATUS:-ok}"      "$SECRET_ENV"
-"$ENV_MGR" set BACKUP_WRITABLE          "${WRITABLE:-true}"  "$SECRET_ENV"
+stack_env_set BACKUP_SPACE_ID          "$SPACE_ID"          "$STACK_ENV"
+stack_env_set BACKUP_ENDPOINT          "$ENDPOINT"          "$STACK_ENV"
+stack_env_set BACKUP_REGION            "$REGION"            "$STACK_ENV"
+stack_env_set BACKUP_BUCKET            "$BUCKET"            "$STACK_ENV"
+stack_env_set BACKUP_PREFIX            "$PREFIX"            "$STACK_ENV"
+stack_env_set BACKUP_ACCESS_KEY_ID     "$ACCESS_KEY_ID"     "$STACK_ENV"
+stack_env_set BACKUP_SECRET_ACCESS_KEY "$SECRET_ACCESS_KEY" "$STACK_ENV"
+stack_env_set BACKUP_EXPIRES_AT        "$EXPIRES_AT"        "$STACK_ENV"
+stack_env_set BACKUP_STATUS            "${STATUS:-ok}"      "$STACK_ENV"
+stack_env_set BACKUP_WRITABLE          "${WRITABLE:-true}"  "$STACK_ENV"
 
-chmod 600 "$SECRET_ENV"
+chmod 600 "$STACK_ENV"
 rm -f "$REFRESH_MARKER"
 
 log_success "Backup credential refreshed (space $SPACE_ID, expires $EXPIRES_AT, writable ${WRITABLE:-true})"

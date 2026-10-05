@@ -77,7 +77,7 @@ Ordered in `scripts/self-check/scripts-config.txt`:
 ensure-yundera-user-data.sh   USER_JWT (and its rotation)        → .pcs.secret.env
 
 ensure-backup-credentials.sh  GET ${OPERATOR_API}/user/backup/space?deviceId=…
-                              (Bearer USER_JWT)                   → BACKUP_* in .pcs.secret.env
+                              (Bearer USER_JWT)                   → BACKUP_* in .stack.env
                               only when absent, within 30 days of expiry,
                               or engine/needs-credentials exists — NOT every night
 
@@ -143,6 +143,9 @@ Things worth knowing:
 ```
 /DATA/AppData/kopia/
 ├── docker-compose.yml  .env  .icon.svg  README.md   regenerated every self-check — don't edit
+├── .stack.env                     STATE — BACKUP_* (credential + BACKUP_DEVICE_ID), 600.
+│                                  Written by ensure-backup-credentials.sh; none of it
+│                                  reaches .env (the compose references no BACKUP_*)
 ├── gate-data/                     the gate's sessions
 └── engine/                        0700, owned by PUID; written only by ensure-backup-config.sh
     ├── repository.password        STATE — the ONLY copy on the box. Lose it and every
@@ -162,8 +165,10 @@ The engine state used to live in `/DATA/AppDataShared/backup/kopia/`.
 
 ## What it needs from the other stacks
 
-- **yundera stack / provisioning**: `USER_JWT`, `OPERATOR_API`, `BACKUP_DEVICE_ID` and
-  `BACKUP_ENABLED` (in `.pcs.env`, default on, off for the demo box).
+- **yundera stack / provisioning**: `USER_JWT`, `OPERATOR_API` and `BACKUP_ENABLED` (in
+  `.pcs.env`, default on, off for the demo box). `BACKUP_*` used to sit in
+  `.pcs.secret.env`; both backup self-checks move it into `.stack.env` here, keeping a
+  `.pcs.secret.env.<date>.old` copy of the file as it was.
 - **mesh template** (`/DATA/AppData/mesh`): the `pcs` network, Caddy routing for
   `kopia-*`, and auth-registrar/Dex for the gate's SSO. That is why this stack deploys
   after `ensure-mesh-installed.sh`.

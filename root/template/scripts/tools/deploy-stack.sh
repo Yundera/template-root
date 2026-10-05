@@ -11,7 +11,8 @@
 #      Maison renders the stack's tile from
 #   1c. copy stacks/<stack-name>/README.md -> <dest-dir>/README.md
 #   2. generate <dest-dir>/.env with the keys the stack's compose file interpolates
-#      (library/env.sh), plus any extra KEY=value pairs given on the command line
+#      (library/env.sh), from the hand-off files and <dest-dir>/.stack.env, plus any
+#      extra KEY=value pairs given on the command line
 #   3. docker compose pull, then up -d --remove-orphans (both with backoff). Between
 #      the two: make sure the shared `pcs` network exists and evict containers from
 #      other projects that hold this stack's container names (library/stacks.sh).
@@ -130,7 +131,9 @@ fi
 
 # --- 2. .env ---------------------------------------------------------------
 # The compose file's keys plus the KEY=value arguments, regenerated whenever it
-# differs. The stack owns nothing in it.
+# differs. The stack owns nothing in it: what the stack does own (a secret it
+# minted, a credential it fetched) is in <dest-dir>/.stack.env, which this reads
+# through the same filter and never writes.
 TMP_ENV="$(mktemp)"
 chmod 600 "$TMP_ENV"
 {
@@ -138,8 +141,9 @@ chmod 600 "$TMP_ENV"
     echo "# Written by scripts/tools/deploy-stack.sh for the '$STACK_NAME' stack."
     echo "# Regenerated on every self-check; edit the sources instead:"
     echo "#   /DATA/AppData/yundera/{.pcs.env,.pcs.secret.env,.ynd.user.env}"
+    echo "#   $DEST_DIR/.stack.env (this stack's own state)"
     echo ""
-    env_emit_for_compose "$SRC_COMPOSE"
+    env_emit_for_compose "$SRC_COMPOSE" "$DEST_DIR/.stack.env"
     if [ "$#" -gt 0 ]; then
         echo ""
         echo "# ============================================"

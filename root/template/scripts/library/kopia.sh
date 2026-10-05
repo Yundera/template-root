@@ -80,6 +80,36 @@ ENGINE_ID="kopia"
 # directory; nothing but ensure-backup-config.sh writes to it.
 KOPIA_ENGINE_DIR="/DATA/AppData/$ENGINE_ID/engine"
 
+# The backup credential and the box's device identity (BACKUP_*), written by
+# ensure-backup-credentials.sh and read by ensure-backup-config.sh. The kopia stack's
+# own state, so it lives in the stack's folder rather than in .pcs.secret.env, which is
+# the orchestrator's hand-off file — and the orchestrator never writes these: the box
+# fetches them itself. It travels and restores with the stack folder, beside
+# engine/repository.password; a box moved with tools/migrate.sh keeps its
+# BACKUP_DEVICE_ID, which is right, since the source is retired by the move.
+#
+# NOT inside engine/. ensure-backup-credentials.sh writes here BEFORE
+# ensure-backup-config.sh relocates a legacy engine directory, and that relocation
+# `rm -rf`s the legacy tree when it finds engine/ already present — creating engine/
+# early would take repository.password with it. The kopia compose never references
+# BACKUP_*, so deploy-stack.sh's filter keeps all of it out of the stack's .env.
+KOPIA_STACK_ENV="/DATA/AppData/$ENGINE_ID/.stack.env"
+
+# What an older template kept in .pcs.secret.env and kopia_adopt_backup_env moves here.
+# BACKUP_ENABLED is not among them: an owner knob, it stays in .pcs.env.
+KOPIA_STACK_KEYS="BACKUP_DEVICE_ID BACKUP_SPACE_ID BACKUP_ENDPOINT BACKUP_REGION BACKUP_BUCKET
+    BACKUP_PREFIX BACKUP_ACCESS_KEY_ID BACKUP_SECRET_ACCESS_KEY BACKUP_EXPIRES_AT BACKUP_STATUS
+    BACKUP_WRITABLE BACKUP_LABEL"
+
+# Move BACKUP_* from .pcs.secret.env into KOPIA_STACK_ENV (library/env.sh,
+# stack_env_adopt). Called first by both backup self-checks, so whichever runs first
+# on an updated box does the move and neither ever reads the old file. Needs log.sh
+# and env.sh sourced.
+kopia_adopt_backup_env() {
+    # shellcheck disable=SC2086 # word-split on purpose: a list of key names
+    stack_env_adopt "/DATA/AppData/yundera/.pcs.secret.env" "$KOPIA_STACK_ENV" $KOPIA_STACK_KEYS
+}
+
 # The directory that replaced, read exactly once — by the migration in
 # ensure-backup-config.sh, which moves it and then removes it. Nothing else may use it.
 KOPIA_LEGACY_ENGINE_DIR="/DATA/AppDataShared/backup/$ENGINE_ID"

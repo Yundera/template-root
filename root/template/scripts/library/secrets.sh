@@ -3,8 +3,12 @@
 #
 #   ensure_secret ADMIN_ASSERTION_SECRET openssl rand -hex 32
 #
-# Reads NAME from .pcs.secret.env; when it is empty, runs the rest of the
-# arguments as the generator and persists the result. Then mirrors the value
+# Reads NAME from the yundera stack's own .stack.env (library/env.sh); when it
+# is empty, runs the rest of the arguments as the generator and persists the
+# result there. A value an older template left in .pcs.secret.env is moved over
+# first (stack_env_adopt), so an existing secret is kept, never re-minted.
+# .pcs.secret.env is the orchestrator's hand-off file; a secret this box mints
+# for one stack does not belong in it. Then mirrors the value
 # into the unified .env on EVERY call, minted this run or not — because
 # ensure-env-vars-valid.sh rebuilds that file from its sources, so a secret
 # minted after that rebuild would otherwise be missing from the file compose
@@ -30,9 +34,13 @@
 # Defaults; a caller that has already set these keeps its own.
 YND_ROOT="${YND_ROOT:-/DATA/AppData/yundera}"
 YND_TEMPLATE="$YND_ROOT/template"
-SECRET_ENV="${SECRET_ENV:-$YND_ROOT/.pcs.secret.env}"
+SECRET_ENV="${SECRET_ENV:-$YND_ROOT/.stack.env}"
+# Where an older template kept these; read only to move them out.
+LEGACY_SECRET_ENV="${LEGACY_SECRET_ENV:-$YND_ROOT/.pcs.secret.env}"
 UNIFIED_ENV="${UNIFIED_ENV:-$YND_ROOT/.env}"
 ENV_MGR="${ENV_MGR:-$YND_TEMPLATE/scripts/tools/env-file-manager.sh}"
+# stack_env_set / stack_env_adopt.
+source "$YND_TEMPLATE/scripts/library/env.sh"
 
 ensure_secret() {
     local name="$1"
@@ -43,6 +51,8 @@ ensure_secret() {
         return 1
     fi
 
+    stack_env_adopt "$LEGACY_SECRET_ENV" "$SECRET_ENV" "$name" || return 1
+
     local value
     value="$("$ENV_MGR" get "$name" "$SECRET_ENV")"
 
@@ -52,7 +62,7 @@ ensure_secret() {
             log_error "ensure_secret: generator for $name produced nothing ($*)"
             return 1
         fi
-        "$ENV_MGR" set "$name" "$value" "$SECRET_ENV"
+        stack_env_set "$name" "$value" "$SECRET_ENV"
         SECRET_MINTED=1
         log_info "Generated $name"
     fi

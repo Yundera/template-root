@@ -76,13 +76,15 @@ YND_ROOT="/DATA/AppData/yundera"
 YND_TEMPLATE="$YND_ROOT/template"
 source "$YND_TEMPLATE/scripts/library/log.sh"
 
-SECRET_ENV="$YND_ROOT/.pcs.secret.env"
 PCS_ENV="$YND_ROOT/.pcs.env"
 ENV_MGR="$YND_TEMPLATE/scripts/tools/env-file-manager.sh"
 
 # ENGINE_ID, ENGINE_IMAGE, ENGINE_BINARY and the two repository.config readers come from
 # the library below; it is sourced early because ENGINE_DIR is derived from ENGINE_ID.
 source "$YND_TEMPLATE/scripts/library/kopia.sh"
+# stack_env_adopt; BACKUP_* lives in the kopia stack's own .stack.env (library/kopia.sh).
+source "$YND_TEMPLATE/scripts/library/env.sh"
+STACK_ENV="$KOPIA_STACK_ENV"
 # MESH_ENV, for PUID/PGID below.
 source "$YND_TEMPLATE/scripts/library/mesh.sh"
 
@@ -98,6 +100,10 @@ REFRESH_MARKER="$ENGINE_DIR/needs-credentials"
 RECOVERY_MARKER="$ENGINE_DIR/needs-recovery"
 
 env_get() { "$ENV_MGR" get "$1" "$2" 2>/dev/null || echo ""; }
+
+# ensure-backup-credentials.sh has normally done this already; repeated so this script
+# never depends on that one having run first.
+kopia_adopt_backup_env
 
 # --- the engine directory moved ----------------------------------------------
 #
@@ -176,22 +182,22 @@ esac
 
 # --- is this box provisioned for backups at all? ------------------------------
 
-if [ ! -f "$SECRET_ENV" ]; then
-    log_info "No $SECRET_ENV - nothing to configure"
+if [ ! -f "$STACK_ENV" ]; then
+    log_info "No $STACK_ENV - nothing to configure"
     exit 0
 fi
 
-BACKUP_BUCKET="$(env_get BACKUP_BUCKET "$SECRET_ENV")"
-BACKUP_PREFIX="$(env_get BACKUP_PREFIX "$SECRET_ENV")"
-BACKUP_ENDPOINT="$(env_get BACKUP_ENDPOINT "$SECRET_ENV")"
-BACKUP_REGION="$(env_get BACKUP_REGION "$SECRET_ENV")"
-BACKUP_DEVICE_ID="$(env_get BACKUP_DEVICE_ID "$SECRET_ENV")"
-ACCESS_KEY_ID="$(env_get BACKUP_ACCESS_KEY_ID "$SECRET_ENV")"
-SECRET_ACCESS_KEY="$(env_get BACKUP_SECRET_ACCESS_KEY "$SECRET_ENV")"
-BACKUP_WRITABLE="$(env_get BACKUP_WRITABLE "$SECRET_ENV")"
-BACKUP_STATUS="$(env_get BACKUP_STATUS "$SECRET_ENV")"
-BACKUP_SPACE_ID="$(env_get BACKUP_SPACE_ID "$SECRET_ENV")"
-BACKUP_EXPIRES_AT="$(env_get BACKUP_EXPIRES_AT "$SECRET_ENV")"
+BACKUP_BUCKET="$(env_get BACKUP_BUCKET "$STACK_ENV")"
+BACKUP_PREFIX="$(env_get BACKUP_PREFIX "$STACK_ENV")"
+BACKUP_ENDPOINT="$(env_get BACKUP_ENDPOINT "$STACK_ENV")"
+BACKUP_REGION="$(env_get BACKUP_REGION "$STACK_ENV")"
+BACKUP_DEVICE_ID="$(env_get BACKUP_DEVICE_ID "$STACK_ENV")"
+ACCESS_KEY_ID="$(env_get BACKUP_ACCESS_KEY_ID "$STACK_ENV")"
+SECRET_ACCESS_KEY="$(env_get BACKUP_SECRET_ACCESS_KEY "$STACK_ENV")"
+BACKUP_WRITABLE="$(env_get BACKUP_WRITABLE "$STACK_ENV")"
+BACKUP_STATUS="$(env_get BACKUP_STATUS "$STACK_ENV")"
+BACKUP_SPACE_ID="$(env_get BACKUP_SPACE_ID "$STACK_ENV")"
+BACKUP_EXPIRES_AT="$(env_get BACKUP_EXPIRES_AT "$STACK_ENV")"
 
 if [ -z "$BACKUP_BUCKET" ] || [ -z "$ACCESS_KEY_ID" ] || [ -z "$SECRET_ACCESS_KEY" ]; then
     # The normal state of a box with no backup space. Maison shows "not configured".
@@ -282,7 +288,7 @@ chown "$PUID:$PGID" "$CREDENTIALS_FILE" 2>/dev/null || true
 # running the same engine against their own bucket must not be told they are using a
 # service they are not. BACKUP_LABEL overrides it if the credential API ever returns
 # one per space.
-BACKUP_LABEL="$(env_get BACKUP_LABEL "$SECRET_ENV")"
+BACKUP_LABEL="$(env_get BACKUP_LABEL "$STACK_ENV")"
 BACKUP_LABEL="${BACKUP_LABEL:-Yundera Backup Storage}"
 
 cat > "$STATE_FILE" <<EOF

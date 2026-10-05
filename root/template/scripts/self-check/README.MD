@@ -23,11 +23,11 @@ Listed in execution order from `scripts-config.txt`.
 | `ensure-nightly-self-check.sh` | Installs the nightly cron entry that runs `self-check.sh` directly (`SELF_CHECK_CRON` in `.pcs.env`) |
 | `ensure-logrotate.sh` | Configures daily log rotation for `yundera.log` (7-day retention) |
 | `ensure-docker-installed.sh` | Installs and configures Docker CE with proper user permissions |
-| `ensure-backup-credentials.sh` | Fetches/rotates the S3 backup credential into `.pcs.secret.env` (`BACKUP_*`) |
+| `ensure-backup-credentials.sh` | Fetches/rotates the S3 backup credential into the kopia stack's own `/DATA/AppData/kopia/.stack.env` (`BACKUP_*`; moved out of `.pcs.secret.env` on first run) |
 | `ensure-backup-config.sh` | Connects the kopia repository from those `BACKUP_*` values |
 | `ensure-ipv6-interface.sh` | Configures the provider's IPv6 interface so the mesh template finds the address |
 | `ensure-mesh-installed.sh` | Installs the stock mesh template once, and writes this template's inputs into its `.env` (`library/mesh.sh`) |
-| `ensure-env-vars-valid.sh` | Validates required env vars across `.pcs.env`, `.pcs.secret.env`, `.ynd.user.env` and writes the yundera stack's `.env`: the keys `docker-compose.yml` interpolates (`library/env.sh`) |
+| `ensure-env-vars-valid.sh` | Validates required env vars across `.pcs.env`, `.pcs.secret.env`, `.ynd.user.env` and writes the yundera stack's `.env`: the keys `docker-compose.yml` interpolates, from those three and the stack's own `.stack.env` (`library/env.sh`) |
 | `ensure-connector-yundera.sh` | Writes the "Yundera Login" Dex connector drop-in (`YUNDERA_LOGIN_ENABLED` in `.pcs.env`) |
 | `ensure-user-compose-pulled.sh` | Pulls latest images for the `yundera` stack |
 | `ensure-user-compose-stack-up.sh` | Mints `ADMIN_ASSERTION_SECRET` (shared by the admin gate and the admin app) and the gate's session dir, then starts the `yundera` stack (admin gate + admin app) in detached mode |

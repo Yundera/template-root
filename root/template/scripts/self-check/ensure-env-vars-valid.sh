@@ -85,6 +85,10 @@ fi
 # file that reads none of them. The sources above are still read whole, for the
 # validation.
 #
+# The yundera stack's own state (ADMIN_ASSERTION_SECRET, minted by
+# ensure-user-compose-stack-up.sh through library/secrets.sh) comes from
+# .stack.env beside it, through the same filter.
+#
 # Perms first, content second: it still carries ADMIN_ASSERTION_SECRET, and `>`
 # preserves the mode of an already-existing file, which is how it once ended up
 # world-readable. Created empty at 600, then filled.
@@ -94,13 +98,13 @@ chmod 600 "$OUTPUT_ENV_FILE"
 {
     echo "# AUTO-GENERATED FILE - DO NOT EDIT"
     echo "# The keys docker-compose.yml interpolates, taken from:"
-    echo "#   - .pcs.env, .pcs.secret.env, .ynd.user.env (later wins)"
+    echo "#   - .pcs.env, .pcs.secret.env, .ynd.user.env, .stack.env (later wins)"
     echo "#   - /DATA/AppData/mesh/.env (the keys the mesh template owns)"
     echo "# Any changes will be overwritten on next system update."
     echo "#"
     echo "# To modify environment variables, edit the source files above."
     echo ""
-    env_emit_for_compose "$YND_ROOT/docker-compose.yml"
+    env_emit_for_compose "$YND_ROOT/docker-compose.yml" "$YND_ROOT/.stack.env"
 } > "$OUTPUT_ENV_FILE"
 
 echo "All required environment variables are valid"

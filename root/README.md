@@ -52,19 +52,21 @@ ensure-mesh-installed.sh      install / feed the stock mesh template (see below)
 ensure-env-vars-valid.sh      validate + generate .env (keys the compose interpolates only)
 ensure-connector-yundera.sh   Yundera Login drop-in (see below)
 ensure-user-compose-pulled.sh
-ensure-user-compose-stack-up.sh   ADMIN_ASSERTION_SECRET → .pcs.secret.env / .env; chown gate-data;
+ensure-user-compose-stack-up.sh   ADMIN_ASSERTION_SECRET → .stack.env / .env; chown gate-data;
                                   up with backoff
 ```
 
 ### The .env
 
-Three source files, written by different parties, and one generated file:
+Three hand-off files written by parties outside this stack, the stack's own state, and one
+generated file:
 
 | File | Written by | Holds |
 |---|---|---|
 | `.pcs.env` | orchestrator at provisioning | `UPDATE_URL`, `OPERATOR_API`, `YUNDERA_LOGIN_ENABLED`, `SELF_CHECK_CRON`, `SMTP_TO`, `SUPPORT_EMAIL` … |
-| `.pcs.secret.env` | orchestrator + scripts | `USER_JWT`, `DEFAULT_PWD`, `PROVIDER_STR`, `ADMIN_ASSERTION_SECRET`, backup keys |
+| `.pcs.secret.env` | orchestrator + `ensure-yundera-user-data.sh` | `USER_JWT`, `DEFAULT_PWD`, `PROVIDER_STR` |
 | `.ynd.user.env` | `ensure-yundera-user-data.sh` | `UID`, `EMAIL`, `DOMAIN` |
+| `.stack.env` | this stack's own scripts (`ensure_secret`, `library/secrets.sh`) | `ADMIN_ASSERTION_SECRET`. Never regenerated; 600 |
 | `.env` | `ensure-env-vars-valid.sh` | **generated** — don't edit |
 
 `ensure-env-vars-valid.sh` validates the union (later file wins) and writes `.env` with
@@ -147,6 +149,7 @@ Local Account connector yet, so disabling this leaves only the support SSH key.
 ├── docker-compose.yml  .icon.svg  README.md   from the release, every sync — don't edit
 ├── .env                                       generated every self-check — don't edit
 ├── .pcs.env  .pcs.secret.env  .ynd.user.env   SOURCES — the provisioning input
+├── .stack.env                                 this stack's own state (ADMIN_ASSERTION_SECRET), 600
 ├── template/                                  the synced tree (rsync --delete), no state
 ├── admin/                                     admin-app's /app/data (brand.json overrides)
 │   └── gate-data/                             the gate's sessions.json (owned by 65534)

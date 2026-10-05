@@ -71,10 +71,15 @@ EOF
 # claimed owner name, the secrets it would otherwise mint). A nightly upsert
 # would put back what they changed. The secrets are seeded from .pcs.secret.env
 # when this template minted them before the switch, which is what keeps them
-# STABLE across it: a second DEFAULT_PWD breaks every installed app, a second
-# DEX_SESSION_KEY logs everyone out.
+# STABLE across it: a second DEFAULT_PWD breaks every installed app.
+#
+# NOT AUTHELIA_DEX_SECRET, DEX_SESSION_KEY or AUTH_CONSOLE_ASSERTION_SECRET any more.
+# The mesh template moved them out of its .env into the auth stack's own
+# /DATA/AppData/auth/.stack.env, deleting them from the .env as it goes. Seeding them
+# here would put them back every night for the mesh to delete again. Every box is
+# past the switch, so the seed has done its job; a fresh box never had them.
 MESH_KEYS_SEED_ONCE="DEFAULT_SERVICE_HOST DEFAULT_SERVICE_PORT LOCAL_ADMIN_USER
-    AUTHELIA_DEX_SECRET DEX_SESSION_KEY MESH_CONSOLE_ASSERTION_SECRET AUTH_CONSOLE_ASSERTION_SECRET"
+    MESH_CONSOLE_ASSERTION_SECRET"
 
 # READ BACK: the mesh template owns them; ensure-env-vars-valid.sh takes them
 # from the mesh .env into the unified .env, over any stale .pcs.env copy.

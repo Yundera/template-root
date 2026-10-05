@@ -96,6 +96,8 @@
 /.pcs.env
 /.pcs.secret.env
 /.ynd.user.env
+/.stack.env
+/.pcs.secret.env.*.old
 # The WHOLE log directory, not `log/*.log`. logrotate is configured with
 # `dateext` (ensure-logrotate.sh), so yesterday's file is `yundera.log-2026-09-02`
 # and the compressed ones end `.gz` — neither matches `*.log`. Before the root
