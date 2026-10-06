@@ -76,8 +76,10 @@ EOF
 # NOT AUTHELIA_DEX_SECRET, DEX_SESSION_KEY or AUTH_CONSOLE_ASSERTION_SECRET any more.
 # The mesh template moved them out of its .env into the auth stack's own
 # /DATA/AppData/auth/.stack.env, deleting them from the .env as it goes. Seeding them
-# here would put them back every night for the mesh to delete again. Every box is
-# past the switch, so the seed has done its job; a fresh box never had them.
+# here would put them back every night for the mesh to delete again. A box crossing
+# over from stable still has the first two in .pcs.secret.env: the migration
+# 2026-10-06-10-move-auth-secrets-into-auth-stack.sh moves them into the auth
+# .stack.env before the mesh install. A fresh box never had them.
 MESH_KEYS_SEED_ONCE="DEFAULT_SERVICE_HOST DEFAULT_SERVICE_PORT LOCAL_ADMIN_USER
     MESH_CONSOLE_ASSERTION_SECRET"
 

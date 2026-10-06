@@ -132,7 +132,11 @@ back what they changed.
 
 `AUTHELIA_DEX_SECRET`, `DEX_SESSION_KEY` and `AUTH_CONSOLE_ASSERTION_SECRET` were seeded the same way
 until the mesh template moved them into the auth stack's own `/DATA/AppData/auth/.stack.env` (2026-10);
-they are no longer seeded, or the mesh would delete what this template put back every night.
+they are no longer seeded, or the mesh would delete what this template put back every night. A box
+still on stable carries the first two in `.pcs.secret.env` when it crosses over; the migration
+`2026-10-06-10-move-auth-secrets-into-auth-stack.sh` moves them into the auth `.stack.env` before the mesh
+install, which would otherwise mint new ones (Authelia's stored client hash stops matching: Local Account
+login fails with `invalid_client`).
 
 **Read back** — the mesh template owns them; `ensure-env-vars-valid.sh` takes them from the mesh
 `.env` into the unified `.env`, over any stale `.pcs.env` copy: `PUBLIC_IP*` (the mesh detects
