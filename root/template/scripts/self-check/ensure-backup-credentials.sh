@@ -27,6 +27,12 @@
 # roughly one live orphan key per day, against a space whose owner is the demo
 # service's own account rather than a user who could ever restore from it.
 #
+# IT IS ALSO HOW A BOX LEARNS ITS SPACE WAS RESET. A user who has lost the encryption key
+# resets the space from the Yundera dashboard: every key is revoked, the prefix is emptied,
+# and the space answers with a new `resetAt`. This script records it as BACKUP_RESET_AT and
+# acts on a change — see "the space was reset" below. A box stuck in needs-recovery calls
+# on every run for exactly this reason; nothing else would tell it.
+#
 # FAILURE IS SOFT, ALWAYS. Backups are not load-bearing for a PCS booting, and this
 # runs nightly on every box in the fleet: an orchestrator that is down, an older
 # orchestrator with no such route, or a rate limit must all leave the existing
@@ -63,6 +69,9 @@ ENGINE_DIR="$KOPIA_ENGINE_DIR"
 # and DOMAIN, the inputs, stay in the hand-off files.
 STACK_ENV="$KOPIA_STACK_ENV"
 REFRESH_MARKER="$ENGINE_DIR/needs-credentials"
+# Written by ensure-backup-config.sh when the storage holds a repository this box has no
+# password for; cleared here when the space has been reset since.
+RECOVERY_MARKER="$ENGINE_DIR/needs-recovery"
 
 # The key's TTL is 90 days server-side. Renewing at 30 days left gives a box that is
 # switched off for a month, or whose nightly self-check has been failing, three
@@ -125,6 +134,16 @@ fi
 # --- do we need to call at all? ----------------------------------------------
 
 need_refresh() {
+    # A box in recovery asks on EVERY run. It is the one way it learns that the user reset
+    # the space from the dashboard (resetAt, below); without it a stuck box stays stuck
+    # until an operator steps in, which is the situation the reset exists to end. The cost
+    # is one mint per self-check, well inside the server's ceiling of ten per device per
+    # UTC day, and only on a box that is taking no backups anyway.
+    if [ -f "$RECOVERY_MARKER" ]; then
+        log_info "Box is in backup recovery - asking whether the space was reset"
+        return 0
+    fi
+
     if [ -f "$REFRESH_MARKER" ]; then
         log_info "Refresh marker present - the engine was refused by the storage"
         return 0
@@ -190,6 +209,18 @@ case "$HTTP_CODE" in
         log_info "Backup space API not available on $OPERATOR_API - skipping"
         exit 0
         ;;
+    409)
+        # SPACE_RESETTING: the user started a reset from the dashboard and it has not
+        # finished — keys are being revoked and the prefix emptied. The server refuses to
+        # mint until it is done, so a box cannot get a writable key between the revoke and
+        # the wipe. Nothing to do but wait; the next cycle picks up resetAt.
+        if printf '%s' "$BODY" | grep -q 'SPACE_RESETTING'; then
+            log_warn "Backup space is being reset from the dashboard - keeping the current credential, retrying next cycle"
+        else
+            log_warn "Backup space API returned HTTP 409 - keeping the current credential ($BODY)"
+        fi
+        exit 0
+        ;;
     429)
         # The per-device mint ceiling. Whatever credential we hold is still valid;
         # hammering it is exactly what the ceiling exists to stop.
@@ -215,6 +246,8 @@ SECRET_ACCESS_KEY="$(json_str "$BODY" secretAccessKey)"
 EXPIRES_AT="$(json_str "$BODY" expiresAt)"
 STATUS="$(json_str "$BODY" status)"
 WRITABLE="$(json_bool "$BODY" writable)"
+# Absent until the space is first reset (the server omits it rather than sending null).
+RESET_AT="$(json_str "$BODY" resetAt)"
 
 if [ -z "$BUCKET" ] || [ -z "$PREFIX" ] || [ -z "$ACCESS_KEY_ID" ] || [ -z "$SECRET_ACCESS_KEY" ]; then
     log_warn "Backup space response was missing required fields - keeping the current credential"
@@ -234,6 +267,61 @@ case "$PREFIX" in
         ;;
 esac
 
+# --- the space was reset -----------------------------------------------------
+#
+# A reset from the dashboard has emptied the prefix: whatever repository lived there is
+# gone, along with every snapshot, and the server now reports when that happened. What
+# that means for THIS box depends on where it stands, and the comparison is made against
+# what it knew BEFORE this response — BACKUP_RESET_AT is only written further down, once
+# everything here has been parsed and checked.
+#
+#   - IN needs-recovery, with resetAt newer than the marker's detectedAt: the repository
+#     this box could not open is the one that was erased. Remove the marker;
+#     ensure-backup-config.sh runs next, mints a password and creates a fresh repository,
+#     and Maison mails the new key. A resetAt OLDER than the marker means the box hit a
+#     repository created after that reset — another box's, live — and it stays put.
+#
+#   - NOT in recovery, with a recorded BACKUP_RESET_AT that differs: this box had a
+#     working repository and it was erased under it (two boxes on one space, the user
+#     resetting from the other's trouble). Its repository.config and repository.password
+#     now describe nothing, and kept in place they would make ensure-backup-config.sh
+#     take the steady-state branch and fail `status` forever. Move both aside — renamed,
+#     never deleted: the password is the one thing that could still read a repository if
+#     this reading of events were ever wrong — and let config create.
+#
+#   - NOTHING RECORDED YET: only record. A box upgrading onto this template must never act
+#     on a reset it did not live through: its repository may well have been created after
+#     that reset, and moving its password aside would orphan every snapshot since.
+#
+# Dates are compared as epochs; anything unparseable is logged and NOT acted on. The
+# failure mode of hesitating is one more night in the current state, and of acting
+# wrongly is a box that abandons its own repository.
+STORED_RESET_AT="$(env_get BACKUP_RESET_AT "$STACK_ENV")"
+if [ -n "$RESET_AT" ]; then
+    if [ -f "$RECOVERY_MARKER" ]; then
+        # Not json_str: ensure-backup-config.sh writes the marker pretty-printed, with a
+        # space after each colon, which the API parser's pattern does not allow for.
+        DETECTED_AT="$(sed -n 's/.*"detectedAt"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$RECOVERY_MARKER" 2>/dev/null | head -n1 || true)"
+        if ! reset_epoch="$(date -d "$RESET_AT" +%s 2>/dev/null)"; then
+            log_warn "Unparseable resetAt ($RESET_AT) - leaving the recovery marker in place"
+        # Empty is checked first: `date -d ""` succeeds, as today's midnight.
+        elif [ -z "$DETECTED_AT" ] || ! detected_epoch="$(date -d "$DETECTED_AT" +%s 2>/dev/null)"; then
+            log_warn "Recovery marker has no readable detectedAt ($DETECTED_AT) - leaving it in place"
+        elif [ "$reset_epoch" -gt "$detected_epoch" ]; then
+            rm -f "$RECOVERY_MARKER"
+            log_info "Backup space was reset at $RESET_AT, after recovery was flagged at $DETECTED_AT - cleared needs-recovery, a fresh repository is created next"
+        fi
+    elif [ -n "$STORED_RESET_AT" ] && [ "$STORED_RESET_AT" != "$RESET_AT" ]; then
+        STAMP="$(date +%Y%m%d%H%M%S)"
+        for f in "$ENGINE_DIR/repository.config" "$ENGINE_DIR/repository.password"; do
+            if [ -e "$f" ]; then
+                mv -f "$f" "$f.reset-$STAMP"
+                log_info "Backup space was reset at $RESET_AT - moved $(basename "$f") aside to $(basename "$f").reset-$STAMP"
+            fi
+        done
+    fi
+fi
+
 stack_env_set BACKUP_SPACE_ID          "$SPACE_ID"          "$STACK_ENV"
 stack_env_set BACKUP_ENDPOINT          "$ENDPOINT"          "$STACK_ENV"
 stack_env_set BACKUP_REGION            "$REGION"            "$STACK_ENV"
@@ -244,6 +332,11 @@ stack_env_set BACKUP_SECRET_ACCESS_KEY "$SECRET_ACCESS_KEY" "$STACK_ENV"
 stack_env_set BACKUP_EXPIRES_AT        "$EXPIRES_AT"        "$STACK_ENV"
 stack_env_set BACKUP_STATUS            "${STATUS:-ok}"      "$STACK_ENV"
 stack_env_set BACKUP_WRITABLE          "${WRITABLE:-true}"  "$STACK_ENV"
+# Only when the server sent one: a response without it (never reset, or an older
+# orchestrator) must not erase a value this box has already recorded.
+if [ -n "$RESET_AT" ]; then
+    stack_env_set BACKUP_RESET_AT      "$RESET_AT"          "$STACK_ENV"
+fi
 
 chmod 600 "$STACK_ENV"
 rm -f "$REFRESH_MARKER"

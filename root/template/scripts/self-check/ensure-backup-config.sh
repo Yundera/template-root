@@ -66,8 +66,20 @@
 # repository under the same prefix and leave the real backups invisible. So the
 # password is generated only as part of a successful `repository create`, and kopia
 # refusing to create over existing data ("found existing data in storage location") is
-# taken as the signal to stop and mark the box as needing recovery. Recovery mode
-# itself is not built yet; the marker is the seam it will plug into.
+# taken as the signal to stop and mark the box as needing recovery.
+#
+# RECOVERY IS THE USER'S, AND THIS SCRIPT ONLY KEEPS THE DOOR OPEN. There are two ways out
+# of needs-recovery, and neither runs here:
+#   - the user types the emailed key into Maison, which writes it as
+#     repository.password.candidate and runs the adapter's `recover` verb: connect-only,
+#     never create, with the storage parameters read from connect.json (below);
+#   - the user has lost the key and resets the space from the Yundera dashboard, which
+#     empties the prefix; ensure-backup-credentials.sh sees the space's resetAt, removes
+#     the marker, and the next run of this script creates a fresh repository.
+# What this script owes both is to keep everything else current while the box waits —
+# credentials.env still rotates, state.json and adapter.json are still written, and
+# connect.json always describes the storage — and to touch neither the password nor the
+# configuration until the marker is gone.
 
 set -euo pipefail
 
@@ -96,6 +108,7 @@ PASSWORD_FILE="$ENGINE_DIR/repository.password"
 CREDENTIALS_FILE="$ENGINE_DIR/credentials.env"
 STATE_FILE="$ENGINE_DIR/state.json"
 ADAPTER_FILE="$ENGINE_DIR/adapter.json"
+CONNECT_FILE="$ENGINE_DIR/connect.json"
 REFRESH_MARKER="$ENGINE_DIR/needs-credentials"
 RECOVERY_MARKER="$ENGINE_DIR/needs-recovery"
 
@@ -218,11 +231,6 @@ if [ -z "$BACKUP_DEVICE_ID" ]; then
     exit 1
 fi
 
-if [ -f "$RECOVERY_MARKER" ]; then
-    log_warn "This box is marked as needing backup recovery - not touching the repository"
-    exit 0
-fi
-
 # --- directories --------------------------------------------------------------
 #
 # Maison runs the engine container as PUID:PGID, so everything here must be readable
@@ -240,6 +248,51 @@ mkdir -p "$ENGINE_DIR/cache" "$ENGINE_DIR/logs"
 # compose and .env beside this tree.
 chown "$PUID:$PGID" "$ENGINE_DIR" "$ENGINE_DIR/cache" "$ENGINE_DIR/logs" 2>/dev/null || true
 chmod 700 "$ENGINE_DIR"
+
+# --- connect.json ---------------------------------------------------------------
+#
+# The storage parameters `maison-engine connect` is given below, as a file. The adapter's
+# `recover` verb reads them from here, because recovery is started by Maison — which never
+# sees BACKUP_* and must not learn the storage layout from anywhere but this directory —
+# and it has to reach exactly the repository this script would have connected to.
+#
+# ONE SET OF VALUES, BUILT ONCE. The CONNECT_* variables feed both this file and the
+# `connect` call further down. Two copies of "which bucket, which prefix, which identity"
+# drifting apart is the failure this exists to rule out: a recover that connected under a
+# different hostname than create would have used opens a second lineage in the same
+# repository — invisible until a restore comes back empty.
+#
+# NON-SECRET, so 644: bucket, endpoint, region and prefix are storage coordinates, and the
+# key that opens them is in credentials.env (600). Written EVERY RUN and BEFORE the
+# needs-recovery check, since a box in recovery is precisely the one that needs it, and
+# replaced only when the contents change, like credentials.env.
+CONNECT_BUCKET="$BACKUP_BUCKET"
+CONNECT_ENDPOINT="$BACKUP_ENDPOINT"
+CONNECT_REGION="$BACKUP_REGION"
+CONNECT_PREFIX="$BACKUP_PREFIX"
+CONNECT_HOSTNAME="$BACKUP_DEVICE_ID"
+CONNECT_USERNAME="pcs"
+
+CONNECT_TMP="$(mktemp "$ENGINE_DIR/.connect.XXXXXX")"
+cat > "$CONNECT_TMP" <<EOF
+{
+  "bucket": "$CONNECT_BUCKET",
+  "endpoint": "$CONNECT_ENDPOINT",
+  "region": "$CONNECT_REGION",
+  "prefix": "$CONNECT_PREFIX",
+  "hostname": "$CONNECT_HOSTNAME",
+  "username": "$CONNECT_USERNAME"
+}
+EOF
+if cmp -s "$CONNECT_TMP" "$CONNECT_FILE"; then
+    rm -f "$CONNECT_TMP"
+else
+    mv -f "$CONNECT_TMP" "$CONNECT_FILE"
+fi
+# Unconditional, as for credentials.env below — and here it is also what turns mktemp's
+# 600 into the 644 a non-secret file gets.
+chmod 644 "$CONNECT_FILE"
+chown "$PUID:$PGID" "$CONNECT_FILE" 2>/dev/null || true
 
 # --- credentials.env ----------------------------------------------------------
 #
@@ -291,6 +344,13 @@ chown "$PUID:$PGID" "$CREDENTIALS_FILE" 2>/dev/null || true
 BACKUP_LABEL="$(env_get BACKUP_LABEL "$STACK_ENV")"
 BACKUP_LABEL="${BACKUP_LABEL:-Yundera Backup Storage}"
 
+# recoveryHelpUrl is where Maison sends a user who is in recovery and has NOT got the key:
+# the dashboard page that resets the space. Like label, it describes the space's provider,
+# not the engine, so it is decided here. BACKUP_RECOVERY_HELP_URL in .pcs.env overrides it
+# (a staging orchestrator's dashboard, say).
+RECOVERY_HELP_URL="$(env_get BACKUP_RECOVERY_HELP_URL "$PCS_ENV")"
+RECOVERY_HELP_URL="${RECOVERY_HELP_URL:-https://app.yundera.com/dashboard/backup}"
+
 cat > "$STATE_FILE" <<EOF
 {
   "engine": "$ENGINE",
@@ -299,7 +359,8 @@ cat > "$STATE_FILE" <<EOF
   "deviceId": "$BACKUP_DEVICE_ID",
   "writable": ${BACKUP_WRITABLE:-true},
   "status": "${BACKUP_STATUS:-ok}",
-  "credentialExpiresAt": "$BACKUP_EXPIRES_AT"
+  "credentialExpiresAt": "$BACKUP_EXPIRES_AT",
+  "recoveryHelpUrl": "$RECOVERY_HELP_URL"
 }
 EOF
 chmod 644 "$STATE_FILE"
@@ -321,8 +382,13 @@ chown "$PUID:$PGID" "$STATE_FILE" 2>/dev/null || true
 # in scope is named by the deployment, never by a user. Which repository an engine points
 # at stays an ordinary user setting.
 #
-# It is written only after a successful connect or status, so a box whose repository has
-# never opened does not advertise an engine that cannot work.
+# It is written whenever there is an engine to describe: a repository configuration (the
+# steady state, reachable or not), a successful connect, or a box in needs-recovery. The
+# last has no configuration and is advertised anyway, because the descriptor is how
+# Maison finds the engine at all — and an engine Maison cannot see is one whose recovery
+# form it cannot show. The adapter's `status` reports needsRecovery from the marker, so
+# Maison tells that state apart from a working engine. A box whose repository has never
+# opened and is not in recovery still advertises nothing.
 #
 # `container` names the resident engine for `docker exec`, which is worth six or seven
 # seconds of container start per command. It is written unconditionally: the container
@@ -333,10 +399,14 @@ chown "$PUID:$PGID" "$STATE_FILE" 2>/dev/null || true
 #
 # `hostname` is read from repository.config rather than recomputed. Two sides deriving an
 # identity independently is how one repository ends up holding two lineages that never
-# see each other — invisible until a restore comes back empty.
+# see each other — invisible until a restore comes back empty. With no repository.config
+# (needs-recovery) it falls back to CONNECT_HOSTNAME, the device id both `connect` and the
+# adapter's `recover` pin into the configuration they write, rather than to the library's
+# synthetic default: snapshots Maison takes after a recovery and before this script next
+# runs are then already filed under the identity that configuration names.
 write_adapter_descriptor() {
     local hostname storage network
-    hostname="$(kopia_repo_hostname)"
+    hostname="$(kopia_repo_hostname "$CONNECT_HOSTNAME")"
     storage="$(kopia_repo_storage_type)"
     # A repository on a local filesystem needs no network and must not be given one. Only
     # the one-shot path can honour this; the resident container's network is fixed when
@@ -357,6 +427,26 @@ EOF
     chmod 644 "$ADAPTER_FILE"
     chown "$PUID:$PGID" "$ADAPTER_FILE" 2>/dev/null || true
 }
+
+# --- a box in recovery stops here ---------------------------------------------
+#
+# AFTER connect.json, credentials.env and state.json, and that order is the point. This
+# check used to sit before all of them, which froze the storage key on the day the marker
+# was written: a user entering their key weeks later would find `recover` failing on an
+# expired credential, with nothing able to renew it because rotation was skipped too.
+# Everything above is safe in recovery — none of it touches the repository password or
+# configuration.
+#
+# What must not happen is below: minting a password or running `connect`, which on this
+# storage can only fail with 13 again or, if a later bug let it, create a second
+# repository over the user's snapshots.
+#
+# The descriptor IS written, so Maison registers the engine and can offer key entry.
+if [ -f "$RECOVERY_MARKER" ]; then
+    write_adapter_descriptor
+    log_warn "This box is marked as needing backup recovery - not touching the repository (key entry in Maison, or a reset from the dashboard)"
+    exit 0
+fi
 
 # --- engine invocation --------------------------------------------------------
 #
@@ -526,13 +616,14 @@ fi
 # knows what its engine parses — this script used to carry that conversion, and it was
 # the clearest piece of engine-specific knowledge left on the host.
 set +e
+# The values are connect.json's (see there): one set, so the two cannot disagree.
 OUT="$(engine_run connect \
-    --bucket="$BACKUP_BUCKET" \
-    --endpoint="$BACKUP_ENDPOINT" \
-    --region="$BACKUP_REGION" \
-    --prefix="$BACKUP_PREFIX" \
-    --hostname="$BACKUP_DEVICE_ID" \
-    --username=pcs)"
+    --bucket="$CONNECT_BUCKET" \
+    --endpoint="$CONNECT_ENDPOINT" \
+    --region="$CONNECT_REGION" \
+    --prefix="$CONNECT_PREFIX" \
+    --hostname="$CONNECT_HOSTNAME" \
+    --username="$CONNECT_USERNAME")"
 RC=$?
 set -e
 
@@ -571,6 +662,9 @@ if [ "$RC" -eq 13 ]; then
 EOF
     chmod 644 "$RECOVERY_MARKER"
     chown "$PUID:$PGID" "$RECOVERY_MARKER" 2>/dev/null || true
+    # As in the early exit above: Maison must see the engine to offer key entry, and
+    # without this it would wait a whole cycle for the next run to write the descriptor.
+    write_adapter_descriptor
     log_error "Backup space $BACKUP_SPACE_ID already holds a repository and this box has no password."
     log_error "Not creating a second one. The user's emailed encryption key is required to recover."
     exit 0

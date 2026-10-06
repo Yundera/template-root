@@ -40,7 +40,11 @@
 # exercised on a test PCS; a moving tag means the engine can change under a live
 # repository between two self-check cycles, with nothing in the logs to say it did. Bump
 # it deliberately, to a tag that exists, or not at all.
-ENGINE_IMAGE="ghcr.io/yundera/maison-kopia-engine:1.0.1"
+#
+# 1.1.0 is the first build with the `recover` verb (key entry from Maison on a box in
+# needs-recovery) and the `needsRecovery` status field; it reads the connect.json that
+# ensure-backup-config.sh writes beside repository.config.
+ENGINE_IMAGE="ghcr.io/yundera/maison-kopia-engine:1.1.0"
 
 # The adapter binary inside that image. `docker exec` does not apply an image's own
 # ENTRYPOINT, so Maison names this explicitly — and so does this script, which runs the
@@ -125,8 +129,18 @@ KOPIA_LEGACY_ENGINE_DIR="/DATA/AppDataShared/backup/$ENGINE_ID"
 # is recognisable rather than silently divergent. Maison verifies the container against
 # the descriptor before using it either way, so a wrong answer here costs a slower
 # invocation, never a misfiled backup.
+#
+# A CALLER THAT KNOWS THE IDENTITY ALREADY passes it as $1, and it replaces the synthetic
+# fallback. ensure-backup-config.sh does, with BACKUP_DEVICE_ID, for the one case where a
+# descriptor is written with no repository.config at all: a box in needs-recovery. Maison
+# registers the engine from that descriptor and the user's key reconnects it through the
+# adapter's `recover`, which writes repository.config with that same device id — so any
+# snapshot taken between the recovery and the next host run is already filed under the
+# identity the config will then name. ensure-kopia-stack.sh passes nothing: it skips the
+# stack until repository.config exists, so the fallback never reaches a container there.
 kopia_repo_hostname() {
     local config="$KOPIA_ENGINE_DIR/repository.config"
+    local fallback="${1:-maison-unpinned}"
     local host=""
     if [ -r "$config" ]; then
         # Plain text extraction: this runs before Maison is up and the host has no
@@ -134,7 +148,7 @@ kopia_repo_hostname() {
         host="$(sed -n 's/.*"hostname"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$config" | head -n1)"
     fi
     if [ -z "$host" ]; then
-        host="maison-unpinned"
+        host="$fallback"
     fi
     printf '%s' "$host"
 }

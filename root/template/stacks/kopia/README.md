@@ -80,13 +80,17 @@ ensure-backup-credentials.sh  GET ${OPERATOR_API}/user/backup/space?deviceId=…
                               (Bearer USER_JWT)                   → BACKUP_* in .stack.env
                               only when absent, within 30 days of expiry,
                               or engine/needs-credentials exists — NOT every night
+                              (every run while engine/needs-recovery exists: resetAt)
+                              records the space's resetAt as BACKUP_RESET_AT and acts on it
 
 ensure-backup-config.sh       one-shot `docker run ${ENGINE_IMAGE} … --repo-dir=engine/`
+                              connect.json         storage params + identity (every run)
                               credentials.env      (rewritten on rotation)
                               repository.password  (minted once, before the first connect)
                               repository.config    `maison-engine connect` — written ONCE, never rewritten
-                              state.json           label, space, writable, expiry (for Maison)
+                              state.json           label, space, writable, expiry, recoveryHelpUrl
                               adapter.json         descriptor Maison registers the engine from
+                              (needs-recovery: the four above still written, then stop)
 
 ensure-mesh-installed.sh      … Maison's first boot finds a connected repository
 
@@ -115,8 +119,9 @@ Things worth knowing:
   hostname pin because the server reads the identity from the config.
 - **`adapter.json` is written before the reachability probe.** An unreachable repository
   is still this box's destination, and Maison must keep reporting it as unreachable
-  rather than silently backing up to local disk. Only a box with no repository config
-  has no descriptor.
+  rather than silently backing up to local disk. A box in `needs-recovery` gets one too,
+  so Maison can offer key entry. Only a box with no repository config that isn't in
+  recovery has no descriptor.
 
 ### Maison's side
 
@@ -143,7 +148,8 @@ Things worth knowing:
 ```
 /DATA/AppData/kopia/
 ├── docker-compose.yml  .env  .icon.svg  README.md   regenerated every self-check — don't edit
-├── .stack.env                     STATE — BACKUP_* (credential + BACKUP_DEVICE_ID), 600.
+├── .stack.env                     STATE — BACKUP_* (credential + BACKUP_DEVICE_ID +
+│                                  BACKUP_RESET_AT, the last reset the box saw), 600.
 │                                  Written by ensure-backup-credentials.sh; none of it
 │                                  reaches .env (the compose references no BACKUP_*)
 ├── gate-data/                     the gate's sessions
@@ -153,12 +159,38 @@ Things worth knowing:
     │                              was mailed it). Not in any backup.
     ├── repository.config          STATE — identity + storage, written once (S3 keys blanked)
     ├── credentials.env            regenerated from BACKUP_* on rotation (~90 days)
-    ├── state.json  adapter.json   regenerated every run
+    ├── connect.json               bucket/endpoint/region/prefix/hostname/username, 644, every
+    │                              run — what `connect` was given; the adapter's `recover` reads it
+    ├── repository.password.candidate  TRANSIENT — a key the user typed into Maison, written by
+    │                              Maison (600) for `recover`, removed on every outcome
+    ├── state.json  adapter.json   regenerated every run (also in needs-recovery)
     ├── needs-credentials          marker: ask for a new key next cycle
     ├── needs-recovery             marker: bucket holds a repository this box can't open
+    ├── repository.*.reset-<stamp> the old config/password, moved aside after a space reset
     ├── cache/                     CACHE — shared by engine, UI and one-shots; safe to delete
     └── logs/cli-logs/             kopia's per-command logs — where the real errors are
 ```
+
+### Recovery
+
+A rebuilt box whose space already holds a repository gets exit 13 from `connect` and
+writes `needs-recovery`. It keeps rotating its credential and writing `connect.json`,
+`state.json` and `adapter.json`, so Maison still shows the engine, now flagged as
+needing recovery, but it never mints a password or connects. There are two ways out:
+
+- **The user has the key.** They enter it in Maison. Maison writes
+  `repository.password.candidate` and runs the adapter's `recover`, which connects with
+  `connect.json` (connect only, never create), promotes the candidate to
+  `repository.password`, removes the marker and pins the existing snapshots. A wrong
+  key exits 14 and changes nothing.
+- **The key is lost.** The user resets the space from the dashboard
+  (`recoveryHelpUrl`). That revokes every key, empties the prefix and stamps `resetAt`.
+  A box in recovery calls `/backup/space` on every run. When `resetAt` is newer than
+  the marker's `detectedAt`, it removes the marker, and `ensure-backup-config.sh`
+  creates a fresh repository. A box that was healthy notices later, through its revoked
+  key (`needs-credentials`). If its recorded `BACKUP_RESET_AT` differs, it moves
+  `repository.config` and `repository.password` aside to `.reset-<stamp>` and creates
+  a fresh repository too. A box that has never recorded a `resetAt` only records it.
 
 The engine state used to live in `/DATA/AppDataShared/backup/kopia/`.
 `ensure-backup-config.sh` moves it here once and never merges the two.
@@ -195,7 +227,7 @@ sudo sh -c 'grep -l "\"errors\":[1-9]\|error reading" /DATA/AppData/kopia/engine
 
 | Symptom | Cause |
 |---|---|
-| No kopia containers, self-check green | `engine/needs-recovery`: a rebuilt box with no password for the existing repository. Recovery mode isn't built. You need the emailed key, or a deliberate fresh start (empty the prefix, remove the marker, rerun both scripts) |
+| No kopia containers, self-check green | `engine/needs-recovery`: a rebuilt box with no password for the existing repository. Maison asks for the emailed key; without it, the user resets the space from the dashboard (see Recovery). Needs adapter 1.1.0+ and a Maison with key entry |
 | Stack skipped, "no repository.config yet" | No credentials yet (no `USER_JWT`, API down) or `BACKUP_ENABLED=false` |
 | Credentials minted every night | `status` keeps failing, so `needs-credentials` keeps being armed. Check the adapter's detail in the log. Root-owned 0700 dirs in `cache/` read by a non-root run looked exactly like this |
 | Maison shows "backup failed" with spinner frames and `N fatal error(s)` | Maison keeps an 8-line tail, and progress output pushes out the `ERROR` line. Read `engine/logs/cli-logs/` |

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Migration: carry the Dex<->Authelia secrets from .pcs.secret.env into the auth stack's .stack.env
+# Migration: carry the Dex<->Authelia secrets from .pcs.secret.env into the auth stack .stack.env
 
 # Before the switch to the stock mesh template, this template minted the auth
 # stack's two secrets on the box and kept them in the hand-off file:
