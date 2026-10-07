@@ -241,9 +241,10 @@ Container churn, not data loss: the same trade-off §1.3 accepts for every mirro
 to a more important stack. Note that Maison's `Normalize()` rewrites a managed app's compose
 before every up; here that only ever touches the mirror copy, which the next self-check
 re-derives. Uninstall is not a risk — the stack's compose declares
-`x-compose-app.view: system`, which Maison (>= 1.1.5) refuses to stop or uninstall. That
-replaced the maison stack's `PROTECTED_APPS` env, which is gone from Maison at that
-version: protection is now a property the app declares, not one the deployment configures.
+`x-compose-app.lifecycle: {stoppable: false, uninstallable: false}`, which Maison refuses to
+stop or uninstall (Maison 1.1.5 up to that key derived the same guard from `view: system`).
+That replaced the maison stack's `PROTECTED_APPS` env, which is gone from Maison at 1.1.5:
+protection is now a property the app declares, not one the deployment configures.
 
 ### 1.3 Deliberate non-goals and accepted risks
 

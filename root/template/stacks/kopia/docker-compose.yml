@@ -412,11 +412,10 @@ networks:
 #
 # The deployment directory is dotless, so Maison's managed-app scan of /DATA/AppData
 # picks this stack up whether or not this block exists; without it the tile would be
-# nameless and unprotected. `view: system` is the load-bearing half: it groups the tile
-# with the platform rather than the user's apps, makes Maison refuse to stop or
-# uninstall it, and makes the nightly backup skip it — which matters more here than
-# anywhere else, since this stack is what performs that backup. Stopping it from the
-# apps grid would drop every box back to one-shot engine containers.
+# nameless. `view: system` groups the tile with the platform rather than the user's
+# apps — on a current Maison that is all it does; older images also derive the
+# stop/uninstall guard from it, so it stays. `lifecycle` is the guard: stopping this
+# stack from the apps grid would drop every box back to one-shot engine containers.
 #
 # It tiles like any store app otherwise: an icon, and an Open button that goes to the
 # GATE (`kopia-${DOMAIN}`) — the only authenticated way in, and the value that must
@@ -444,16 +443,17 @@ x-compose-app:
   webui-host: kopia-${DOMAIN}
   webui-scheme: https
   webui-path: /
+  lifecycle:
+    stoppable: false
+    uninstallable: false
 
-  # THIS APP IS NOT BACKED UP, and it says so itself rather than leaving `view: system`
-  # to imply it.
+  # THIS APP IS NOT BACKED UP, and it says so itself — `view` carries no backup
+  # behaviour on a current Maison (older images skipped system apps in the nightly run
+  # only, never behind the Backups tab's button).
   #
-  # `view: system` already keeps the nightly run away — but it decides tile grouping and
-  # refusal-to-stop from that same value, and it never reached the manual path at all:
-  # Maison consults it in the scheduler, in stop and in uninstall, and in nothing behind
-  # the Backups tab's button. So a system app could always be backed up by hand, and for
-  # THIS app that is not a cosmetic hole. Backing an app up is stop -> snapshot -> start,
-  # and the container that would be stopped is the one taking the snapshot.
+  # For THIS app the manual path is not a cosmetic hole. Backing an app up is
+  # stop -> snapshot -> start, and the container that would be stopped is the one taking
+  # the snapshot.
   #
   # `skip` is refused in BackupTo, before the app is stopped, that being the single point
   # every caller funnels through — the button, and the update rollback point, which

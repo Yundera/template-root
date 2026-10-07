@@ -120,8 +120,9 @@ mv /DATA/AppData/auth/dex      $Y/dex
 
 ### Decided
 
-- **`auth/authelia` is not backed up, on purpose.** `view: system` stacks are skipped by the
-  nightly backup. A lost password is recovered by Authelia's mail reset; a lost folder drops the
+- **`auth/authelia` is not backed up, on purpose.** The auth stack declares
+  `x-compose-app.backup.skip: true` (until Maison decoupled it, `view: system` alone skipped
+  the nightly backup). A lost password is recovered by Authelia's mail reset; a lost folder drops the
   box back to unclaimed and the owner re-claims. This settles "Scheduled backup skips system
   apps" below for the identity state.
 - **Rolling back past the state move is a manual step** (above). Accepted.
@@ -458,7 +459,9 @@ This permanently retires a bug class rather than merely fixing an instance of it
 ### 2. Scheduled backup skips system apps
 
 `x-compose-app.md`: a `view: system` app is **skipped by scheduled backup**, because backing
-an app up stops it and taking the gateway down nightly is not a backup strategy.
+an app up stops it and taking the gateway down nightly is not a backup strategy. (Since
+superseded: `view` is now only the grid, and each platform stack declares
+`backup.skip: true` itself.)
 
 After the split that exclusion covers `accounts/authelia/users_database.yml`,
 `accounts/authelia/db.sqlite`, `accounts/dex/dex.db`, and `router/certs/` — i.e. every

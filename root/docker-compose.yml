@@ -331,18 +331,25 @@ x-compose-app:
   developer: Yundera Team
   # This stack is the admin app — mesh-router and auth have their own stacks and
   # tiles now (the mesh template's `mesh` and `auth`). `system` puts its tile in Maison's
-  # System grid and, the part that matters, makes Maison refuse to stop or
-  # uninstall it and the nightly backup skip it. It
-  # replaces the maison stack's PROTECTED_APPS env, removed at Maison 1.1.5;
-  # an older image ignores the key entirely, so the guard travels with the pin
-  # in the mesh template's stacks/maison/docker-compose.yml. Restart is still offered.
-  #
-  # Since the root move this file IS /DATA/AppData/yundera/docker-compose.yml,
-  # so Maison's stat(AppsDir/<project>/docker-compose.yml) makes the tile managed
-  # directly — and managed is exactly what makes a stray Uninstall click
-  # reachable. (It used to be a copy placed by ensure-maison-yundera-mirror.sh,
-  # retired with the move.)
+  # System grid — on a current Maison that is all it does. Images before the
+  # lifecycle keys derive the stop/uninstall guard from it (>= 1.1.5, replacing the
+  # maison stack's PROTECTED_APPS env), so it stays; the Maison version is the pin
+  # in the mesh template's stacks/maison/docker-compose.yml.
   view: system
   webui-host: admin-${DOMAIN}
   webui-scheme: https
   webui-path: /
+  # Since the root move this file IS /DATA/AppData/yundera/docker-compose.yml,
+  # so Maison's stat(AppsDir/<project>/docker-compose.yml) makes the tile managed
+  # directly — and managed is exactly what makes a stray Uninstall click
+  # reachable. (It used to be a copy placed by ensure-maison-yundera-mirror.sh,
+  # retired with the move.) Restart is still offered.
+  lifecycle:
+    stoppable: false
+    uninstallable: false
+  # Not backed up. This folder is the platform tree: the template the self-check
+  # re-syncs every night, plus the stacks' secrets — restoring an old copy of it
+  # over a live box does more harm than good. `skip` also closes the manual
+  # Backups-tab path.
+  backup:
+    skip: true
