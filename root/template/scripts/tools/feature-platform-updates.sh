@@ -16,10 +16,9 @@
 # testing hand-placed scripts, `frozen` is the owner opting out. Same value for
 # both and support cannot tell them apart. This script writes only `frozen`.
 #
-# THE MESH TEMPLATE TOO. Its folder updates itself from its own channel, under
-# MESH_AUTO_UPDATE in its own .env. A toggle here writes that key ONCE, so
-# freezing the platform freezes both trees; after that it is the mesh template's
-# key again, and the owner may flip it from Mesh Console on its own.
+# THE MESH TEMPLATE TOO, with nothing to write: this template pins the mesh
+# version (MESH_REF in scripts/library/mesh.sh), so a frozen template tree is a
+# frozen mesh.
 #
 # NO APPLY STEP, unlike the other feature scripts: "apply" here would mean
 # performing an update — download, migrations, stack restart — which is not what
@@ -38,12 +37,6 @@ FLAG="UPDATE_URL"
 STASH="UPDATE_URL_PREVIOUS"
 
 env_get() { "$ENV_MGR" get "$1" "$PCS_ENV" 2>/dev/null || echo ""; }
-
-MESH_ENV="/DATA/AppData/mesh/.env"
-set_mesh_auto_update() {
-    [ -f "$MESH_ENV" ] || return 0
-    "$ENV_MGR" set MESH_AUTO_UPDATE "$1" "$MESH_ENV" >/dev/null
-}
 
 emit() { printf '{"id":"platform-updates","enabled":%s}\n' "$1"; }
 
@@ -67,7 +60,6 @@ case "${1:-}" in
                 # Nothing stashed — drop the var so the template's default applies.
                 "$ENV_MGR" delete "$FLAG" "$PCS_ENV" >/dev/null 2>&1 || true
             fi
-            set_mesh_auto_update true
         fi
         emit true
         ;;
@@ -80,7 +72,6 @@ case "${1:-}" in
             "$ENV_MGR" set "$STASH" "$current" "$PCS_ENV" >/dev/null
         fi
         "$ENV_MGR" set "$FLAG" frozen "$PCS_ENV" >/dev/null
-        set_mesh_auto_update false
         emit false
         ;;
     *)

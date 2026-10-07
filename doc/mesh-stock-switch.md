@@ -34,8 +34,8 @@ only Yundera has. The Yundera self-check is a **strict addition** over the mesh 
 
 | Topic | Decision |
 |---|---|
-| Schedules | **Two independent crons**, one per template: this one at 03:00, the mesh one seeded at 03:30. They touch disjoint compose projects and folders. |
-| Updates | **Each template updates its own folder from its own channel.** A mesh release reaches the fleet without a Yundera release, so the Yundera layer depends only on the contract below, and the mesh `stable` branch is a fleet-facing release. |
+| Schedules | **One cron, this template's** (changed 2026-10-07; was two independent crons). The mesh cron is off (`SELF_CHECK_CRON=disabled`); `ensure-mesh-installed.sh` runs the mesh self-check on every run of this template. |
+| Updates | **Yundera drives the mesh version** (changed 2026-10-07; each template used to update itself from its own channel). `MESH_REF` in `scripts/library/mesh.sh` pins a mesh commit; the mesh `UPDATE_URL` is that commit's tarball, rewritten every run. A mesh release reaches PCS boxes only when a template-root commit moves the pin, so `main` (staging) and `stable` (prod) each carry their own and promotion is a pointer bump. See "Yundera drives the mesh update" below. |
 | Generic behaviour | Lives in the mesh template, **in its best version**. The Yundera copy is deleted, not kept in step. |
 | Yundera-only values | **`.env` keys in the mesh template**, each defaulting to that template's own behaviour. No forked compose file, no override file. |
 | State layout | Each stack's state in the folder named after the stack, on both templates. |
@@ -44,7 +44,7 @@ only Yundera has. The Yundera self-check is a **strict addition** over the mesh 
 | First install on a fresh VM | The mesh **`install.sh` from jsDelivr**, run by this template's self-check during provisioning. |
 | Adopting an existing box | **The same `install.sh`** — the recommended update path, made to take the stack down only on an identity change (or `--clean-restart`), so an adoption costs no outage. |
 | A create whose mesh run fails | **The create fails.** That includes the mesh self-check's check-only steps (root domain reachable, route registered). |
-| Mesh Console's update panel on a PCS | **Neither hidden nor locked.** A PCS follows a pure nsl.sh stack, and its owner drives the mesh channel like any nsl.sh user. |
+| Mesh Console's update panel on a PCS | **Read-only, "managed by Yundera"** (changed 2026-10-07; was neither hidden nor locked). The generic mesh knob `MESH_UPDATES_MANAGED_BY=Yundera` disables the channel picker, makes `set-update-channel.sh` exit `77` and a no-argument `install.sh` refuse. "Run self-check" stays: it only re-syncs the pin and repairs. |
 | `EMAIL` | On a PCS **the orchestrator's value wins**: the mesh knob `EMAIL_SYNC=false` turns its backend lookup off, and the Yundera layer upserts `EMAIL`. |
 | auth-console on a PCS | Points at the mesh folder like everywhere else, so its two Yundera-only panels (onboarding status, support key) are gone there. Accepted: both stay in the admin app. |
 
@@ -56,7 +56,7 @@ only Yundera has. The Yundera self-check is a **strict addition** over the mesh 
 | Stacks | `mesh`, `auth`, `maison`, `terminal` | `yundera` (admin, admin-app), `kopia` |
 | Config | its own `.env` | `.pcs.env`, `.pcs.secret.env`, `.ynd.user.env` → unified `.env` |
 | Self-check | its own list, cron entry (`MESH_ROUTER_SELFCHECK`), lock, log (`mesh/log/mesh.log`), migrations, markers | its own list, cron entries, lock, log, migrations, markers |
-| Updates | its own channel (`UPDATE_URL` in the mesh `.env`, a `.tar.gz`) | its own channel (`UPDATE_URL` in `.pcs.env`, a `.zip`) |
+| Updates | the commit this template pins (`UPDATE_URL` in the mesh `.env`, written by this template), applied by its own sync and migrations | its own channel (`UPDATE_URL` in `.pcs.env`, a `.zip`), which carries `MESH_REF` |
 | Host | Docker (no-op when present), yq, cron, logrotate | pcs/admin users, sshd, swap, apt, support key, IP family, the `ens19` IPv6 interface |
 | Control plane | none | `OPERATOR_API`, `USER_JWT`, Yundera Login, backup credentials |
 
@@ -123,9 +123,10 @@ back what they changed.
 
 | Key | Initial value |
 |---|---|
-| `UPDATE_URL` | the **mesh** channel: `main.tar.gz` when this template follows `main` (staging), else `stable.tar.gz`. Also replaced while it still holds the `.zip` this template upserted before the switch. `MESH_UPDATE_URL` in `.pcs.env` overrides it (tests, forks); `MESH_INSTALLER_URL` overrides the installer. |
-| `MESH_AUTO_UPDATE` | `true`; `false` when this template is frozen. "Freeze platform updates" (`feature-platform-updates.sh`) writes it once on each toggle. |
-| `SELF_CHECK_CRON` | `30 3 * * *` — after this template's 03:00 |
+| `UPDATE_URL` | **every run**: `…/archive/<MESH_REF>.tar.gz`, the pinned commit. `MESH_UPDATE_URL` in `.pcs.env` overrides it (tests, forks); `MESH_INSTALLER_URL` overrides the installer (default jsDelivr `@<MESH_REF>`, immutable, never needs a purge). "Freeze platform updates" needs nothing here: a frozen tree never moves `MESH_REF`. |
+| `MESH_AUTO_UPDATE` | **every run**: `true`. The mesh sync is how a moved pin is applied *with its migrations*; `false` would make the mesh skip them. |
+| `SELF_CHECK_CRON` | **every run**: `disabled` — the mesh removes its own cron entry; this template runs the mesh self-check. |
+| `MESH_UPDATES_MANAGED_BY` | **every run**: `Yundera` — Mesh Console's Update page read-only, mesh `set-update-channel.sh` refuses. |
 | `DEFAULT_SERVICE_HOST` / `_PORT` | from `.pcs.env`; Mesh Console's default-app editor owns them afterwards |
 | `LOCAL_ADMIN_USER` | from `.pcs.env`; the claim owns it afterwards |
 | `MESH_CONSOLE_ASSERTION_SECRET` | from `.pcs.secret.env` when this template minted it before the switch — what keeps it stable across it |
@@ -189,9 +190,9 @@ Dex → Authelia reaching the Authelia login, a second run recreating no contain
 | Mesh step | On a PCS |
 |---|---|
 | scripts-executable, logrotate, yq, docker | fine; no-ops after the Yundera host steps |
-| `ensure-nightly-self-check` | its own cron entry, 03:30 |
+| `ensure-nightly-self-check` | removes its own cron entry (`SELF_CHECK_CRON=disabled`) |
 | `ensure-env-valid` | fine: the contract keys are in |
-| `ensure-template-sync` | updates the mesh folder from the mesh channel; independent of this template's sync |
+| `ensure-template-sync` | syncs the mesh folder to the pinned commit (a no-op re-sync unless `MESH_REF` moved), migrations included |
 | `ensure-public-ip` | the mesh version, in `interface` mode |
 | `ensure-email-synced` | skipped: `EMAIL_SYNC=false` |
 | `ensure-authelia`, `ensure-dex-session-key`, `ensure-dex` | the mesh version; branding and theme come from the `.env` keys |
@@ -233,3 +234,28 @@ Known, and deliberately not blocking:
   through `library/mesh.sh`, and `self-check.sh` / `self-check-reboot.sh` skip a box the mesh
   marks retired. The admin-app pipeline goes once the orchestrator speaks `migrate.sh`. Its
   `dev/run/bootstrap.sh` still calls scripts this template no longer has.
+
+## Yundera drives the mesh update (2026-10-07)
+
+The 2026-10-01 design let each template update itself from its own channel, so a mesh
+`stable` push reached every production PCS with no Yundera say. That is reversed: Yundera
+decides when a mesh release reaches its boxes.
+
+- **The pin.** `MESH_REF` (a full, pushed SHA of `Yundera/mesh-router-template-root`) in
+  `scripts/library/mesh.sh`. To release a mesh version to a channel, move `MESH_REF` on
+  that template-root branch. Never move it backwards past what boxes run: mesh migrations
+  are one-way.
+- **How it lands.** `ensure-mesh-installed.sh` upserts `UPDATE_URL=…/archive/<MESH_REF>.tar.gz`
+  and then runs the mesh self-check, whose `ensure-template-sync.sh` downloads that commit,
+  runs its migrations from the new tree, swaps it in and writes `.revision.json` — the
+  normal mesh update path. Re-running `install.sh` was rejected for updates: with
+  `MESH_AUTO_UPDATE=false` it lays the tree down **without running migrations**.
+- **One cron.** The mesh one is off; this template's nightly (and @reboot) run calls the mesh
+  self-check every time. A fresh install or an adoption still goes through `install.sh`,
+  which runs the mesh self-check itself, so that run does not repeat it.
+- **Locked from the box.** `MESH_UPDATES_MANAGED_BY=Yundera` (a generic mesh knob, see the
+  mesh README): Mesh Console's Update page shows the pinned target read-only and skips the
+  GitHub "latest" lookup, `set-update-channel.sh` exits `77`, and `install.sh` with no
+  arguments refuses. "Run self-check" stays available.
+- **Testing.** `MESH_UPDATE_URL` / `MESH_INSTALLER_URL` in `.pcs.env` still override the pin
+  (a `file://` tarball, see the mesh README).

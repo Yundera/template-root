@@ -2,14 +2,21 @@
 # mesh.sh - the contract between this template and the stock mesh template.
 #
 # A PCS runs Yundera/mesh-router-template-root UNMODIFIED in /DATA/AppData/mesh
-# (mesh, auth, maison and terminal stacks, its own self-check, cron, lock, log and
-# update channel). This template never edits a file the mesh template wrote. It
-# only writes INPUTS the mesh template reads — keys in its .env, drop-in files —
-# and runs the mesh scripts that consume them. See doc/mesh-stock-switch.md.
+# (mesh, auth, maison and terminal stacks, its own self-check, lock, log and
+# migrations). This template never edits a file the mesh template wrote. It only
+# writes INPUTS the mesh template reads — keys in its .env, drop-in files — and
+# runs the mesh scripts that consume them. See doc/mesh-stock-switch.md.
+#
+# YUNDERA DRIVES THE MESH VERSION (2026-10-07, doc/mesh-stock-switch.md, "Yundera
+# drives the mesh update"). The mesh template is pinned to MESH_REF below, its own
+# cron is off, and this template's nightly self-check runs the mesh self-check
+# itself — one cron per box. A mesh release reaches a PCS only when a template-root
+# commit moves MESH_REF, so staging (template-root main) and production (stable)
+# each carry their own pin and promotion is a pointer bump.
 #
 # Everything this template knows about the mesh template is in this file: where
-# it lives, which channel a PCS follows, which .env keys go which way, and how to
-# run one of its scripts without racing its own cron.
+# it lives, which version a PCS runs, which .env keys go which way, and how to
+# run one of its scripts without racing its own lock.
 #
 # Expects log.sh to be sourced already.
 
@@ -24,6 +31,13 @@ MESH_SCRIPTS="$MESH_ROOT/scripts"
 MESH_LOCK="/var/run/mesh-self-check.lock"
 MESH_REPO_URL="https://github.com/yundera/mesh-router-template-root"
 MESH_CDN_BASE="https://cdn.jsdelivr.net/gh/yundera/mesh-router-template-root"
+
+# THE MESH VERSION every PCS on this branch runs: a full commit SHA of
+# Yundera/mesh-router-template-root, which must be pushed. Moving it is a mesh
+# release for this channel — the next nightly run syncs every box to it through the
+# mesh template's own sync (migrations, revision marker). Never point it at an
+# older commit than the boxes run: mesh migrations are not reversible.
+MESH_REF="c6a76c72ffd8862b530c7cf520fe66ce8e6f9efe"
 
 MESH_ENV_MGR="$YND_TEMPLATE/scripts/tools/env-file-manager.sh"
 
@@ -41,6 +55,14 @@ MESH_KEYS_EVERY_RUN="EMAIL DEFAULT_PWD TERMINAL_ENABLED SMTP_TO APPSTORE_URL OPE
 # "Configuration (.env keys)"). EMAIL_SYNC=false because on a PCS the
 # orchestrator's EMAIL is authoritative and upserted above; the mesh template's
 # backend lookup would otherwise write its own value back on every run.
+#
+# The update keys hand the mesh version to this template: UPDATE_URL is the pinned
+# commit (written in mesh_write_contract), MESH_AUTO_UPDATE stays true so the mesh
+# sync applies a pin change with its migrations (false would skip them),
+# SELF_CHECK_CRON=disabled removes the mesh's own cron entry (this template's
+# nightly run calls the mesh self-check instead), and MESH_UPDATES_MANAGED_BY
+# makes Mesh Console's Update page read-only and the mesh set-update-channel.sh
+# refuse.
 #
 # The two MIGRATE_* keys plug this template into the mesh migrate.sh (its README,
 # "Moving the box to another machine"): run this template's self-check on the
@@ -60,14 +82,17 @@ PLATFORM_PROJECTS=mesh,auth,yundera,maison,kopia,terminal
 TRUSTED_PUBKEY_HOST_SUFFIXES=yundera.com
 BACKUP_ENGINE_CONTAINER=kopia-engine
 EMAIL_SYNC=false
+MESH_AUTO_UPDATE=true
+SELF_CHECK_CRON=disabled
+MESH_UPDATES_MANAGED_BY=Yundera
 MIGRATE_TARGET_SELF_CHECK=$YND_TEMPLATE/scripts/self-check.sh
 MIGRATE_HOLD_LOCKS=/var/run/yundera-self-check.lock
 EOF
 }
 
 # SEED ONCE: written only when absent from the mesh .env, then the mesh stack's
-# own. Either the owner may change them from Mesh Console (the update channel,
-# the schedule, the default app) or the mesh template writes them itself (the
+# own. Either the owner may change them from Mesh Console (the default app) or
+# the mesh template writes them itself (the
 # claimed owner name, the secrets it would otherwise mint). A nightly upsert
 # would put back what they changed. The secrets are seeded from .pcs.secret.env
 # when this template minted them before the switch, which is what keeps them
@@ -87,10 +112,6 @@ MESH_KEYS_SEED_ONCE="DEFAULT_SERVICE_HOST DEFAULT_SERVICE_PORT LOCAL_ADMIN_USER
 # from the mesh .env into the unified .env, over any stale .pcs.env copy.
 MESH_KEYS_READ_BACK="PUBLIC_IP PUBLIC_IP_DASH PUBLIC_IPV4 PUBLIC_IPV4_DASH PUBLIC_IPV6 PUBLIC_IPV6_DASH
     DEFAULT_SERVICE_HOST DEFAULT_SERVICE_PORT LOCAL_ADMIN_USER"
-
-# The nightly schedule seeded for the mesh cron: after this template's own 03:00
-# run, so a value this template upserts at 03:00 is applied by the mesh at 03:30.
-MESH_SELF_CHECK_CRON_DEFAULT="30 3 * * *"
 
 # --- reading ---------------------------------------------------------------------
 
@@ -120,47 +141,33 @@ mesh_installed() {
     [ -f "$MESH_SCRIPTS/self-check.sh" ]
 }
 
-# --- channel -------------------------------------------------------------------
+# --- version -------------------------------------------------------------------
 
-# The mesh branch a PCS follows, from this template's own channel: a box on
-# template-root `main` (staging) follows mesh `main`, everything else `stable`.
-# The mesh template updates itself from that channel from then on — this only
-# decides the value seeded at install.
-mesh_channel_branch() {
-    case "$(ynd_source_get UPDATE_URL 2>/dev/null || true)" in
-        */template-root/archive/refs/heads/main.zip) echo main ;;
-        *) echo stable ;;
-    esac
-}
-
-# The tarball the mesh installs from. MESH_UPDATE_URL in .pcs.env overrides it —
-# a test tree served as file:// (see the mesh template's README), or a fork.
+# The tarball the mesh installs and syncs from: the MESH_REF commit. A commit
+# tarball is immutable, so the mesh's nightly sync can only ever re-apply it.
+# MESH_UPDATE_URL in .pcs.env overrides it — a test tree served as file:// (see
+# the mesh template's README), or a fork.
 mesh_channel_url() {
     local override
     override="$("$MESH_ENV_MGR" get MESH_UPDATE_URL "$YND_ROOT/.pcs.env" 2>/dev/null || true)"
     if [ -n "$override" ]; then
         echo "$override"
     else
-        echo "$MESH_REPO_URL/archive/refs/heads/$(mesh_channel_branch).tar.gz"
+        echo "$MESH_REPO_URL/archive/$MESH_REF.tar.gz"
     fi
 }
 
-# The installer, from jsDelivr at the same branch. MESH_INSTALLER_URL in .pcs.env
-# overrides it, for the same reasons. jsDelivr caches it for 12h: a mesh release
-# that changes install.sh needs the purge its README describes.
+# The installer, from jsDelivr at the same commit — an immutable URL, so no purge
+# is ever needed. MESH_INSTALLER_URL in .pcs.env overrides it, for the same
+# reasons as MESH_UPDATE_URL.
 mesh_installer_url() {
-    local override branch
+    local override
     override="$("$MESH_ENV_MGR" get MESH_INSTALLER_URL "$YND_ROOT/.pcs.env" 2>/dev/null || true)"
     if [ -n "$override" ]; then
         echo "$override"
-        return 0
+    else
+        echo "$MESH_CDN_BASE@$MESH_REF/install.sh"
     fi
-    branch="$(mesh_channel_branch)"
-    case "$(mesh_channel_url)" in
-        */archive/refs/heads/*.tar.gz)
-            branch="$(mesh_channel_url)"; branch="${branch##*/heads/}"; branch="${branch%.tar.gz}" ;;
-    esac
-    echo "$MESH_CDN_BASE@$branch/install.sh"
 }
 
 # --- writing -------------------------------------------------------------------
@@ -213,21 +220,10 @@ mesh_write_contract() {
         upsert_mesh_env "$key" "$value"
     done
 
-    # The update channel. Also replaced when it still holds a .zip: before the
-    # switch this template upserted its OWN channel here every night, and the
-    # mesh template only reads .tar.gz.
-    case "$(mesh_env_get UPDATE_URL)" in
-        ""|*.zip) upsert_mesh_env UPDATE_URL "$(mesh_channel_url)" ;;
-    esac
-    if ! mesh_env_has MESH_AUTO_UPDATE; then
-        # "Freeze platform updates" freezes the mesh too (feature-platform-updates.sh).
-        if [ "$(ynd_source_get UPDATE_URL 2>/dev/null || true)" = "frozen" ]; then
-            upsert_mesh_env MESH_AUTO_UPDATE false
-        else
-            upsert_mesh_env MESH_AUTO_UPDATE true
-        fi
-    fi
-    mesh_env_has SELF_CHECK_CRON || upsert_mesh_env SELF_CHECK_CRON "$MESH_SELF_CHECK_CRON_DEFAULT"
+    # The mesh version, every run: moving MESH_REF (or MESH_UPDATE_URL) is how a
+    # box gets a new mesh. "Freeze platform updates" freezes it too, for free: a
+    # frozen template tree never changes MESH_REF.
+    upsert_mesh_env UPDATE_URL "$(mesh_channel_url)"
 }
 
 # --- running -------------------------------------------------------------------

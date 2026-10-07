@@ -1,15 +1,17 @@
 #!/bin/bash
-# ensure-mesh-installed.sh - Install the stock mesh template once, then keep its
-# inputs current.
+# ensure-mesh-installed.sh - Install the stock mesh template once, keep its inputs
+# current, and run it.
 #
 # A PCS runs Yundera/mesh-router-template-root UNMODIFIED in /DATA/AppData/mesh:
-# the mesh, auth, maison and terminal stacks, with its own self-check, cron, lock,
-# log, migrations and update channel. This template only hands it inputs (the
-# contract in library/mesh.sh, doc/mesh-stock-switch.md).
+# the mesh, auth, maison and terminal stacks, with its own self-check, lock, log
+# and migrations. This template hands it inputs (the contract in library/mesh.sh,
+# doc/mesh-stock-switch.md) and drives it: it pins the mesh version (MESH_REF) and
+# the mesh has no cron of its own, so this script is what runs it every night.
 #
 # EVERY RUN
 #   Write the contract into the mesh .env: the keys Yundera is the source of
-#   truth for, the PCS constants, and the seed-once keys that are still absent.
+#   truth for, the PCS constants (the pinned UPDATE_URL among them), and the
+#   seed-once keys that are still absent.
 #
 # INSTALL, through the mesh install.sh, when
 #   - the mesh template is not installed yet: a fresh VM, or a box still running
@@ -22,8 +24,10 @@
 #   a PCS whose mesh is not operational is not a PCS. That includes the mesh
 #   self-check's check-only steps (root domain reachable, route registered).
 #
-# OTHERWISE, when a key changed, run the mesh self-check now ("trigger, don't
-# wait"): it would otherwise sit for up to a day until the mesh cron.
+# OTHERWISE, run the mesh self-check. It is the mesh's only scheduled run
+# (SELF_CHECK_CRON=disabled), and it is how a moved MESH_REF arrives: the mesh
+# sync downloads the pinned commit and applies its migrations. Once per run of
+# this template — nightly, @reboot, or by hand.
 #
 # ORDERING: after the host steps (users, Docker) and ensure-yundera-user-data.sh,
 # which supplies DOMAIN/EMAIL; BEFORE ensure-env-vars-valid.sh, which reads the
@@ -74,9 +78,11 @@ fi
 
 if [ -z "$INSTALL_REASON" ]; then
     if [ "$MESH_ENV_CHANGED" = 1 ]; then
-        log_info "Mesh inputs changed; running the mesh self-check now"
-        mesh_self_check_now
+        log_info "Mesh inputs changed; running the mesh self-check"
+    else
+        log_info "Running the mesh self-check"
     fi
+    mesh_self_check_now
     exit 0
 fi
 
