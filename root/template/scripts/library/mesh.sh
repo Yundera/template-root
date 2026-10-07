@@ -37,7 +37,7 @@ MESH_CDN_BASE="https://cdn.jsdelivr.net/gh/yundera/mesh-router-template-root"
 # release for this channel — the next nightly run syncs every box to it through the
 # mesh template's own sync (migrations, revision marker). Never point it at an
 # older commit than the boxes run: mesh migrations are not reversible.
-MESH_REF="c6a76c72ffd8862b530c7cf520fe66ce8e6f9efe"
+MESH_REF="916e285016c245f28d1937a5c6370104e67dbe59"
 
 MESH_ENV_MGR="$YND_TEMPLATE/scripts/tools/env-file-manager.sh"
 
