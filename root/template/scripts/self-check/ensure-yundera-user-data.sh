@@ -78,7 +78,7 @@ if identity_ring_doorbell "$OPERATOR_API"; then
     done
     echo "Doorbell rang, no push arrived within 45s; falling back to pull"
 else
-    echo "Doorbell unreachable at ${OPERATOR_API}/identity/doorbell; falling back to pull"
+    echo "Doorbell at ${OPERATOR_API}/identity/doorbell did not answer 204 (operator without identity push, or unreachable); falling back to pull"
 fi
 
 # Read USER_JWT from secret env file
