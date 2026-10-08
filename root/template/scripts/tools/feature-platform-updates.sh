@@ -16,9 +16,9 @@
 # testing hand-placed scripts, `frozen` is the owner opting out. Same value for
 # both and support cannot tell them apart. This script writes only `frozen`.
 #
-# THE MESH TEMPLATE TOO, with nothing to write: this template pins the mesh
-# version (MESH_REF in scripts/library/mesh.sh), so a frozen template tree is a
-# frozen mesh.
+# THE MESH TEMPLATE TOO, with nothing to write: on a frozen box the next self-check
+# holds the mesh on the commit it already runs instead of following its branch
+# (mesh_target_ref in scripts/library/mesh.sh); enabling puts it back on the branch.
 #
 # NO APPLY STEP, unlike the other feature scripts: "apply" here would mean
 # performing an update — download, migrations, stack restart — which is not what

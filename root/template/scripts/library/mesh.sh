@@ -8,11 +8,12 @@
 # runs the mesh scripts that consume them. See doc/mesh-stock-switch.md.
 #
 # YUNDERA DRIVES THE MESH VERSION (2026-10-07, doc/mesh-stock-switch.md, "Yundera
-# drives the mesh update"). The mesh template is pinned to MESH_REF below, its own
-# cron is off, and this template's nightly self-check runs the mesh self-check
-# itself — one cron per box. A mesh release reaches a PCS only when a template-root
-# commit moves MESH_REF, so staging (template-root main) and production (stable)
-# each carry their own pin and promotion is a pointer bump.
+# drives the mesh update"). The mesh template follows the mesh branch named like
+# this box's own channel — template-root main (staging) runs mesh main, stable
+# (production) runs mesh stable — its own cron is off, and this template's nightly
+# self-check runs the mesh self-check itself, one cron per box. A mesh release
+# reaches a channel when it is pushed to that mesh branch; MESH_REF below can pin
+# a channel to one commit instead.
 #
 # Everything this template knows about the mesh template is in this file: where
 # it lives, which version a PCS runs, which .env keys go which way, and how to
@@ -32,12 +33,13 @@ MESH_LOCK="/var/run/mesh-self-check.lock"
 MESH_REPO_URL="https://github.com/yundera/mesh-router-template-root"
 MESH_CDN_BASE="https://cdn.jsdelivr.net/gh/yundera/mesh-router-template-root"
 
-# THE MESH VERSION every PCS on this branch runs: a full commit SHA of
-# Yundera/mesh-router-template-root, which must be pushed. Moving it is a mesh
-# release for this channel — the next nightly run syncs every box to it through the
-# mesh template's own sync (migrations, revision marker). Never point it at an
-# older commit than the boxes run: mesh migrations are not reversible.
-MESH_REF="916e285016c245f28d1937a5c6370104e67dbe59"
+# OPTIONAL PIN. Empty: every box follows the mesh branch of its channel (see
+# mesh_target_ref). Set to a full, pushed commit SHA of
+# Yundera/mesh-router-template-root to hold this template-root branch on that
+# commit instead — an escape hatch while a mesh branch carries a bad release. Never
+# point it at an older commit than the boxes run: mesh migrations are not
+# reversible.
+MESH_REF=""
 
 MESH_ENV_MGR="$YND_TEMPLATE/scripts/tools/env-file-manager.sh"
 
@@ -56,10 +58,9 @@ MESH_KEYS_EVERY_RUN="EMAIL DEFAULT_PWD TERMINAL_ENABLED SMTP_TO APPSTORE_URL OPE
 # orchestrator's EMAIL is authoritative and upserted above; the mesh template's
 # backend lookup would otherwise write its own value back on every run.
 #
-# The update keys hand the mesh version to this template: UPDATE_URL is the pinned
-# commit (written in mesh_write_contract), MESH_AUTO_UPDATE stays true so the mesh
-# sync applies a pin change with its migrations (false would skip them),
-# SELF_CHECK_CRON=disabled removes the mesh's own cron entry (this template's
+# The update keys hand the mesh version to this template: UPDATE_URL and
+# MESH_AUTO_UPDATE are written in mesh_write_contract (the branch or commit to
+# follow), SELF_CHECK_CRON=disabled removes the mesh's own cron entry (this template's
 # nightly run calls the mesh self-check instead), and MESH_UPDATES_MANAGED_BY
 # makes Mesh Console's Update page read-only and the mesh set-update-channel.sh
 # refuse.
@@ -82,7 +83,6 @@ PLATFORM_PROJECTS=mesh,auth,yundera,maison,kopia,terminal
 TRUSTED_PUBKEY_HOST_SUFFIXES=yundera.com
 BACKUP_ENGINE_CONTAINER=kopia-engine
 EMAIL_SYNC=false
-MESH_AUTO_UPDATE=true
 SELF_CHECK_CRON=disabled
 MESH_UPDATES_MANAGED_BY=Yundera
 MIGRATE_TARGET_SELF_CHECK=$YND_TEMPLATE/scripts/self-check.sh
@@ -143,30 +143,91 @@ mesh_installed() {
 
 # --- version -------------------------------------------------------------------
 
-# The tarball the mesh installs and syncs from: the MESH_REF commit. A commit
-# tarball is immutable, so the mesh's nightly sync can only ever re-apply it.
-# MESH_UPDATE_URL in .pcs.env overrides it — a test tree served as file:// (see
-# the mesh template's README), or a fork.
+# This box's own channel, from UPDATE_URL in .pcs.env: main, stable or frozen.
+# Unset is the template default (stable.zip, ensure-template-sync.sh); `frozen`
+# (the owner's "Freeze platform updates") and `local` (a developer's hand-placed
+# tree) both stop the template moving, so they stop the mesh too. Anything else —
+# a fork, a file:// test tree — follows stable unless MESH_UPDATE_URL says otherwise.
+ynd_template_channel() {
+    case "$("$MESH_ENV_MGR" get UPDATE_URL "$YND_ROOT/.pcs.env" 2>/dev/null || true)" in
+        frozen|local) echo frozen ;;
+        */main.zip)   echo main ;;
+        *)            echo stable ;;
+    esac
+}
+
+# The commit the installed mesh tree came from: the mesh sync's revision marker,
+# else a commit-tarball UPDATE_URL (the former MESH_REF pin). Nothing when neither
+# says.
+mesh_installed_commit() {
+    local commit url
+    commit="$(grep -o '"commit":"[0-9a-f]\{40\}"' "$MESH_ROOT/template/.revision.json" 2>/dev/null \
+        | cut -d'"' -f4 || true)"
+    if [ -z "$commit" ]; then
+        url="$(mesh_env_get UPDATE_URL)"
+        [[ "$url" =~ /archive/([0-9a-f]{40})\.tar\.gz$ ]] && commit="${BASH_REMATCH[1]}"
+    fi
+    echo "$commit"
+}
+
+# What the mesh follows: MESH_REF when set; else the mesh branch named like this
+# box's channel; on a frozen box, the commit it already runs, so the nightly mesh
+# self-check re-applies the same tree. Empty only for a frozen box whose commit is
+# unknown (mesh_write_contract turns its sync off).
+mesh_target_ref() {
+    if [ -n "$MESH_REF" ]; then
+        echo "$MESH_REF"
+        return
+    fi
+    case "$(ynd_template_channel)" in
+        frozen) mesh_installed_commit ;;
+        main)   echo main ;;
+        *)      echo stable ;;
+    esac
+}
+
+mesh_is_commit() {
+    [[ "$1" =~ ^[0-9a-f]{40}$ ]]
+}
+
+# The tarball the mesh installs and syncs from: a branch tarball, re-downloaded by
+# the mesh sync every night, or a commit tarball, which can only ever be
+# re-applied. MESH_UPDATE_URL in .pcs.env overrides it — a test tree served as
+# file:// (see the mesh template's README), or a fork. Falls back to stable for a
+# frozen box with no known commit: only an install (identity change, adoption)
+# asks then, and it needs some tree.
 mesh_channel_url() {
-    local override
+    local override ref
     override="$("$MESH_ENV_MGR" get MESH_UPDATE_URL "$YND_ROOT/.pcs.env" 2>/dev/null || true)"
     if [ -n "$override" ]; then
+        return
+    fi
+    ref="$(mesh_target_ref)"
+    if mesh_is_commit "$ref"; then
+        echo "$MESH_REPO_URL/archive/$ref.tar.gz"
         echo "$override"
     else
-        echo "$MESH_REPO_URL/archive/$MESH_REF.tar.gz"
+        echo "$MESH_REPO_URL/archive/refs/heads/${ref:-stable}.tar.gz"
     fi
 }
 
-# The installer, from jsDelivr at the same commit — an immutable URL, so no purge
-# is ever needed. MESH_INSTALLER_URL in .pcs.env overrides it, for the same
-# reasons as MESH_UPDATE_URL.
+# The installer at the same ref. A commit comes from jsDelivr, immutable. A branch
+# comes from raw.githubusercontent.com, whose cache is minutes: jsDelivr caches a
+# branch for 12h, so a fresh create could run an installer older than the tree it
+# installs. MESH_INSTALLER_URL in .pcs.env overrides it, for the same reasons as
+# MESH_UPDATE_URL.
 mesh_installer_url() {
-    local override
+    local override ref
     override="$("$MESH_ENV_MGR" get MESH_INSTALLER_URL "$YND_ROOT/.pcs.env" 2>/dev/null || true)"
     if [ -n "$override" ]; then
+        return
+    fi
+    ref="$(mesh_target_ref)"
+    if mesh_is_commit "$ref"; then
+        echo "$MESH_CDN_BASE@$ref/install.sh"
         echo "$override"
     else
-        echo "$MESH_CDN_BASE@$MESH_REF/install.sh"
+        echo "https://raw.githubusercontent.com/yundera/mesh-router-template-root/${ref:-stable}/install.sh"
     fi
 }
 
@@ -220,10 +281,19 @@ mesh_write_contract() {
         upsert_mesh_env "$key" "$value"
     done
 
-    # The mesh version, every run: moving MESH_REF (or MESH_UPDATE_URL) is how a
-    # box gets a new mesh. "Freeze platform updates" freezes it too, for free: a
-    # frozen template tree never changes MESH_REF.
-    upsert_mesh_env UPDATE_URL "$(mesh_channel_url)"
+    # The mesh version, every run, so a box follows its channel as it changes
+    # (staging -> stable, a freeze, an unfreeze). MESH_AUTO_UPDATE stays true so the
+    # mesh sync applies a new tree WITH its migrations (false would skip them) —
+    # except on a frozen box whose commit is unknown: there is no tree to hold it
+    # on, so the sync is turned off and its UPDATE_URL left as it is.
+    if [ "$(ynd_template_channel)" = frozen ] && [ -z "$MESH_REF" ] \
+        && [ -z "$("$MESH_ENV_MGR" get MESH_UPDATE_URL "$YND_ROOT/.pcs.env" 2>/dev/null || true)" ] \
+        && [ -z "$(mesh_installed_commit)" ]; then
+        upsert_mesh_env MESH_AUTO_UPDATE false
+    else
+        upsert_mesh_env MESH_AUTO_UPDATE true
+        upsert_mesh_env UPDATE_URL "$(mesh_channel_url)"
+    fi
 }
 
 # --- running -------------------------------------------------------------------

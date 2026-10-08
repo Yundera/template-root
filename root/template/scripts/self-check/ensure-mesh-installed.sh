@@ -5,12 +5,13 @@
 # A PCS runs Yundera/mesh-router-template-root UNMODIFIED in /DATA/AppData/mesh:
 # the mesh, auth, maison and terminal stacks, with its own self-check, lock, log
 # and migrations. This template hands it inputs (the contract in library/mesh.sh,
-# doc/mesh-stock-switch.md) and drives it: it pins the mesh version (MESH_REF) and
-# the mesh has no cron of its own, so this script is what runs it every night.
+# doc/mesh-stock-switch.md) and drives it: it picks the mesh version (the mesh
+# branch of this box's channel, or MESH_REF) and the mesh has no cron of its own,
+# so this script is what runs it every night.
 #
 # EVERY RUN
 #   Write the contract into the mesh .env: the keys Yundera is the source of
-#   truth for, the PCS constants (the pinned UPDATE_URL among them), and the
+#   truth for, the PCS constants (UPDATE_URL, the version to follow, among them), and the
 #   seed-once keys that are still absent.
 #
 # INSTALL, through the mesh install.sh, when
@@ -25,8 +26,8 @@
 #   self-check's check-only steps (root domain reachable, route registered).
 #
 # OTHERWISE, run the mesh self-check. It is the mesh's only scheduled run
-# (SELF_CHECK_CRON=disabled), and it is how a moved MESH_REF arrives: the mesh
-# sync downloads the pinned commit and applies its migrations. Once per run of
+# (SELF_CHECK_CRON=disabled), and it is how a mesh release arrives: the mesh
+# sync downloads its branch (or pinned commit) and applies its migrations. Once per run of
 # this template — nightly, @reboot, or by hand.
 #
 # ORDERING: after the host steps (users, Docker) and ensure-yundera-user-data.sh,

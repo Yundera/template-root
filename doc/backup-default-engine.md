@@ -238,7 +238,7 @@ Neither is caused by the two issues above, and both are worth a separate look.
    for `backupconfig` and the scheduler; extend rather than add a new suite.
 2. Tag Maison (GitHub Action publishes `ghcr.io/yundera/maison` on `v*`), then bump the pin
    in the **mesh template** (`mesh-router-template-root`: `stacks/maison/docker-compose.yml`),
-   then move `MESH_REF` here. (When this was written the pin lived in this repo's
+   then promote the mesh branch. (When this was written the pin lived in this repo's
    `root/stacks/maison/`, since removed by the stock mesh switch.)
 3. No template-root script changes are required by the proposal as it stands. If the
    `state.json` route is chosen instead, `ensure-backup-config.sh` gains one field.
