@@ -3,7 +3,7 @@
 # current, and run it.
 #
 # A PCS runs Yundera/mesh-router-template-root UNMODIFIED in /DATA/AppData/mesh:
-# the mesh, auth, maison and terminal stacks, with its own self-check, lock, log
+# the mesh, auth and maison stacks, with its own self-check, lock, log
 # and migrations. This template hands it inputs (the contract in library/mesh.sh,
 # doc/mesh-stock-switch.md) and drives it: it picks the mesh version (the mesh
 # branch of this box's channel, or MESH_REF) and the mesh has no cron of its own,

@@ -2,7 +2,7 @@
 # mesh.sh - the contract between this template and the stock mesh template.
 #
 # A PCS runs Yundera/mesh-router-template-root UNMODIFIED in /DATA/AppData/mesh
-# (mesh, auth, maison and terminal stacks, its own self-check, lock, log and
+# (mesh, auth and maison stacks, its own self-check, lock, log and
 # migrations). This template never edits a file the mesh template wrote. It only
 # writes INPUTS the mesh template reads — keys in its .env, drop-in files — and
 # runs the mesh scripts that consume them. See doc/mesh-stock-switch.md.
@@ -51,7 +51,7 @@ MESH_ENV_MGR="$YND_TEMPLATE/scripts/tools/env-file-manager.sh"
 # change goes through the mesh install.sh (--provider/--domain), which is what
 # takes the mesh stack down to apply it cleanly. Upserting them here first would
 # hide the change from the installer. See ensure-mesh-installed.sh.
-MESH_KEYS_EVERY_RUN="EMAIL DEFAULT_PWD TERMINAL_ENABLED SMTP_TO APPSTORE_URL OPERATOR_API"
+MESH_KEYS_EVERY_RUN="EMAIL DEFAULT_PWD SMTP_TO APPSTORE_URL OPERATOR_API"
 
 # Constants: what a PCS is, in the mesh template's own knobs (its README,
 # "Configuration (.env keys)"). EMAIL_SYNC=false because on a PCS the
@@ -76,10 +76,9 @@ DATA_ROOT=/DATA
 PUID=1000
 PGID=1000
 PUBLIC_IP_MODE=interface
-TERMINAL_USER=admin
 BRAND_NAME=Yundera
 DEX_THEME_SRC=$YND_TEMPLATE/dex-theme
-PLATFORM_PROJECTS=mesh,auth,yundera,maison,kopia,terminal
+PLATFORM_PROJECTS=mesh,auth,yundera,maison,kopia
 TRUSTED_PUBKEY_HOST_SUFFIXES=yundera.com
 BACKUP_ENGINE_CONTAINER=kopia-engine
 EMAIL_SYNC=false
@@ -200,12 +199,12 @@ mesh_channel_url() {
     local override ref
     override="$("$MESH_ENV_MGR" get MESH_UPDATE_URL "$YND_ROOT/.pcs.env" 2>/dev/null || true)"
     if [ -n "$override" ]; then
+        echo "$override"
         return
     fi
     ref="$(mesh_target_ref)"
     if mesh_is_commit "$ref"; then
         echo "$MESH_REPO_URL/archive/$ref.tar.gz"
-        echo "$override"
     else
         echo "$MESH_REPO_URL/archive/refs/heads/${ref:-stable}.tar.gz"
     fi
@@ -220,12 +219,12 @@ mesh_installer_url() {
     local override ref
     override="$("$MESH_ENV_MGR" get MESH_INSTALLER_URL "$YND_ROOT/.pcs.env" 2>/dev/null || true)"
     if [ -n "$override" ]; then
+        echo "$override"
         return
     fi
     ref="$(mesh_target_ref)"
     if mesh_is_commit "$ref"; then
         echo "$MESH_CDN_BASE@$ref/install.sh"
-        echo "$override"
     else
         echo "https://raw.githubusercontent.com/yundera/mesh-router-template-root/${ref:-stable}/install.sh"
     fi

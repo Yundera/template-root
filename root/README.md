@@ -88,15 +88,15 @@ run over it. That is the whole point of the split — see `doc/template-subtree.
 ## The mesh template underneath
 
 A PCS runs mesh-router-template-root **unmodified** in `/DATA/AppData/mesh`: the `mesh`,
-`auth`, `maison` and `terminal` stacks, with their own self-check (03:30), lock, log,
+`auth` and `maison` stacks, with their own self-check (03:30), lock, log,
 migrations and update channel. Each has its own README in that repo
 (`stacks/<name>/README.md`, and on the box `/DATA/AppData/<name>/README.md`).
 
 This template never edits a file the mesh template wrote. It only writes **inputs** and
 runs mesh scripts — the whole contract is `template/scripts/library/mesh.sh`:
 
-- **Every run** (Yundera is the source of truth): `EMAIL DEFAULT_PWD TERMINAL_ENABLED
-  SMTP_TO APPSTORE_URL OPERATOR_API`, plus PCS constants (`DATA_ROOT=/DATA`,
+- **Every run** (Yundera is the source of truth): `EMAIL DEFAULT_PWD SMTP_TO
+  APPSTORE_URL OPERATOR_API`, plus PCS constants (`DATA_ROOT=/DATA`,
   `PUBLIC_IP_MODE=interface`, `BRAND_NAME`, `DEX_THEME_SRC` → this template's
   `dex-theme/`, `PLATFORM_PROJECTS`, `BACKUP_ENGINE_CONTAINER=kopia-engine`, …).
 - **Seed once** (then the mesh's own): default app, `LOCAL_ADMIN_USER`, and the secrets

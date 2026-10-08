@@ -4,7 +4,7 @@
 # The platform is several compose projects that share one Docker host and one
 # `pcs` network (see doc/stack-split.md):
 #
-#   mesh, auth, maison, terminal   the stock mesh template's (/DATA/AppData/mesh, …)
+#   mesh, auth, maison             the stock mesh template's (/DATA/AppData/mesh, …)
 #   yundera  /DATA/AppData/yundera  admin, admin-app   (the root compose)
 #   kopia    /DATA/AppData/kopia    (stacks/kopia)
 #

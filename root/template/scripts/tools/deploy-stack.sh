@@ -3,7 +3,7 @@
 #
 # Deploys one of the auxiliary compose stacks shipped under
 # /DATA/AppData/yundera/template/stacks/<stack-name>/ (currently `kopia` alone — the mesh,
-# auth, maison and terminal stacks are the stock mesh template's, see
+# auth and maison stacks are the stock mesh template's, see
 # doc/mesh-stock-switch.md) to its own project directory:
 #
 #   1. copy stacks/<stack-name>/docker-compose.yml -> <dest-dir>/docker-compose.yml

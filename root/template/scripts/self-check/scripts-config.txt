@@ -56,8 +56,8 @@ ensure-backup-config.sh
 # The provider's IPv6 interface, so the mesh template's own ensure-public-ip.sh
 # (PUBLIC_IP_MODE=interface) finds the address on its first run below.
 ensure-ipv6-interface.sh
-# THE STOCK MESH TEMPLATE (doc/mesh-stock-switch.md). The mesh, auth, maison and
-# terminal stacks are Yundera/mesh-router-template-root's, unmodified, in
+# THE STOCK MESH TEMPLATE (doc/mesh-stock-switch.md). The mesh, auth and maison
+# stacks are Yundera/mesh-router-template-root's, unmodified, in
 # /DATA/AppData/mesh — with their own self-check, cron (03:30), lock, log and
 # update channel. This step installs it once through its install.sh (a fresh VM,
 # an adoption, an identity change) and otherwise only writes the keys this

@@ -4,8 +4,8 @@ This folder contains the template system for Yundera Personal Cloud Server (PCS)
 
 ## Stacks
 
-This template deploys two compose stacks of its own. The `mesh`, `auth`, `maison` and
-`terminal` stacks belong to the stock **mesh-router-template-root**, which
+This template deploys two compose stacks of its own. The `mesh`, `auth` and `maison`
+stacks belong to the stock **mesh-router-template-root**, which
 `ensure-mesh-installed.sh` installs into `/DATA/AppData/mesh` (see
 `doc/mesh-stock-switch.md`), and each of those has its own README in that repo. Every
 stack's README sits next to its compose file, and the self-check copies it into the
@@ -139,7 +139,7 @@ All triggers run the same three-step sequence at the end of `scripts-config.txt`
 3. **`self-check/ensure-user-compose-stack-up.sh`**
    `docker compose up -d` to apply.
 
-This sequence covers the **yundera stack only** (the admin app). The platform stacks — `mesh`, `auth`, `kopia`, `maison`, `terminal` — are deployed from `template/stacks/<name>/` by their own `ensure-<name>-stack.sh` through `tools/deploy-stack.sh`; see `scripts-config.txt` for their order. User apps installed from the AppStore are not touched by the self-check chain — they run under Docker's own `restart:` policy and are updated from the CasaOS (or Maison) UI.
+This sequence covers the **yundera stack only** (the admin app). The platform stacks — `mesh`, `auth`, `kopia`, `maison` — are deployed from `template/stacks/<name>/` by their own `ensure-<name>-stack.sh` through `tools/deploy-stack.sh`; see `scripts-config.txt` for their order. User apps installed from the AppStore are not touched by the self-check chain — they run under Docker's own `restart:` policy and are updated from the CasaOS (or Maison) UI.
 
 Earlier entries in `scripts-config.txt` are host-level prerequisites (user, ssh, partitions, swap, docker install, public IP detection, auth secrets, cron installation, etc.).
 
