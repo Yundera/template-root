@@ -70,6 +70,18 @@ source "${SCRIPT_DIR}/library/common.sh"
 # the template-subtree crossover and had to be repaired by hand.
 find "$SCRIPT_DIR" -type f -name '*.sh' -exec chmod +x {} \; 2>/dev/null || true
 
+# Ring the operator's identity doorbell first (pcs-orchestrator
+# doc/identity-push.md): a box that was off through every refresh, or had its
+# token revoked meanwhile, gets a fresh identity pushed while the slow steps
+# below run, and ensure-yundera-user-data.sh then finds it. Best-effort and
+# unconditional; not during provisioning, where the operator pushes after the
+# create anyway.
+if [ "${PCS_PROVISIONING:-0}" != "1" ]; then
+    source "${SCRIPT_DIR}/library/identity.sh"
+    OPERATOR_API=$("$SCRIPT_DIR/tools/env-file-manager.sh" get OPERATOR_API /DATA/AppData/yundera/.pcs.env 2>/dev/null || true)
+    identity_ring_doorbell "${OPERATOR_API:-https://app.yundera.com/service/pcs}" || log "Identity doorbell unreachable (continuing)"
+fi
+
 # Run the core self-check with the lock-bypass flag so it doesn't try to
 # re-acquire the lock we already hold. On the @reboot cron path, failures
 # don't abort — we still want to bring the user compose stack up on a

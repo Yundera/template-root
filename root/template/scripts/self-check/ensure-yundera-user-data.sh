@@ -1,8 +1,16 @@
 #!/bin/bash
 
-# ensure-yundera-user-data.sh - Fetch user data using JWT and update .env file
-# This script fetches user information from the configured Yundera API endpoint
-# and updates the .env file with the complete user data
+# ensure-yundera-user-data.sh - Make sure the box holds its identity
+# (USER_JWT, PROVIDER_STR, UID, DOMAIN, EMAIL).
+#
+# Push first (pcs-orchestrator doc/identity-push.md): a pushed RS256 USER_JWT
+# with more than 2 days left means the operator is keeping this box current, and
+# there is nothing to do. Otherwise ring the operator's doorbell — no credential
+# needed, it pushes to whichever PCS owns this IP — and wait for the push to
+# land through the admin app. A box that lost every env file recovers this way.
+#
+# Pull second, while the operator still serves it: fetch user information with
+# the stored USER_JWT and update the env files, as before.
 #
 # API Configuration:
 # - Reads OPERATOR_API from .pcs.env file (bare orchestrator base, no /user)
@@ -35,17 +43,49 @@ if [ ! -f "$USER_ENV_FILE" ]; then
     chmod 644 "$USER_ENV_FILE"
 fi
 
-# Check if secret env file exists
+# A wiped box may have lost it; the push recreates the contents.
 if [ ! -f "$SECRET_ENV_FILE" ]; then
-    echo "ERROR: Secret env file not found at $SECRET_ENV_FILE"
-    exit 1
+    install -m 600 /dev/null "$SECRET_ENV_FILE"
+fi
+
+source "$YND_TEMPLATE/scripts/library/identity.sh"
+
+ENV_MGR="$YND_TEMPLATE/scripts/tools/env-file-manager.sh"
+
+# True when the box holds a fresh pushed token and the identity it came with.
+identity_complete() {
+    identity_token_fresh "$("$ENV_MGR" get USER_JWT "$SECRET_ENV_FILE")" \
+        && [ -n "$("$ENV_MGR" get PROVIDER_STR "$SECRET_ENV_FILE")" ] \
+        && [ -n "$("$ENV_MGR" get UID "$USER_ENV_FILE")" ] \
+        && [ -n "$("$ENV_MGR" get DOMAIN "$USER_ENV_FILE")" ]
+}
+
+if identity_complete; then
+    echo "Identity delivered by push, token valid until $(date -u -d "@$(jwt_exp "$("$ENV_MGR" get USER_JWT "$SECRET_ENV_FILE")")" '+%Y-%m-%d %H:%M UTC')"
+    exit 0
+fi
+
+# The operator answers the doorbell asynchronously, through the admin app; a
+# push takes seconds. It rate-limits rings per IP, so a ring at boot followed
+# by this one is fine: this loop sees the push the first ring caused.
+if identity_ring_doorbell "$OPERATOR_API"; then
+    for _ in $(seq 1 15); do
+        sleep 3
+        if identity_complete; then
+            echo "Identity delivered by push"
+            exit 0
+        fi
+    done
+    echo "Doorbell rang, no push arrived within 45s; falling back to pull"
+else
+    echo "Doorbell unreachable at ${OPERATOR_API}/identity/doorbell; falling back to pull"
 fi
 
 # Read USER_JWT from secret env file
-USER_JWT=$("$YND_TEMPLATE/scripts/tools/env-file-manager.sh" get USER_JWT "$SECRET_ENV_FILE")
+USER_JWT=$("$ENV_MGR" get USER_JWT "$SECRET_ENV_FILE")
 
 if [ -z "$USER_JWT" ]; then
-    echo "ERROR: USER_JWT not found in $SECRET_ENV_FILE. Cannot fetch user data."
+    echo "ERROR: USER_JWT not found in $SECRET_ENV_FILE and no identity was pushed. The operator pushes on its next refresh, or run \`pcs identity push\` for this PCS."
     exit 1
 fi
 

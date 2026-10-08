@@ -75,7 +75,13 @@ services:
       #                       fresh PCS could never be declared ready
       #   api/perf, api/bench `pcs perf` reads them; RAM-cached snapshots
       #   api/brand           name/logo only, no secrets
-      ALLOWED_PATHS: "api/health,api/perf,api/bench,api/brand"
+      #   api/identity        the operator's identity push (key + push). It must
+      #                       reach a box that lost every credential, so it
+      #                       cannot sit behind a login; a bundle is applied only
+      #                       if signed by the trusted issuer, encrypted to a
+      #                       one-time key, and addressed to this host
+      #                       (pcs-orchestrator doc/identity-push.md)
+      ALLOWED_PATHS: "api/health,api/perf,api/bench,api/brand,api/identity"
     # THE OIDC BACK-CHANNEL STAYS ON THE BOX, with nothing configured here.
     # auth-registrar answers /register with `internal_issuer_url: http://dex:5556`
     # beside the public issuer (INTERNAL_ISSUER_URL, auth stack), and AppShield
@@ -136,7 +142,7 @@ services:
       caddy_2.reverse_proxy: "{{upstreams 80}}"
 
   admin-app:
-    image: ghcr.io/yundera/settings-center-app:1.5.0
+    image: ghcr.io/yundera/settings-center-app:1.5.1
     container_name: admin-app
     hostname: admin-app
     restart: unless-stopped
