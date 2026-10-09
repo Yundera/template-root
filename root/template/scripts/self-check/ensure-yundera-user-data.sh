@@ -9,8 +9,10 @@
 # needed, it pushes to whichever PCS owns this IP — and wait for the push to
 # land through the admin app. A box that lost every env file recovers this way.
 #
-# Pull second, while the operator still serves it: fetch user information with
-# the stored USER_JWT and update the env files, as before.
+# Pull second: fetch user information with the stored USER_JWT and update the
+# env files. The operator no longer mints a token here (identity-push rollout
+# step 3) — it hands the stored one back — so the pull restores PROVIDER_STR,
+# UID, DOMAIN and EMAIL but never renews USER_JWT; only a push does.
 #
 # API Configuration:
 # - Reads OPERATOR_API from .pcs.env file (bare orchestrator base, no /user)
@@ -126,7 +128,10 @@ RECV_USER_JWT=$(extract_json_value "$HTTP_BODY" "userJWT")
 
 # Update secret environment variables (sensitive data)
 $YND_TEMPLATE/scripts/tools/env-file-manager.sh set PROVIDER_STR "$RECV_PROVIDER_STR" "$SECRET_ENV_FILE"
-$YND_TEMPLATE/scripts/tools/env-file-manager.sh set USER_JWT "$RECV_USER_JWT" "$SECRET_ENV_FILE"
+# An operator that minted nothing must not wipe the token the box holds.
+if [ -n "$RECV_USER_JWT" ]; then
+    $YND_TEMPLATE/scripts/tools/env-file-manager.sh set USER_JWT "$RECV_USER_JWT" "$SECRET_ENV_FILE"
+fi
 
 # Update user environment variables (less sensitive data)
 $YND_TEMPLATE/scripts/tools/env-file-manager.sh set UID "$RECV_UID" "$USER_ENV_FILE"
