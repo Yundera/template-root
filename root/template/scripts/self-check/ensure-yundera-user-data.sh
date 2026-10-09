@@ -67,16 +67,19 @@ fi
 
 # The operator answers the doorbell asynchronously, through the admin app; a
 # push takes seconds. It rate-limits rings per IP, so a ring at boot followed
-# by this one is fine: this loop sees the push the first ring caused.
+# by this one is fine: this loop sees the push the first ring caused. At boot
+# that first push often finds the stack not serving yet; the operator retries it
+# after 20, 60 and 120 s more (about 20, 80 and 200 s after the first attempt),
+# so wait long enough to see the last retry land.
 if identity_ring_doorbell "$OPERATOR_API"; then
-    for _ in $(seq 1 15); do
-        sleep 3
+    for _ in $(seq 1 48); do
+        sleep 5
         if identity_complete; then
             echo "Identity delivered by push"
             exit 0
         fi
     done
-    echo "Doorbell rang, no push arrived within 45s; falling back to pull"
+    echo "Doorbell rang, no push arrived within 240s; falling back to pull"
 else
     echo "Doorbell at ${OPERATOR_API}/identity/doorbell did not answer 204 (operator without identity push, or unreachable); falling back to pull"
 fi
