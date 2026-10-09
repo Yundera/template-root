@@ -126,6 +126,7 @@ back what they changed.
 | `MESH_AUTO_UPDATE` | **every run**: `true`. The mesh sync is how a new tree is applied *with its migrations*; `false` would make the mesh skip them. Only `false` on a frozen box whose commit is unknown (no revision marker): there is nothing to hold it on, so the sync is turned off and `UPDATE_URL` left alone. |
 | `SELF_CHECK_CRON` | **every run**: `disabled` — the mesh removes its own cron entry; this template runs the mesh self-check. |
 | `MESH_UPDATES_MANAGED_BY` | **every run**: `Yundera` — Mesh Console's Update page read-only, mesh `set-update-channel.sh` refuses. |
+| `FEEDBACK_URL` / `FEEDBACK_TOKEN` | **every run**: `http://admin-app/api/feedback/ingest` and the token `ensure-mesh-installed.sh` mints with `ensure_secret` (yundera `.stack.env`, also handed to `admin-app`). Turns on Maison's "Send feedback" with the admin app as the sink; written only together. |
 | `DEFAULT_SERVICE_HOST` / `_PORT` | from `.pcs.env`; Mesh Console's default-app editor owns them afterwards |
 | `LOCAL_ADMIN_USER` | from `.pcs.env`; the claim owns it afterwards |
 | `MESH_CONSOLE_ASSERTION_SECRET` | from `.pcs.secret.env` when this template minted it before the switch — what keeps it stable across it |

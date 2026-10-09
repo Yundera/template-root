@@ -229,6 +229,11 @@ services:
       # default-app editor; that editor is Mesh Console's now and nothing in the
       # app reads them.)
       SUPPORT_EMAIL: ${SUPPORT_EMAIL:-}
+      # Bearer Maison's "Send feedback" presents to /api/feedback/ingest — the same
+      # value the mesh .env gives Maison (library/mesh.sh). Every container on pcs
+      # can reach this app directly, so the token is what keeps a store app from
+      # mailing the operator. Minted by ensure-mesh-installed.sh; unset ⇒ 404.
+      FEEDBACK_TOKEN: ${FEEDBACK_TOKEN:-}
     volumes:
       # The admin app SSHes back to the host as the `admin` sudoer (created by
       # ensure-admin-user.sh). Privileged work goes through `sudo -n …` on the

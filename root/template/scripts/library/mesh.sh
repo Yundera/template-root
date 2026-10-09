@@ -273,6 +273,17 @@ mesh_write_contract() {
     value="$(ynd_source_get DOMAIN 2>/dev/null || true)"
     [ -z "$value" ] || upsert_mesh_env SETUP_URL "https://admin-$value/"
 
+    # Maison's "Send feedback" sink: the admin app's ingest route, straight over
+    # pcs (not through its gate), with the bearer the admin app also receives.
+    # Both or neither — the token is minted by the caller (ensure-mesh-installed.sh,
+    # library/secrets.sh) and kept in this template's .stack.env, which
+    # ynd_source_get does not read, so it arrives as a variable. Without it the
+    # keys are left alone and Maison shows no feedback entry.
+    if [ -n "${FEEDBACK_TOKEN:-}" ]; then
+        upsert_mesh_env FEEDBACK_URL "http://admin-app/api/feedback/ingest"
+        upsert_mesh_env FEEDBACK_TOKEN "$FEEDBACK_TOKEN"
+    fi
+
     for key in $MESH_KEYS_SEED_ONCE; do
         mesh_env_has "$key" && continue
         value="$(ynd_source_get "$key")" || continue

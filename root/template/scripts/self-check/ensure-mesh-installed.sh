@@ -41,6 +41,8 @@ YND_ROOT="/DATA/AppData/yundera"
 YND_TEMPLATE="$YND_ROOT/template"
 source "$YND_TEMPLATE/scripts/library/log.sh"
 source "$YND_TEMPLATE/scripts/library/mesh.sh"
+# ensure_secret, for the feedback token below.
+source "$YND_TEMPLATE/scripts/library/secrets.sh"
 
 PROVIDER_STR="$(ynd_source_get PROVIDER_STR || true)"
 DOMAIN="$(ynd_source_get DOMAIN || true)"
@@ -56,6 +58,12 @@ PREV_DOMAIN="$(mesh_env_get DOMAIN)"
 # Before the installer, so its first mesh self-check already runs with Yundera's
 # branding, login theme, IP mode, DEFAULT_PWD and secrets instead of minting or
 # defaulting its own.
+#
+# FEEDBACK_TOKEN is minted here rather than beside ADMIN_ASSERTION_SECRET in
+# ensure-user-compose-stack-up.sh because this runs first: both its holders — Maison
+# through the mesh .env written just below, admin-app through the unified .env
+# ensure_secret mirrors into — then get the same value in the same run.
+ensure_secret FEEDBACK_TOKEN openssl rand -hex 32
 mesh_write_contract
 
 # The dev container shares the HOST's Docker socket: installing there would bind
