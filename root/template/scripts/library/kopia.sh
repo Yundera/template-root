@@ -44,7 +44,10 @@
 # 1.1.0 is the first build with the `recover` verb (key entry from Maison on a box in
 # needs-recovery) and the `needsRecovery` status field; it reads the connect.json that
 # ensure-backup-config.sh writes beside repository.config.
-ENGINE_IMAGE="ghcr.io/yundera/maison-kopia-engine:1.1.0"
+#
+# 1.2.0 adds `change-secret` (the owner replaces the repository password from Maison) and
+# settles a change cut short on its next invocation.
+ENGINE_IMAGE="ghcr.io/yundera/maison-kopia-engine:1.2.0"
 
 # The adapter binary inside that image. `docker exec` does not apply an image's own
 # ENTRYPOINT, so Maison names this explicitly — and so does this script, which runs the

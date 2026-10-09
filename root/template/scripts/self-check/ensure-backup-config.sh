@@ -414,6 +414,12 @@ write_adapter_descriptor() {
     network="default"
     [ "$storage" = "filesystem" ] && network="none"
 
+    # "secret" is the engine's own account of its key, for Maison's escrow, page and
+    # mail: kopia's name for it, the file that holds it, and that it exists nowhere but
+    # this box. Maison reads it from this file rather than asking the engine, so it
+    # still knows where the key is on a box whose engine container is down. A Maison
+    # older than the block ignores it; a newer one falls back to the same values when
+    # it is absent.
     cat > "$ADAPTER_FILE" <<EOF
 {
   "engineId": "$ENGINE_ID",
@@ -421,7 +427,12 @@ write_adapter_descriptor() {
   "container": "kopia-engine",
   "entrypoint": "$ENGINE_BINARY",
   "hostname": "$hostname",
-  "network": "$network"
+  "network": "$network",
+  "secret": {
+    "label": "Kopia repository password",
+    "file": "repository.password",
+    "escrow": true
+  }
 }
 EOF
     chmod 644 "$ADAPTER_FILE"

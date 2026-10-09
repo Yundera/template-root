@@ -145,18 +145,25 @@ log_info "Kopia stack: $ENGINE_IMAGE as $KOPIA_HOSTNAME"
 # A restart interrupts a restore running in the UI at that moment. That is a nightly
 # script acting on a 90-day event, so the window is small, and the alternative is a UI
 # that is silently broken for months.
-CRED_FILE="$KOPIA_ENGINE_DIR/credentials.env"
-if [ -f "$CRED_FILE" ]; then
-    STARTED_AT="$(docker inspect -f '{{.State.StartedAt}}' "$UI_CONTAINER" 2>/dev/null || true)"
-    if [ -n "$STARTED_AT" ]; then
-        CRED_MTIME="$(stat -c %Y "$CRED_FILE" 2>/dev/null || echo 0)"
-        STARTED_EPOCH="$(date -d "$STARTED_AT" +%s 2>/dev/null || echo 0)"
-        if [ "$STARTED_EPOCH" -gt 0 ] && [ "$CRED_MTIME" -gt "$STARTED_EPOCH" ]; then
-            log_info "Storage credentials are newer than $UI_CONTAINER - restarting it to pick them up"
+#
+# repository.password is watched the same way. The owner can change it from Maison
+# (the adapter's `change-secret` verb promotes the new key into that file), and the UI
+# holds the old one in its environment: kopia refuses it on the next open of the
+# repository. The engine, again, reads the file per invocation and needs nothing.
+STARTED_AT="$(docker inspect -f '{{.State.StartedAt}}' "$UI_CONTAINER" 2>/dev/null || true)"
+STARTED_EPOCH=0
+[ -n "$STARTED_AT" ] && STARTED_EPOCH="$(date -d "$STARTED_AT" +%s 2>/dev/null || echo 0)"
+if [ "$STARTED_EPOCH" -gt 0 ]; then
+    for watched in "$KOPIA_ENGINE_DIR/credentials.env" "$KOPIA_ENGINE_DIR/repository.password"; do
+        [ -f "$watched" ] || continue
+        WATCHED_MTIME="$(stat -c %Y "$watched" 2>/dev/null || echo 0)"
+        if [ "$WATCHED_MTIME" -gt "$STARTED_EPOCH" ]; then
+            log_info "$(basename "$watched") is newer than $UI_CONTAINER - restarting it to pick it up"
             docker restart "$UI_CONTAINER" >/dev/null \
-                || log_warn "Could not restart $UI_CONTAINER; the UI keeps the old credentials until the next cycle"
+                || log_warn "Could not restart $UI_CONTAINER; the UI keeps the old $(basename "$watched") until the next cycle"
+            break
         fi
-    fi
+    done
 fi
 
 log_success "Kopia stack is up"
