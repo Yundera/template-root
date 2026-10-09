@@ -47,7 +47,8 @@ ensure-template-sync.sh       release zip root/template/  → yundera/template/ 
                               root/icon.svg               → yundera/.icon.svg
                               root/README.md              → yundera/README.md
                               (then runs pending migrations)
-ensure-yundera-user-data.sh   ${OPERATOR_API}/user/info   → .ynd.user.env (UID, EMAIL, DOMAIN)
+ensure-yundera-user-data.sh   identity push (doorbell)    → .pcs.secret.env (USER_JWT, PROVIDER_STR), .ynd.user.env
+                              fallback: ${OPERATOR_API}/user/info (never renews USER_JWT)
 ensure-mesh-installed.sh      install / feed the stock mesh template (see below)
 ensure-env-vars-valid.sh      validate + generate .env (keys the compose interpolates only)
 ensure-connector-yundera.sh   Yundera Login drop-in (see below)

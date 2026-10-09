@@ -113,8 +113,8 @@ onboarding. **Do not conflate the two.**
 
 `LOCAL_ADMIN_USER`, in **`.pcs.env`**.
 
-Not `.ynd.user.env`: that file is re-fetched from the orchestrator's
-`/user/info` on every self-check tick by `ensure-yundera-user-data.sh`, which
+Not `.ynd.user.env`: that file is rewritten from the orchestrator — by an
+identity push, or by the `/user/info` pull in `ensure-yundera-user-data.sh` — which
 would clobber a locally-chosen value. The username is host-local state.
 
 Absent means `admin` — which is exactly right for every PCS provisioned before

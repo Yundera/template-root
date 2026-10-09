@@ -80,7 +80,7 @@ The set is exactly what `root/.ignore` protects — everything else in Root A is
 |---|---|
 | `.pcs.secret.env` | `USER_JWT`, `PROVIDER_STR`, `DEFAULT_PWD`, `AUTHELIA_DEX_SECRET`, `DEX_SESSION_KEY`, `ADMIN_ASSERTION_SECRET`, `BACKUP_*`. Re-minting breaks pair secrets and signs every session out |
 | `.pcs.env` | orchestrator-seeded at provision, then mutated by self-check: `OPERATOR_API`, `UPDATE_URL`, `DEFAULT_SERVICE_HOST/PORT`, `LOCAL_ADMIN_USER`, `ENSURE_SUPPORT_KEY`, `SELF_CHECK_CRON` |
-| `.ynd.user.env` | `UID`, `DOMAIN`, `EMAIL`. Refetchable from `${OPERATOR_API}/user/info` — but only with a live `USER_JWT`, so in practice it dies with the secret file |
+| `.ynd.user.env` | `UID`, `DOMAIN`, `EMAIL`. Restored, with `USER_JWT` and `PROVIDER_STR`, by an identity push (the box rings the operator's doorbell); `${OPERATOR_API}/user/info` also refetches it, but only with a live `USER_JWT` |
 | `.env` | derived from the three above by `ensure-env-vars-valid.sh` |
 | `migration-markers/` | one-shot state. Losing it replays every migration back to 2025-08 |
 | `log/*.log` | history, and read by `Health.ts`, `preflight.ts`, `targetSelfCheck.ts`, and `pcs support log` |
