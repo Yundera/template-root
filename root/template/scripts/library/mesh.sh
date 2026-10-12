@@ -63,7 +63,8 @@ MESH_KEYS_EVERY_RUN="EMAIL DEFAULT_PWD SMTP_TO APPSTORE_URL OPERATOR_API"
 # follow), SELF_CHECK_CRON=disabled removes the mesh's own cron entry (this template's
 # nightly run calls the mesh self-check instead), and MESH_UPDATES_MANAGED_BY
 # makes Mesh Console's Update page read-only and the mesh set-update-channel.sh
-# refuse.
+# refuse. MAISON_SETTINGS_OWNER is the name Maison shows on the settings the mesh
+# template manages for it ("Managed by Yundera": mail, feedback).
 #
 # The two MIGRATE_* keys plug this template into the mesh migrate.sh (its README,
 # "Moving the box to another machine"): run this template's self-check on the
@@ -84,6 +85,7 @@ BACKUP_ENGINE_CONTAINER=kopia-engine
 EMAIL_SYNC=false
 SELF_CHECK_CRON=disabled
 MESH_UPDATES_MANAGED_BY=Yundera
+MAISON_SETTINGS_OWNER=Yundera
 MIGRATE_TARGET_SELF_CHECK=$YND_TEMPLATE/scripts/self-check.sh
 MIGRATE_HOLD_LOCKS=/var/run/yundera-self-check.lock
 EOF
