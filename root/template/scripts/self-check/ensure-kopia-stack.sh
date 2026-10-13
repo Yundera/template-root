@@ -166,4 +166,24 @@ if [ "$STARTED_EPOCH" -gt 0 ]; then
     done
 fi
 
+# MAISON ONLY USES AN ENGINE THE ADMIN HAS APPROVED. Since the engine adapter can also
+# arrive from a store app, Maison ignores any adapter.json until it has been enabled,
+# and binds that approval to the image the engine container runs. A box upgrading to
+# such a Maison is approved once, on its first boot, for every engine already there;
+# this re-ensures it every night for what that seed misses — a box rebuilt later, or a
+# backup.json reset. The deployment provisioned this engine, so the deployment approves
+# it, through the admin socket (Maison's docs/config.md), never over HTTP.
+#
+# Idempotent, and never fatal: an older Maison has no `backup approve` and needs none
+# (it uses every descriptor it finds), and a refusal — the engine container down, its
+# image not the one adapter.json names — must not stop the rest of the self-check. The
+# next run tries again; Maison's own `backup.approval:kopia` incident is what the owner sees.
+if docker exec maison-app maison help 2>&1 | grep -q 'backup approve'; then
+    if APPROVE_OUT="$(docker exec maison-app maison backup approve "$ENGINE_ID" 2>&1)"; then
+        log_info "Maison has $ENGINE_ID approved as a backup engine"
+    else
+        log_warn "Maison refused to approve $ENGINE_ID as a backup engine: $APPROVE_OUT"
+    fi
+fi
+
 log_success "Kopia stack is up"

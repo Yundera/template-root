@@ -113,7 +113,6 @@ them first would hide the change from the installer.
 | `DEX_THEME_SRC` | `/DATA/AppData/yundera/template/dex-theme` | the login theme — `dex-theme/` therefore stays in this tree |
 | `PLATFORM_PROJECTS` | `mesh,auth,yundera,maison,kopia` | Mesh Console's Stack page |
 | `TRUSTED_PUBKEY_HOST_SUFFIXES` | `yundera.com` | with `OPERATOR_API`, the support-key tag on auth-console |
-| `BACKUP_ENGINE_CONTAINER` | `kopia-engine` | Maison's resident backup engine |
 | `EMAIL_SYNC` | `false` | the orchestrator's `EMAIL` wins |
 
 **Seed once** — written only when absent, then the mesh stack's own: the owner may change them

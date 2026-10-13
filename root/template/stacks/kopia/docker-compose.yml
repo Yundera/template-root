@@ -305,9 +305,8 @@ services:
     # one-shot containers when they disagree, so a wrong value here is slow rather
     # than dangerous. ensure-kopia-stack.sh reads it from the file itself.
     #
-    # It is also the ONLY thing Maison checks (engine.residentUsable), which is why the
-    # container Maison is pointed at — BACKUP_ENGINE_CONTAINER in the maison stack —
-    # must be this one and not kopia-app.
+    # Maison checks it, and the image, before every exec (engine.residentUsable), which
+    # is why the container adapter.json names must be this one and not kopia-app.
     hostname: ${KOPIA_HOSTNAME}
     restart: unless-stopped
 

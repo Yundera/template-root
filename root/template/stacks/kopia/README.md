@@ -130,9 +130,7 @@ Things worth knowing:
 - The descriptor names `image`, `container: kopia-engine`, `entrypoint`
   (`/usr/local/bin/maison-engine`), `hostname` and `network` (`none` for a filesystem
   repository).
-- `BACKUP_ENGINE_CONTAINER=kopia-engine` is seeded into the mesh `.env`
-  (`library/mesh.sh`), and the maison stack reads it.
-- Before exec-ing, Maison checks that the container's hostname matches the descriptor.
+- Before exec-ing, Maison checks that the container's hostname and image match the descriptor.
   When the container is **absent, stopped, paused, restarting or mismatched**, it runs
   a one-shot container of `image` per command: 6–7 s slower, and it reaches the same
   repository under the same identity. A command that **starts in the container and then
