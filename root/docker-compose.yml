@@ -358,6 +358,8 @@ x-compose-app:
   lifecycle:
     stoppable: false
     uninstallable: false
+    # Updated by the template that deploys it, not from a store: no row on Maison's Updates page.
+    updatable: false
   # Not backed up. This folder is the platform tree: the template the self-check
   # re-syncs every night, plus the stacks' secrets — restoring an old copy of it
   # over a live box does more harm than good. `skip` also closes the manual

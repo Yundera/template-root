@@ -445,6 +445,8 @@ x-compose-app:
   lifecycle:
     stoppable: false
     uninstallable: false
+    # Updated by the template that deploys it, not from a store: no row on Maison's Updates page.
+    updatable: false
 
   # THIS APP IS NOT BACKED UP, and it says so itself — `view` carries no backup
   # behaviour on a current Maison (older images skipped system apps in the nightly run
