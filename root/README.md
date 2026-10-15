@@ -7,7 +7,7 @@ Terminal are **not** here — they are the mesh template's stacks (below).
 
 | Host | Serves |
 |---|---|
-| `admin-${DOMAIN}` | the `admin` gate → settings-center-app (also the Maison **Settings** tile) |
+| `admin-${DOMAIN}` | the `admin` gate → settings-center-app (also the Maison **Yundera** tile) |
 
 Also answers on `admin-${PUBLIC_IP_DASH}.nip.io` and `.sslip.io`.
 
@@ -19,7 +19,7 @@ by `ensure-template-sync.sh` on every sync, beside the compose file.
 | Container | Image | Networks | Role |
 |---|---|---|---|
 | `admin` | `appshield` | `pcs` | AppShield gate — the only public route in. Runs as `65534:65534` |
-| `admin-app` | `settings-center-app` | `pcs` | The dashboard. SSHes to the host as `admin` for privileged work. No route of its own |
+| `admin-app` | `settings-center-app` | `pcs` | The dashboard. Runs host actions through the Docker socket (one-shot nsenter container); reads the Yundera tree read-only. No route of its own |
 
 - **Names are load-bearing.** auth-registrar derives a client_id from the *caller's*
   container name (PTR on `pcs`) and only issues redirect URIs under `<name>-<suffix>`.

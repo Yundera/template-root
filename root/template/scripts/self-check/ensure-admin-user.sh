@@ -4,10 +4,9 @@ set -e
 
 # Maintenance/admin sudoer account.
 #
-# Replaces root for human and dashboard access to the host. The
-# settings-center-app's bind-mount has moved to /home/admin/.ssh and
-# HostExecutor.ts SSHes as `admin` (privileged work elevates via
-# `sudo -n …` on the host). The orchestrator (proxmox-middleware
+# Replaces root for human access to the host: Yundera support's key and the
+# owner's own keys land here. (settings-center-app 1.x also SSHed in as `admin`;
+# 2.x runs host actions through the Docker socket instead.) The orchestrator (proxmox-middleware
 # vm_operations/update.py) still targets root today; once it migrates,
 # ensure-ssh.sh's harden snippet can be tightened with `PermitRootLogin
 # no`.
@@ -15,7 +14,7 @@ set -e
 # Properties:
 #   - Locked-but-key-usable password (`*` in shadow): pubkey auth works,
 #     password auth impossible. Same posture we want on root.
-#   - NOPASSWD sudo: orchestrator/dashboard run unattended.
+#   - NOPASSWD sudo: support and the orchestrator run unattended.
 #   - Does NOT seed authorized_keys. admin's authorized_keys is populated
 #     solely by ensure-support-key.sh with the API-sourced support
 #     key. The orchestrator's create-time bootstrap ("perso") key is seeded
