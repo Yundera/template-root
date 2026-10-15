@@ -178,8 +178,15 @@ cmd_run() {
     chmod 644 "$COMPLETED_MARKER"
 
     # Open Maison's gate immediately rather than at the next self-check: the owner
-    # is being sent back there right now. Best-effort — the reconcile in
-    # ensure-maison-onboarding.sh is the authority and will remove it anyway.
+    # is being sent back there right now. Through the script that owns the gate,
+    # as `reset` does: on a Maison with the CLI the gate is the managed
+    # `onboarding` setting, not the file, and removing only the file left the
+    # owner looping on the interstitial until the next self-check. Best-effort —
+    # the reconcile is the authority and runs again every tick anyway.
+    if [ -x "$SELF_CHECK/ensure-maison-onboarding.sh" ]; then
+        "$SELF_CHECK/ensure-maison-onboarding.sh" >/dev/null 2>&1 \
+            || echo "WARNING: ensure-maison-onboarding.sh failed; Maison un-gates at the next self-check" >&2
+    fi
     rm -f "$MAISON_ONBOARDING" 2>/dev/null || true
 
     # Pass the claim's JSON straight through (it carries the generated password
