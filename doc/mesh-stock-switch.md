@@ -142,8 +142,10 @@ login fails with `invalid_client`).
 `.env` into the unified `.env`, over any stale `.pcs.env` copy: `PUBLIC_IP*` (the mesh detects
 them), `DEFAULT_SERVICE_HOST` / `_PORT`, `LOCAL_ADMIN_USER`.
 
-**Files:** `auth/dex/connectors.d/yundera.yaml` (Yundera Login) and `maison/onboarding.json`
-(the onboarding gate, `ensure-maison-onboarding.sh`).
+**Files:** `auth/dex/connectors.d/yundera.yaml` (Yundera Login). The onboarding gate
+(`ensure-maison-onboarding.sh`) is Maison's managed `onboarding` setting — since 2026-10-16 the
+admin app's check URL (`doc/pcs-onboarding.md`); `maison/onboarding.json` only for a Maison
+without the CLI.
 
 ## What happened to each Yundera script
 
@@ -156,7 +158,7 @@ them), `DEFAULT_SERVICE_HOST` / `_PORT`, `LOCAL_ADMIN_USER`.
 | `tools/set-default-app.sh`, `tools/provision-dex-frontend.sh` | **deleted**: nothing calls them any more (Mesh Console calls the mesh copy) |
 | `tools/onboarding.sh` | stays (Yundera's onboarding state); claims through the mesh user manager, reads the owner from the mesh `.env`, `reset` runs the mesh `ensure-authelia.sh` / `ensure-dex.sh` |
 | `ensure-connector-yundera.sh` (renamed from `ensure-yundera-login.sh` 2026-10-02) | stays; runs the mesh `ensure-dex.sh` when the drop-in changes |
-| the onboarding gate of `ensure-maison-stack.sh` | `ensure-maison-onboarding.sh`, which only writes or removes `onboarding.json` |
+| the onboarding gate of `ensure-maison-stack.sh` | `ensure-maison-onboarding.sh`, which sets Maison's `onboarding` setting (check URL since 2026-10-16; legacy `{url}` / `onboarding.json` on older Maison) |
 | `stacks/{mesh,auth,maison,terminal}`, `auth/`, `dex.config.yaml.tmpl`, `library/authelia-ready.sh` | **deleted** |
 | `caddy/` | **kept for the transition only.** A box that has not switched runs a Caddy that bind-mounts this directory; the sync would otherwise delete it from under that container in the minutes before the adoption recreates it. Delete once every box has switched. |
 | `dex-theme/` | **stays** — `DEX_THEME_SRC` points at it |

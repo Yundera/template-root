@@ -28,8 +28,9 @@
 # service's own account rather than a user who could ever restore from it.
 #
 # IT IS ALSO HOW A BOX LEARNS ITS SPACE WAS RESET. A user who has lost the encryption key
-# resets the space from the Yundera dashboard: every key is revoked, the prefix is emptied,
-# and the space answers with a new `resetAt`. This script records it as BACKUP_RESET_AT and
+# resets the space ("start over" on the onboarding slide — tools/backup.sh reset — or the
+# Yundera dashboard): every key is revoked, the prefix is emptied, and the space answers
+# with a new `resetAt`. This script records it as BACKUP_RESET_AT and
 # acts on a change — see "the space was reset" below. A box stuck in needs-recovery calls
 # on every run for exactly this reason; nothing else would tell it.
 #
@@ -72,6 +73,9 @@ REFRESH_MARKER="$ENGINE_DIR/needs-credentials"
 # Written by ensure-backup-config.sh when the storage holds a repository this box has no
 # password for; cleared here when the space has been reset since.
 RECOVERY_MARKER="$ENGINE_DIR/needs-recovery"
+# Written by ensure-backup-config.sh when the storage is empty and the owner has not chosen
+# a password yet. Deliberately NOT a reason to call (see need_refresh).
+SECRET_MARKER="$ENGINE_DIR/needs-secret"
 
 # The key's TTL is 90 days server-side. Renewing at 30 days left gives a box that is
 # switched off for a month, or whose nightly self-check has been failing, three
@@ -143,6 +147,12 @@ need_refresh() {
         log_info "Box is in backup recovery - asking whether the space was reset"
         return 0
     fi
+
+    # A box in needs-secret does NOT ask every run. Its storage is empty, so there is no
+    # reset to learn about, and its credential follows the ordinary expiry rules below —
+    # while the owner takes days or weeks to choose a password, it must not burn a mint
+    # per self-check. ensure-backup-config.sh re-probes it every run instead, and a probe
+    # the storage refuses arms the refresh marker like any other refusal.
 
     if [ -f "$REFRESH_MARKER" ]; then
         log_info "Refresh marker present - the engine was refused by the storage"
@@ -277,9 +287,10 @@ esac
 #
 #   - IN needs-recovery, with resetAt newer than the marker's detectedAt: the repository
 #     this box could not open is the one that was erased. Remove the marker;
-#     ensure-backup-config.sh runs next, mints a password and creates a fresh repository,
-#     and Maison mails the new key. A resetAt OLDER than the marker means the box hit a
-#     repository created after that reset — another box's, live — and it stays put.
+#     ensure-backup-config.sh runs next, probes an empty space and writes needs-secret, and
+#     the owner chooses the new password (the engine's `init`). A resetAt OLDER than the
+#     marker means the box hit a repository created after that reset — another box's,
+#     live — and it stays put.
 #
 #   - NOT in recovery, with a recorded BACKUP_RESET_AT that differs: this box had a
 #     working repository and it was erased under it (two boxes on one space, the user
@@ -287,7 +298,9 @@ esac
 #     now describe nothing, and kept in place they would make ensure-backup-config.sh
 #     take the steady-state branch and fail `status` forever. Move both aside — renamed,
 #     never deleted: the password is the one thing that could still read a repository if
-#     this reading of events were ever wrong — and let config create.
+#     this reading of events were ever wrong — and let config probe again, which lands in
+#     needs-secret. A needs-secret marker left from before is removed too, so the state
+#     the box reports is the one that probe establishes, with a fresh detectedAt.
 #
 #   - NOTHING RECORDED YET: only record. A box upgrading onto this template must never act
 #     on a reset it did not live through: its repository may well have been created after
@@ -309,6 +322,15 @@ if [ -n "$RESET_AT" ]; then
             log_warn "Recovery marker has no readable detectedAt ($DETECTED_AT) - leaving it in place"
         elif [ "$reset_epoch" -gt "$detected_epoch" ]; then
             rm -f "$RECOVERY_MARKER"
+            # A password an older template left beside the marker (it kept the one it
+            # had when the create found data) would otherwise make ensure-backup-config.sh
+            # connect, i.e. create the fresh repository under a password the owner never
+            # chose. Renamed, never deleted, as below.
+            if [ -e "$ENGINE_DIR/repository.password" ]; then
+                STAMP="$(date +%Y%m%d%H%M%S)"
+                mv -f "$ENGINE_DIR/repository.password" "$ENGINE_DIR/repository.password.reset-$STAMP"
+                log_info "Moved the old repository.password aside to repository.password.reset-$STAMP"
+            fi
             log_info "Backup space was reset at $RESET_AT, after recovery was flagged at $DETECTED_AT - cleared needs-recovery, a fresh repository is created next"
         fi
     elif [ -n "$STORED_RESET_AT" ] && [ "$STORED_RESET_AT" != "$RESET_AT" ]; then
@@ -319,6 +341,7 @@ if [ -n "$RESET_AT" ]; then
                 log_info "Backup space was reset at $RESET_AT - moved $(basename "$f") aside to $(basename "$f").reset-$STAMP"
             fi
         done
+        rm -f "$SECRET_MARKER"
     fi
 fi
 

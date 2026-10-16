@@ -11,6 +11,9 @@ Status: **implemented.**
 | `onboarding.sh reset` (replay, terminal only) | ✅ implemented |
 | First-start wizard (`settings-center-app`) | ✅ implemented |
 | Provisioning-mail CTA (`pcs-orchestrator`) | ✅ implemented |
+| Slides: account + backup, "Skip for now" (settings-center-app 2.1.0) | ✅ implemented 2026-10-16, staging |
+| Maison redirect via the `onboarding` check_url setting (Maison 1.1.64, `ensure-maison-onboarding.sh`) | ✅ implemented 2026-10-16, staging |
+| Owner-chosen backup password (`tools/backup.sh`, engine 1.4.0 `probe`/`init`) | ✅ implemented 2026-10-16, staging |
 
 This doc covers how a fresh PCS goes from "provisioned" to "the owner has a
 working login". It replaces the CasaOS first-run wizard, which disappeared with
@@ -51,7 +54,7 @@ password in its environment.
 | Managed onboarding | **Path C** — SSO. The owner proves ownership via Yundera Login, whose owner gate is enforced server-side. No onboarding secret. |
 | Break-glass | **The Yundera support SSH key**, which already exists and is independent of the whole login chain. |
 | Entry point | One stable URL — `https://admin-${DOMAIN}` — that adapts to the claimed/unclaimed state. Not a single-use link, and not a dedicated route: the wizard gates the whole admin app shell. |
-| Enforcement | Soft. The wizard has no skip button; Dex shows only Yundera Login until claimed. No AppShield or Maison change. |
+| Enforcement | Soft. Since 2026-10-16 Maison redirects every page load to the admin app's slides while one is pending; each slide has "Skip for now" (back after 3 days). Nothing blocks using the box. See "Maison redirect and the slides". |
 
 ---
 
@@ -270,7 +273,9 @@ exists for correcting a wrong username, not for testing.
 `OnboardingGate` wraps the app shell rather than sitting on a route — "first
 start" has to be unavoidable, and a route can be navigated away from. Unclaimed
 renders a blocking dialog with no skip and no close; claimed-but-never-welcomed
-renders a dismissible one over a live dashboard. If the status call fails it
+renders a dismissible one over a live dashboard. (Since settings-center-app 2.1.0 this is
+a slide shell — account, then backup — with "Skip for now" on each slide; see "Maison
+redirect and the slides".) If the status call fails it
 renders the app untouched: a broken endpoint must never lock a working dashboard
 behind a modal.
 
@@ -397,21 +402,60 @@ Next.js app, is an OIDC client of Dex, and SSHes to the host as the `admin`
 sudoer — so it can invoke the claim with no new mounts, no new container, no new
 Caddy label, and no new certificate.
 
-### Enforcement is deliberately soft
+### Maison redirect and the slides (2026-10-16)
 
-A user who navigates directly to `maison-${DOMAIN}` gets in via Yundera Login
-without ever seeing the wizard. **This is accepted.** The mitigations are:
+Until 2026-10-16 enforcement was a click-through interstitial in Maison, armed only while
+the box was unclaimed (`maison/onboarding.json`, then a managed `{"url":…}` setting), and an
+explicit decision **not** to build a redirect. That is now built, and the onboarding
+state stays out of Maison:
 
-- the wizard has **no skip button** — claiming the account is the only way out of
-  the wizard;
-- Dex presents only Yundera Login until the account is claimed, so no second
-  door is advertised;
-- both the mail CTA and the dashboard button point at the admin app.
+```
+browser → maison-app ──GET check_url (bearer)──► admin-app /api/onboarding/check → {show,url}
+                │ show → 303 https://admin-<domain>/?return=<origin>
+admin-app slides ──host verb──► tools/backup.sh / tools/onboarding.sh / feature-yundera-login.sh
+```
 
-Explicitly **not** built: a redirect in the AppShield gate or in Maison that
-bounces un-onboarded users. It would cover the gap, but it puts onboarding state
-into an image every app on the PCS depends on, and it converts a broken wizard
-into an unusable PCS.
+- **Maison stays generic.** `ensure-maison-onboarding.sh` sets the managed setting
+  `onboarding: {"check_url":"http://admin-app/api/onboarding/check","token":"${secret:onboarding_token}"}`
+  every run (the token is `ONBOARDING_CHECK_TOKEN`, minted by `ensure-mesh-installed.sh`
+  with `ensure_secret`, also handed to the `admin-app` container, and stored in Maison as
+  the `onboarding_token` secret). On each browser navigation Maison asks that URL; any
+  failure serves the dashboard (fail open). A FOSS box has no such setting and no change.
+- **The admin app is the authority.** It answers `{show,url}` from an in-memory slide
+  state: slide `account` is done when the box is claimed, slide `backup` when
+  `backup.sh status` says `ready` or `disabled`. A skipped slide (`onboarding-skips.json`
+  in the app's data dir) is pending again after 72 hours. `onboarding.sh` therefore no
+  longer re-runs `ensure-maison-onboarding.sh` after a claim or a reset: the next page
+  load asks again.
+- **Fallback.** A Maison ≤1.1.62 refuses the `check_url` shape (strict decode); the script
+  then keeps the previous claimed/unclaimed `{url}` gate, reconciled every run.
+
+## Backups — the owner's password
+
+A fresh PCS starts with **no backup password and no repository**. The engine is installed
+and the storage credential is fetched, but `ensure-backup-config.sh` only *probes* the
+space (engine `probe`, no password) and never mints a password. The repository is created
+when the owner chooses one, on the backup slide or in Maison's Backups settings (engine
+`init`). The previous flow — a random password minted on the host and mailed by Maison —
+is gone; every box set up before it keeps its repository and password untouched.
+
+| State (`backup.sh status`) | On disk (`/DATA/AppData/kopia/engine/`) | Slide offers |
+|---|---|---|
+| `needs-secret` | `needs-secret` marker: storage reachable and empty | on/off + choose a password → `backup.sh init` |
+| `needs-recovery` | `needs-recovery` marker: storage holds a repository, no password | restore with the old password (`backup.sh recover`), or start over (`backup.sh reset --confirm`) |
+| `ready` | `repository.config` | done (every existing box) |
+| `disabled` | `BACKUP_ENABLED=false` in `.pcs.env` | done (explicit choice) |
+| `unavailable` | none of the above (no credential yet, probe failed) | error + support link, skippable |
+
+`tools/backup.sh` (`status | enable | disable | init | recover | reset --confirm`) follows
+`onboarding.sh`'s contract: JSON on stdout, `ERROR: …` on stderr, non-zero exit. Passwords
+arrive on stdin and go to `docker exec -i maison-app maison backup init|recover kopia` on
+stdin, never through an argv or the environment. `reset` calls the orchestrator's
+`POST /user/backup/reset` with the box's own `USER_JWT` and `{"confirm":"<spaceId>"}`
+(rate-limited, refused unless the box is in `needs-recovery`), then re-runs
+`ensure-backup-credentials.sh` until the new `resetAt` clears the recovery marker (bounded
+wait; otherwise the next self-check finishes it) and `ensure-backup-config.sh`, which
+probes the now-empty space: `needs-secret`.
 
 ---
 
@@ -471,7 +515,8 @@ source.
 | `pcs-orchestrator` | provisioning mail CTA retargeted to `admin-${DOMAIN}`; stale owner-gate line in `CLAUDE.md` corrected; shared `adminUrl()` helper | ✅ |
 | yundera.com dashboard | *(optional)* "Finish setup" button → `admin-${DOMAIN}` | ❌ |
 
-Nothing changes in AppShield or Maison.
+Nothing changes in AppShield. Maison gained the generic `onboarding` check_url setting
+and `maison backup init|recover` in 1.1.64 (see "Maison redirect and the slides").
 
 ---
 

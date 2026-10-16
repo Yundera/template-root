@@ -3,7 +3,7 @@
 # Shared facts about the backup engine, for the two self-check scripts that both need
 # them and must not disagree.
 #
-# ensure-backup-config.sh runs the engine to create and connect the repository;
+# ensure-backup-config.sh runs the engine to probe the storage and check the repository;
 # ensure-kopia-stack.sh declares the containers that then serve it. Those starting
 # different builds against one repository is exactly the format surprise a pin exists to
 # prevent, so the pin is stated once, here.
@@ -18,8 +18,8 @@
 # It is here rather than literally in the compose because FOUR things need it and only two
 # of them are compose services:
 #   - kopia-app and kopia-engine;
-#   - the one-shot `docker run` in ensure-backup-config.sh, which creates and connects the
-#     repository BEFORE any container exists, so it cannot exec into one;
+#   - the one-shot `docker run` in ensure-backup-config.sh, which probes the storage and
+#     checks the repository BEFORE any container exists, so it cannot exec into one;
 #   - the "image" field that script writes into adapter.json.
 #
 # That last one is load-bearing BECAUSE Maison is engine-agnostic, not in spite of it.
@@ -47,7 +47,13 @@
 #
 # 1.2.0 adds `change-secret` (the owner replaces the repository password from Maison) and
 # settles a change cut short on its next invocation.
-ENGINE_IMAGE="ghcr.io/yundera/maison-kopia-engine:1.2.0"
+#
+# 1.4.0 adds `probe` (empty vs existing storage, no password needed) and `init` (create the
+# repository with the password the OWNER chose, from repository.password.initial), the
+# `needsSecret` status field read from the needs-secret marker, and returns 14 instead of
+# 13 when `connect` is given the wrong password for an existing repository.
+# ensure-backup-config.sh depends on `probe`: it no longer mints a password.
+ENGINE_IMAGE="ghcr.io/yundera/maison-kopia-engine:1.4.0"
 
 # The adapter binary inside that image. `docker exec` does not apply an image's own
 # ENTRYPOINT, so Maison names this explicitly — and so does this script, which runs the
@@ -134,10 +140,11 @@ KOPIA_LEGACY_ENGINE_DIR="/DATA/AppDataShared/backup/$ENGINE_ID"
 # invocation, never a misfiled backup.
 #
 # A CALLER THAT KNOWS THE IDENTITY ALREADY passes it as $1, and it replaces the synthetic
-# fallback. ensure-backup-config.sh does, with BACKUP_DEVICE_ID, for the one case where a
-# descriptor is written with no repository.config at all: a box in needs-recovery. Maison
-# registers the engine from that descriptor and the user's key reconnects it through the
-# adapter's `recover`, which writes repository.config with that same device id — so any
+# fallback. ensure-backup-config.sh does, with BACKUP_DEVICE_ID, for the cases where a
+# descriptor is written with no repository.config at all: a box in needs-recovery or
+# needs-secret. Maison registers the engine from that descriptor and the user's key opens
+# it through the adapter's `recover` or `init`, which write repository.config with that
+# same device id — so any
 # snapshot taken between the recovery and the next host run is already filed under the
 # identity the config will then name. ensure-kopia-stack.sh does the same in recovery,
 # with kopia_connect_hostname: there the value reaches the engine container itself.
@@ -159,7 +166,8 @@ kopia_repo_hostname() {
 # kopia_connect_hostname prints the hostname in connect.json, or nothing.
 #
 # connect.json is the identity ensure-backup-config.sh hands `connect` and the adapter's
-# `recover`, written every run including in needs-recovery. It is the one source of the
+# `recover` / `init` / `probe`, written every run including in needs-recovery and
+# needs-secret. It is the one source of the
 # identity for a box with no repository.config yet. ensure-backup-config.sh has the
 # value as a variable, so this is for the scripts that run after it.
 kopia_connect_hostname() {

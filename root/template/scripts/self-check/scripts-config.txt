@@ -43,8 +43,9 @@ ensure-docker-installed.sh
 # Backup (BACKUP-STORAGE-PLAN.md §6). Both MUST stay after
 # ensure-yundera-user-data.sh, which supplies and rotates the USER_JWT the
 # credentials call needs, and BEFORE ensure-mesh-installed.sh, whose stack-up is
-# Maison's first boot: a freshly provisioned box then finds a connected
-# repository (/DATA/AppData/kopia/engine) instead of coming up "not configured"
+# Maison's first boot: a freshly provisioned box then finds its engine described
+# (/DATA/AppData/kopia/engine — waiting in needs-secret for the owner's password,
+# which nothing on the host ever mints) instead of coming up "not configured"
 # and waiting a day. They need Docker and nothing of the mesh template.
 #
 # ensure-backup-credentials.sh MUST run before ensure-backup-config.sh: it writes
@@ -88,9 +89,10 @@ ensure-user-compose-stack-up.sh
 # container per command when the stack is absent or down.
 ensure-kopia-stack.sh
 
-# Maison's onboarding gate: writes or removes /DATA/AppData/maison/onboarding.json
-# from `onboarding.sh status`. After the mesh install (the folder is the mesh
-# template's).
+# Maison's onboarding redirect: the managed `onboarding` setting pointing at the
+# admin app's /api/onboarding/check (legacy claimed/unclaimed gate on an older
+# Maison). After the mesh install (Maison is the mesh template's, and
+# ensure-mesh-installed.sh mints the check token).
 ensure-maison-onboarding.sh
 
 # Retired at the switch to the stock mesh template (2026-10-01): this template's

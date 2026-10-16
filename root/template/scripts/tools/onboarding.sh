@@ -65,20 +65,16 @@ USERS_DB="$AUTH_ROOT/users_database.yml"
 ONBOARDING_ROOT="/DATA/AppData/yundera/onboarding"
 COMPLETED_MARKER="$ONBOARDING_ROOT/completed"
 
-# Maison's first-run gate. While this file exists, Maison replaces its dashboard
-# with an interstitial pointing at the admin app's wizard, so an owner who lands
-# on the box's root domain is not walked straight past onboarding. Its PRESENCE
-# is the whole state — Maison reads it and nothing else.
-#
-# ensure-maison-onboarding.sh is what actually decides whether it should be there: it
-# reconciles the file against `status` below on every self-check, so a box
-# claimed from the terminal, restored from a backup or migrated from another host
-# converges on its own. The removal in `run` is only a fast path, so the gate
-# clears the moment the wizard succeeds instead of at the next tick.
+# Maison's legacy first-run gate file (Maison without the CLI). Since 2026-10-16 Maison
+# asks the admin app on every navigation whether to show onboarding (the `onboarding`
+# check_url setting, ensure-maison-onboarding.sh), and the admin app answers from this
+# script's `status` — so claiming or resetting here takes effect on the very next page
+# load without re-running anything. The file is only removed on `run`, so a stale
+# copy cannot outlive the claim on a box still on the legacy gate; the self-check
+# reconciles that gate every run anyway.
 MAISON_ONBOARDING="/DATA/AppData/maison/onboarding.json"
 
 ENV_MGR="$YND_TEMPLATE/scripts/tools/env-file-manager.sh"
-SELF_CHECK="$YND_TEMPLATE/scripts/self-check"
 PCS_ENV="$YND_ROOT/.pcs.env"
 
 # The local accounts are the mesh template's (Authelia, its user manager, its
@@ -177,16 +173,9 @@ cmd_run() {
     printf 'completed at %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$COMPLETED_MARKER"
     chmod 644 "$COMPLETED_MARKER"
 
-    # Open Maison's gate immediately rather than at the next self-check: the owner
-    # is being sent back there right now. Through the script that owns the gate,
-    # as `reset` does: on a Maison with the CLI the gate is the managed
-    # `onboarding` setting, not the file, and removing only the file left the
-    # owner looping on the interstitial until the next self-check. Best-effort —
-    # the reconcile is the authority and runs again every tick anyway.
-    if [ -x "$SELF_CHECK/ensure-maison-onboarding.sh" ]; then
-        "$SELF_CHECK/ensure-maison-onboarding.sh" >/dev/null 2>&1 \
-            || echo "WARNING: ensure-maison-onboarding.sh failed; Maison un-gates at the next self-check" >&2
-    fi
+    # Nothing to tell Maison: it asks the admin app on the next navigation, and the
+    # admin app refreshes its answer after this returns. Only the legacy gate file
+    # is cleared here, best-effort.
     rm -f "$MAISON_ONBOARDING" 2>/dev/null || true
 
     # Pass the claim's JSON straight through (it carries the generated password
@@ -254,13 +243,9 @@ cmd_reset() {
     mesh_run self-check/ensure-dex.sh >/dev/null 2>&1 \
         || echo "WARNING: ensure-dex.sh failed; the Local Account connector goes away at the next mesh self-check" >&2
 
-    # Re-arm Maison's gate for the same reason, through the script that owns it —
-    # this box is unclaimed again, so its dashboard must send the next arrival
-    # back to the wizard.
-    if [ -x "$SELF_CHECK/ensure-maison-onboarding.sh" ]; then
-        "$SELF_CHECK/ensure-maison-onboarding.sh" >/dev/null 2>&1 \
-            || echo "WARNING: ensure-maison-onboarding.sh failed; Maison re-gates at the next self-check" >&2
-    fi
+    # Maison needs no re-arming: it asks the admin app on every navigation, and the
+    # admin app sees this box unclaimed again. (A box still on the legacy gate
+    # re-gates at the next self-check.)
 
     if is_claimed; then
         error "reset failed: this PCS still reads as claimed${backup:+ (backup at $backup)}"

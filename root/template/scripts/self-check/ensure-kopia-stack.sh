@@ -22,10 +22,10 @@
 # container and fails there is not re-run: the backup fails. (Maison's dedicated
 # incident for an unreachable engine is designed but not built — maison docs/backup.md.)
 #
-# ORDERING: must run AFTER ensure-backup-config.sh, which writes the repository.config
-# this reads the engine's hostname out of. A box provisioned before that file exists
-# would otherwise bake in the synthetic fallback hostname and keep it until the stack is
-# next brought up. It must also run after ensure-mesh-installed.sh — the gate joins
+# ORDERING: must run AFTER ensure-backup-config.sh, which writes the connect.json and
+# markers this reads (repository.config itself comes from the engine's `init`/`recover`,
+# or an older template's create). Run before it, a fresh box would find no marker and
+# no connect.json, and start no engine until the next cycle. It must also run after ensure-mesh-installed.sh — the gate joins
 # the `pcs` network and gets its OIDC client from the mesh template's auth-registrar.
 set -euo pipefail
 
@@ -88,11 +88,17 @@ esac
 #                          installed, and pushed `recover` onto a one-shot container.
 #                          The UI stays out of the `ui` profile (see the compose) until
 #                          `recover` writes repository.config. The next run then adds it.
-#   neither                nothing. No credentials yet, or the first connect failed:
+#   needs-secret           THE ENGINE ALONE, for the same reason. The storage is empty and
+#                          the owner has not chosen a password yet, so there is nothing
+#                          for the UI to open. The engine runs the adapter's `init` when
+#                          they do (Maison, or tools/backup.sh init, which re-runs this
+#                          script right after so the UI follows at once).
+#   neither                nothing. No credentials yet, or the probe failed:
 #                          ensure-backup-config.sh retries it next cycle, and an engine
 #                          with no repository to serve would hold its capabilities for
 #                          nothing.
 RECOVERY_MARKER="$KOPIA_ENGINE_DIR/needs-recovery"
+SECRET_MARKER="$KOPIA_ENGINE_DIR/needs-secret"
 if [ -f "$KOPIA_ENGINE_DIR/repository.config" ]; then
     ENGINE_ONLY=0
     COMPOSE_PROFILES="ui"
@@ -100,13 +106,15 @@ if [ -f "$KOPIA_ENGINE_DIR/repository.config" ]; then
     # than computed here — two sides computing it independently is how one repository
     # ends up split into two lineages that never see each other.
     KOPIA_HOSTNAME="$(kopia_repo_hostname)"
-elif [ -f "$RECOVERY_MARKER" ]; then
-    # connect.json's hostname is the device id `recover` pins into the config it writes,
-    # and the one ensure-backup-config.sh already put in adapter.json. The container
-    # must carry it, or Maison finds a mismatch and falls back to a one-shot.
+elif [ -f "$RECOVERY_MARKER" ] || [ -f "$SECRET_MARKER" ]; then
+    # connect.json's hostname is the device id `recover` and `init` pin into the config
+    # they write, and the one ensure-backup-config.sh already put in adapter.json. The
+    # container must carry it, or Maison finds a mismatch and falls back to a one-shot.
+    WAITING_FOR="backup recovery"
+    [ -f "$RECOVERY_MARKER" ] || WAITING_FOR="the owner's backup password"
     RECOVERY_HOSTNAME="$(kopia_connect_hostname)"
     if [ -z "$RECOVERY_HOSTNAME" ]; then
-        log_warn "Box is in backup recovery but $KOPIA_ENGINE_DIR/connect.json names no hostname - skipping the kopia stack"
+        log_warn "Box is waiting for $WAITING_FOR but $KOPIA_ENGINE_DIR/connect.json names no hostname - skipping the kopia stack"
         exit 0
     fi
     ENGINE_ONLY=1
@@ -132,8 +140,9 @@ fi
 # to get that isolation by accident, because Maison ran those commands in one-shot
 # containers with `--network none`; with the engine resident, the stack has to decide it
 # at deploy time instead. Read from repository.config rather than inferred from whether
-# BACKUP_* is set — the file is what the engine actually connected to. In recovery there
-# is no file and the answer is empty: the storage is the bucket `recover` must reach.
+# BACKUP_* is set — the file is what the engine actually connected to. While waiting
+# there is no file and the answer is empty: the storage is the bucket `recover` / `init`
+# must reach.
 STORAGE_TYPE="$(kopia_repo_storage_type)"
 ENGINE_NETWORK_INTERNAL="false"
 if [ "$STORAGE_TYPE" = "filesystem" ]; then
@@ -154,7 +163,7 @@ log_info "Kopia stack: $ENGINE_IMAGE as $KOPIA_HOSTNAME"
     "COMPOSE_PROFILES=$COMPOSE_PROFILES"
 
 # Compose leaves the containers of an inactive profile running (`up --remove-orphans`
-# does not count them as orphans), so a box that had a UI and is now in recovery takes
+# does not count them as orphans), so a box that had a UI and is now waiting takes
 # it down here. The UI would otherwise hold a password that opens nothing. On a box
 # that never had one this removes nothing.
 if [ "$ENGINE_ONLY" = "1" ]; then
@@ -224,7 +233,7 @@ if docker exec maison-app maison help 2>&1 | grep -q 'backup approve'; then
 fi
 
 if [ "$ENGINE_ONLY" = "1" ]; then
-    log_success "Kopia engine is up for backup recovery - the UI follows once the owner's key reconnects the repository"
+    log_success "Kopia engine is up, waiting for $WAITING_FOR - the UI follows once the owner's key opens a repository"
 else
     log_success "Kopia stack is up"
 fi

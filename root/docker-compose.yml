@@ -144,7 +144,7 @@ services:
     # The Yundera admin app (settings-center-app 2.x): Go + an embedded Svelte UI.
     # 2.0 replaced the 1.x Next.js image (1.9 GB, ~160 MB resident) with a ~35 MB
     # static binary using ~10 MB, and SSH-to-the-host with the Docker socket.
-    image: ghcr.io/yundera/settings-center-app:2.0.2
+    image: ghcr.io/yundera/settings-center-app:2.1.0
     container_name: admin-app
     hostname: admin-app
     restart: unless-stopped
@@ -202,6 +202,13 @@ services:
       # can reach this app directly, so the token is what keeps a store app from
       # mailing Yundera. Minted by ensure-mesh-installed.sh; unset => 404.
       FEEDBACK_TOKEN: ${FEEDBACK_TOKEN:-}
+      # Bearer Maison presents to /api/onboarding/check on every browser navigation,
+      # to ask whether to send the owner to the onboarding slides ({show,url}). Maison
+      # holds the same value as its `onboarding_token` secret, set by
+      # ensure-maison-onboarding.sh. Reached over pcs, not through the gate, so the
+      # token is what keeps a store app from reading the box's onboarding state.
+      # Minted by ensure-mesh-installed.sh; unset => 404.
+      ONBOARDING_CHECK_TOKEN: ${ONBOARDING_CHECK_TOKEN:-}
     volumes:
       # Host actions (self-check, feature switches, onboarding, the identity
       # push, support access, reboot) run in a one-shot privileged container this

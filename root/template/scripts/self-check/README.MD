@@ -24,15 +24,15 @@ Listed in execution order from `scripts-config.txt`.
 | `ensure-logrotate.sh` | Configures daily log rotation for `yundera.log` (7-day retention) |
 | `ensure-docker-installed.sh` | Installs and configures Docker CE with proper user permissions |
 | `ensure-backup-credentials.sh` | Fetches/rotates the S3 backup credential into the kopia stack's own `/DATA/AppData/kopia/.stack.env` (`BACKUP_*`; moved out of `.pcs.secret.env` on first run) |
-| `ensure-backup-config.sh` | Connects the kopia repository from those `BACKUP_*` values |
+| `ensure-backup-config.sh` | Writes the engine's storage coordinates, credentials and descriptor from those `BACKUP_*` values; with no password on the box it probes the storage and marks `needs-secret` (empty) or `needs-recovery` (existing) — it never mints a password, the owner chooses it (`tools/backup.sh init`) |
 | `ensure-ipv6-interface.sh` | Configures the provider's IPv6 interface so the mesh template finds the address |
 | `ensure-mesh-installed.sh` | Installs the stock mesh template once, and writes this template's inputs into its `.env` (`library/mesh.sh`) |
 | `ensure-env-vars-valid.sh` | Validates required env vars across `.pcs.env`, `.pcs.secret.env`, `.ynd.user.env` and writes the yundera stack's `.env`: the keys `docker-compose.yml` interpolates, from those three and the stack's own `.stack.env` (`library/env.sh`) |
 | `ensure-connector-yundera.sh` | Writes the "Yundera Login" Dex connector drop-in (`YUNDERA_LOGIN_ENABLED` in `.pcs.env`) |
 | `ensure-user-compose-pulled.sh` | Pulls latest images for the `yundera` stack |
 | `ensure-user-compose-stack-up.sh` | Mints `ADMIN_ASSERTION_SECRET` (shared by the admin gate and the admin app) and the gate's session dir, then starts the `yundera` stack (admin gate + admin app) in detached mode |
-| `ensure-kopia-stack.sh` | Deploys the `kopia` stack to `/DATA/AppData/kopia` through `tools/deploy-stack.sh` |
-| `ensure-maison-onboarding.sh` | Writes or removes Maison's onboarding gate (`/DATA/AppData/maison/onboarding.json`) |
+| `ensure-kopia-stack.sh` | Deploys the `kopia` stack to `/DATA/AppData/kopia` through `tools/deploy-stack.sh` (engine only while `needs-recovery` / `needs-secret`) |
+| `ensure-maison-onboarding.sh` | Sets Maison's managed `onboarding` setting to the admin app's check URL + `onboarding_token` secret; falls back to the legacy claimed/unclaimed `{url}` gate on Maison ≤1.1.62 |
 
 The list is authoritative — order is controlled by `scripts-config.txt`, not filename alphabetisation. When adding a new script, also add a line to `scripts-config.txt` in the right position.
 

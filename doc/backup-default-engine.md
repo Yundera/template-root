@@ -34,7 +34,7 @@ Three self-check scripts, in this order (`scripts/self-check/scripts-config.txt`
 | Script | Writes |
 |---|---|
 | `ensure-backup-credentials.sh` | `/DATA/AppData/kopia/.stack.env` (the kopia stack's own state, `library/kopia.sh`): `BACKUP_DEVICE_ID`, `BACKUP_ENDPOINT`, `BACKUP_BUCKET`, `BACKUP_PREFIX`, `BACKUP_ACCESS_KEY_ID`, `BACKUP_SECRET_ACCESS_KEY`, `BACKUP_EXPIRES_AT`, `BACKUP_WRITABLE`, `BACKUP_STATUS` |
-| `ensure-backup-config.sh` | `/DATA/AppData/kopia/engine/`: `repository.config` (once), `repository.password` (once), `credentials.env` (per rotation), `state.json` (per run), `needs-credentials` / `needs-recovery` markers |
+| `ensure-backup-config.sh` | `/DATA/AppData/kopia/engine/`: `connect.json`, `credentials.env` (per rotation), `state.json`, `adapter.json` (per run), `needs-credentials` / `needs-recovery` / `needs-secret` markers. Since 2026-10-16 it never writes `repository.password`: with none on the box it runs the engine's `probe` (empty → `needs-secret`, existing → `needs-recovery`), and the repository is created by the engine's `init` with the password the owner chooses (`tools/backup.sh init`, or Maison). See `doc/pcs-onboarding.md` › Backups |
 | `ensure-kopia-stack.sh` | `/DATA/AppData/kopia/{docker-compose.yml,.env}`; brings up `kopia-engine` (Maison's `docker exec` target) and the kopia UI behind an AppShield gate |
 
 The single knob for all three is **`BACKUP_ENABLED` in `.pcs.env`, and absent means
@@ -66,9 +66,11 @@ self-check.sh — scripts-config.txt order, then @reboot + nightly
   │     writes BACKUP_* → /DATA/AppData/kopia/.stack.env
   ├─ ensure-backup-config.sh
   │     reads  BACKUP_*
-  │     runs   kopia repository create | connect   (identity pinned to BACKUP_DEVICE_ID)
-  │     writes → /DATA/AppData/kopia/engine/{repository.config,repository.password,
-  │                                           credentials.env,state.json,adapter.json}
+  │     runs   maison-engine probe (no password) | status (steady state)
+  │     writes → /DATA/AppData/kopia/engine/{connect.json,credentials.env,state.json,
+  │                                           adapter.json, needs-secret|needs-recovery}
+  │     (repository.config + repository.password come from the engine's `init`, when the
+  │      owner chooses a password — since 2026-10-16; identity pinned to BACKUP_DEVICE_ID)
   ├─ ensure-kopia-stack.sh         → kopia-engine + kopia UI
   │
   └─ ensure-maison-stack.sh

@@ -2,23 +2,30 @@
 # ensure-backup-config.sh - Turn the BACKUP_* credentials into a connected backup
 # repository that Maison can use, and declare the adapter that serves it.
 #
-# Phase 1 step 4b (BACKUP-STORAGE-PLAN.md §6, §14). Infra generates, Maison consumes:
-# this script owns the repository password, the repository configuration, the storage
-# credentials and the adapter descriptor; Maison reads what it finds under
-# /DATA/AppData/kopia/engine/ and runs the adapter. Maison never sees the JWT,
-# never talks to the backup space API, and never generates the password.
+# Phase 1 step 4b (BACKUP-STORAGE-PLAN.md §6, §14). Infra provisions, Maison consumes:
+# this script owns the storage credentials, the storage coordinates, the waiting-state
+# markers and the adapter descriptor; Maison reads what it finds under
+# /DATA/AppData/kopia/engine/ and runs the adapter. Maison never sees the JWT and
+# never talks to the backup space API.
+#
+# THE REPOSITORY PASSWORD IS THE OWNER'S (since 2026-10-16). Nobody generates it any more:
+# not this script, which used to mint one and leave Maison to mail it, and not Maison. A
+# fresh box stops at needs-secret and the repository is created by the engine's `init`
+# when the owner chooses a password (onboarding slide via tools/backup.sh, or Maison's
+# Backups settings). An existing box with repository.config + repository.password is
+# untouched by this: the steady-state branch below is the same as before.
 #
 # IT RUNS THE ADAPTER, NOT KOPIA. Every engine-specific step this used to carry — the
 # create-or-connect dance, kopia's storage flag names, the endpoint URL that has to be
 # reduced to a host[:port], the sed that blanks the credentials kopia persists into its
-# own config — now lives behind `maison-engine connect`, in the image that ships the
-# engine. What is left here is engine-neutral: fetch-time state, a generated password,
-# two markers, and a descriptor naming the image.
+# own config — now lives behind `maison-engine connect` / `probe`, in the image that ships
+# the engine. What is left here is engine-neutral: fetch-time state, three markers, and a
+# descriptor naming the image.
 #
 # MUST RUN AFTER ensure-backup-credentials.sh (which fetches BACKUP_*) and BEFORE
-# ensure-mesh-installed.sh (whose install is Maison's first boot), so a box that is being provisioned for the first time finds
-# a connected repository on Maison's first boot instead of coming up "not configured"
-# and waiting a day.
+# ensure-mesh-installed.sh (whose install is Maison's first boot), so a box that is being
+# provisioned for the first time finds its engine described (waiting for the owner's
+# password) on Maison's first boot instead of coming up "not configured" and waiting a day.
 #
 # Enable/disable with BACKUP_ENABLED in .pcs.env (default: enabled), the same knob
 # ensure-backup-credentials.sh reads -- see "is it wanted here?" below.
@@ -61,25 +68,28 @@
 # THE REBUILT BOX
 # ---------------
 # A box that has lost its disk arrives here with a backup space full of snapshots and
-# no repository password — the only copy is the one the user was mailed. Generating a
-# fresh password here would either fail to connect or, worse, initialise a SECOND
-# repository under the same prefix and leave the real backups invisible. So the
-# password is generated only as part of a successful `repository create`, and kopia
-# refusing to create over existing data ("found existing data in storage location") is
-# taken as the signal to stop and mark the box as needing recovery.
+# no repository password — the owner holds it (chosen by them, or, for a box set up
+# before 2026-10-16, the copy Maison mailed them). Creating a repository here would
+# initialise a SECOND one under the same prefix and leave the real backups invisible.
+# So a box with no password only ever PROBES: the engine's `probe` answers "existing"
+# and the box is marked as needing recovery; "empty" marks it needs-secret.
 #
 # RECOVERY IS THE USER'S, AND THIS SCRIPT ONLY KEEPS THE DOOR OPEN. There are two ways out
 # of needs-recovery, and neither runs here:
-#   - the user types the emailed key into Maison, which writes it as
-#     repository.password.candidate and runs the adapter's `recover` verb: connect-only,
-#     never create, with the storage parameters read from connect.json (below);
-#   - the user has lost the key and resets the space from the Yundera dashboard, which
-#     empties the prefix; ensure-backup-credentials.sh sees the space's resetAt, removes
-#     the marker, and the next run of this script creates a fresh repository.
-# What this script owes both is to keep everything else current while the box waits —
-# credentials.env still rotates, state.json and adapter.json are still written, and
-# connect.json always describes the storage — and to touch neither the password nor the
-# configuration until the marker is gone.
+#   - the user types their key into Maison or the onboarding slide (tools/backup.sh
+#     recover), which writes it as repository.password.candidate and runs the adapter's
+#     `recover` verb: connect-only, never create, with the storage parameters read from
+#     connect.json (below);
+#   - the user has lost the key and starts over: a reset of the space (onboarding slide,
+#     tools/backup.sh reset, or the Yundera dashboard) empties the prefix;
+#     ensure-backup-credentials.sh sees the space's resetAt and removes the marker, and
+#     the next run of this script probes an empty space and lands in needs-secret.
+# Needs-secret has one way out, also not here: the owner chooses a password and the
+# engine's `init` creates the repository.
+# What this script owes all of them is to keep everything else current while the box
+# waits — credentials.env still rotates, state.json and adapter.json are still written,
+# and connect.json always describes the storage — and to touch neither the password nor
+# the configuration.
 
 set -euo pipefail
 
@@ -111,6 +121,9 @@ ADAPTER_FILE="$ENGINE_DIR/adapter.json"
 CONNECT_FILE="$ENGINE_DIR/connect.json"
 REFRESH_MARKER="$ENGINE_DIR/needs-credentials"
 RECOVERY_MARKER="$ENGINE_DIR/needs-recovery"
+# The storage is reachable and empty, and the owner has not chosen a password yet. Written
+# here, removed by the engine's `init` when it creates the repository.
+SECRET_MARKER="$ENGINE_DIR/needs-secret"
 
 env_get() { "$ENV_MGR" get "$1" "$2" 2>/dev/null || echo ""; }
 
@@ -252,9 +265,10 @@ chmod 700 "$ENGINE_DIR"
 # --- connect.json ---------------------------------------------------------------
 #
 # The storage parameters `maison-engine connect` is given below, as a file. The adapter's
-# `recover` verb reads them from here, because recovery is started by Maison — which never
-# sees BACKUP_* and must not learn the storage layout from anywhere but this directory —
-# and it has to reach exactly the repository this script would have connected to.
+# `recover`, `init` and `probe` verbs read them from here: the first two are started by
+# Maison, which never sees BACKUP_* and must not learn the storage layout from anywhere
+# but this directory, and all three have to reach exactly the repository this script
+# would have connected to.
 #
 # ONE SET OF VALUES, BUILT ONCE. The CONNECT_* variables feed both this file and the
 # `connect` call further down. Two copies of "which bucket, which prefix, which identity"
@@ -383,12 +397,13 @@ chown "$PUID:$PGID" "$STATE_FILE" 2>/dev/null || true
 # at stays an ordinary user setting.
 #
 # It is written whenever there is an engine to describe: a repository configuration (the
-# steady state, reachable or not), a successful connect, or a box in needs-recovery. The
-# last has no configuration and is advertised anyway, because the descriptor is how
-# Maison finds the engine at all — and an engine Maison cannot see is one whose recovery
-# form it cannot show. The adapter's `status` reports needsRecovery from the marker, so
-# Maison tells that state apart from a working engine. A box whose repository has never
-# opened and is not in recovery still advertises nothing.
+# steady state, reachable or not), a successful connect, or a box waiting in
+# needs-recovery or needs-secret. The last two have no configuration and are advertised
+# anyway, because the descriptor is how Maison finds the engine at all — and an engine
+# Maison cannot see is one whose recovery or set-a-password form it cannot show. The
+# adapter's `status` reports needsRecovery / needsSecret from the markers, so Maison
+# tells those states apart from a working engine. A box whose storage has never answered
+# a probe still advertises nothing.
 #
 # `container` names the resident engine for `docker exec`, which is worth six or seven
 # seconds of container start per command. It is written unconditionally: the container
@@ -400,10 +415,11 @@ chown "$PUID:$PGID" "$STATE_FILE" 2>/dev/null || true
 # `hostname` is read from repository.config rather than recomputed. Two sides deriving an
 # identity independently is how one repository ends up holding two lineages that never
 # see each other — invisible until a restore comes back empty. With no repository.config
-# (needs-recovery) it falls back to CONNECT_HOSTNAME, the device id both `connect` and the
-# adapter's `recover` pin into the configuration they write, rather than to the library's
-# synthetic default: snapshots Maison takes after a recovery and before this script next
-# runs are then already filed under the identity that configuration names.
+# (needs-recovery, needs-secret) it falls back to CONNECT_HOSTNAME, the device id
+# `connect` and the adapter's `recover` and `init` pin into the configuration they
+# write, rather than to the library's synthetic default: snapshots Maison takes after a
+# recovery or an init and before this script next runs are then already filed under the
+# identity that configuration names.
 write_adapter_descriptor() {
     local hostname storage network
     hostname="$(kopia_repo_hostname "$CONNECT_HOSTNAME")"
@@ -448,12 +464,15 @@ EOF
 # Everything above is safe in recovery — none of it touches the repository password or
 # configuration.
 #
-# What must not happen is below: minting a password or running `connect`, which on this
-# storage can only fail with 13 again or, if a later bug let it, create a second
+# What must not happen is below: probing or running `connect`, which on this storage
+# can only answer "existing" again or, if a later bug let it, create a second
 # repository over the user's snapshots.
 #
 # The descriptor IS written, so Maison registers the engine and can offer key entry.
+# (A box in needs-secret does NOT stop here: it re-probes below, every run.)
 if [ -f "$RECOVERY_MARKER" ]; then
+    # The two waiting states are exclusive; recovery is the one that holds data.
+    rm -f "$SECRET_MARKER"
     write_adapter_descriptor
     log_warn "This box is marked as needing backup recovery - not touching the repository (key entry in Maison, or a reset from the dashboard)"
     exit 0
@@ -461,8 +480,9 @@ fi
 
 # --- engine invocation --------------------------------------------------------
 #
-# The adapter is run one-shot, before any engine container exists — this script is what
-# creates the repository those containers then serve.
+# The adapter is run one-shot, before any engine container exists — this script probes
+# the storage (and checks the steady-state repository) before ensure-kopia-stack.sh
+# decides which containers to start.
 #
 # NO SECRETS ARE PASSED. The adapter reads repository.password and credentials.env out of
 # --repo-dir, which it has mounted, so there is nothing to export and nothing to leak
@@ -535,7 +555,7 @@ engine_connected() {
     printf '%s' "$1" | grep -q '"connected":true'
 }
 
-# --- connect, or create once --------------------------------------------------
+# --- the steady state -------------------------------------------------------------
 
 if [ -f "$CONFIG_FILE" ] && [ -f "$PASSWORD_FILE" ]; then
     # Steady state. The configuration is already correct and must not be rewritten;
@@ -559,6 +579,10 @@ if [ -f "$CONFIG_FILE" ] && [ -f "$PASSWORD_FILE" ]; then
     # The one case that correctly writes no descriptor is below: a box with no repository
     # configuration at all has no engine to describe yet.
     write_adapter_descriptor
+
+    # A box waiting for its password has none of either; the engine's `init` removes
+    # the marker itself, and this only sweeps one an interrupted run left behind.
+    rm -f "$SECRET_MARKER"
 
     OUT="$(engine_run status)"
     if engine_connected "$OUT"; then
@@ -592,40 +616,130 @@ if [ -f "$CONFIG_FILE" ] && [ -f "$PASSWORD_FILE" ]; then
     exit 0
 fi
 
-# Not connected yet. The adapter's `connect` is create-or-connect and idempotent, and it
-# refuses to rewrite a configuration that already exists — so the three cases this used
-# to branch on (config present, password only, neither) collapse into one call. What
-# still has to happen here is minting the password, because only the host can decide to
-# generate one and it has to survive the create failing.
-if [ ! -f "$PASSWORD_FILE" ]; then
-    # No password on this box. Either the space is empty and we are the first box to
-    # attach, or this box was rebuilt and the password is only in the user's mailbox.
-    # `connect` is what tells the two apart.
-    NEW_PASSWORD="$(openssl rand -base64 33 | tr -d '\n')"
+# write_recovery_marker records that the storage holds a repository this box has no
+# password for. ensure-backup-credentials.sh compares its detectedAt with the space's
+# resetAt, so the timestamp is the moment of detection, never rewritten while it stands.
+write_recovery_marker() {
+    rm -f "$SECRET_MARKER"
+    cat > "$RECOVERY_MARKER" <<EOF
+{
+  "reason": "repository-exists-without-password",
+  "spaceId": "$BACKUP_SPACE_ID",
+  "prefix": "$BACKUP_PREFIX",
+  "detectedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+    chmod 644 "$RECOVERY_MARKER"
+    chown "$PUID:$PGID" "$RECOVERY_MARKER" 2>/dev/null || true
+}
 
-    # THE PASSWORD IS WRITTEN BEFORE THE CONNECT, NOT AFTER.
-    #
-    # Creating a repository initialises it and then connects to it, and the second half
-    # can fail on its own — a cache directory it cannot write, a network blip. The format
-    # blob is already in storage at that point, encrypted with the password we are
-    # holding, so discarding it on failure abandons a repository nobody can ever open
-    # again AND leaves storage non-empty, which makes every later run mistake the debris
-    # for the user's real backups and refuse to touch the space forever.
-    #
-    # Writing first inverts the failure: the next run finds a password, takes the same
-    # path, and finishes the job. The file is removed again only in the one case where we
-    # learn the repository was never ours.
-    umask 077
-    printf '%s' "$NEW_PASSWORD" > "$PASSWORD_FILE"
-    chmod 600 "$PASSWORD_FILE"
-    chown "$PUID:$PGID" "$PASSWORD_FILE" 2>/dev/null || true
-    MINTED_PASSWORD=1
+# --- no password: probe, and wait for the owner -------------------------------
+#
+# THE PASSWORD IS THE OWNER'S, AND THIS SCRIPT NEVER MAKES ONE. It used to mint a random
+# one here, create the repository with it, and leave Maison to mail a copy. A fresh box
+# now stops at "storage reachable and empty": the engine is described, the storage
+# credentials rotate, and the repository is created only when the owner picks a password
+# — on the onboarding slide (tools/backup.sh init) or in Maison's Backups settings. Both
+# end in the adapter's `init` verb, which reads that password from
+# repository.password.initial (written by Maison, removed by the engine on every path),
+# runs `repository create`, promotes the file to repository.password and removes the
+# needs-secret marker. See doc/pcs-onboarding.md › Backups.
+#
+# `probe` is what tells the two no-password cases apart, with no side effect on the
+# storage: a `repository connect` attempt with a throwaway password. "Not initialized"
+# is an empty space; "invalid password" is a repository someone else created.
+#
+#   empty      needs-secret. The marker is the host's account of the state, read by the
+#              adapter's `status` (needsSecret) and by tools/backup.sh. It keeps its first
+#              detectedAt while it stands.
+#   existing   needs-recovery, exactly the marker the old create path wrote on exit 13:
+#              a rebuilt or re-created box. The owner restores with the old password, or
+#              starts over (a space reset, which ensure-backup-credentials.sh turns back
+#              into an empty space, so the next run lands in needs-secret).
+#
+# RE-PROBED ON EVERY RUN while the marker stands, rather than trusted. A second box on
+# the same space may create a repository while this one waits; `init` would then refuse
+# with 13 anyway, but turning the marker into needs-recovery here is what lets the slide
+# offer the restore it actually needs. A probe costs one connect attempt.
+#
+# The descriptor is written in both cases: an engine Maison cannot see is one whose
+# password form it cannot show.
+if [ ! -f "$PASSWORD_FILE" ]; then
+    if [ -f "$CONFIG_FILE" ]; then
+        # A configuration with no password beside it is nothing this template writes: the
+        # engine's `init` and `recover` promote the password before (or with) the config.
+        # Never guess one, and never let `init` near it — it refuses over a config anyway.
+        write_adapter_descriptor
+        log_error "$CONFIG_FILE exists without $PASSWORD_FILE - not touching the repository (key entry in Maison, or a reset from the dashboard)"
+        exit 1
+    fi
+
+    set +e
+    OUT="$(engine_run probe)"
+    RC=$?
+    set -e
+
+    if [ "$RC" -ne 0 ]; then
+        # Keep a box already waiting for its password visible to Maison: the storage
+        # being unreachable tonight changes nothing about what the owner has to do.
+        if [ -f "$SECRET_MARKER" ]; then
+            write_adapter_descriptor
+        fi
+        # 1 is the adapter's own failure, which on a probe is the storage refusing us —
+        # the steady-state branch's reasoning applies: one extra mint is cheap, a dead
+        # key nobody renews is not. Anything else (docker could not start the image,
+        # an engine with no `probe`) is no credential's fault.
+        if [ "$RC" -eq 1 ]; then
+            touch "$REFRESH_MARKER"
+            chown "$PUID:$PGID" "$REFRESH_MARKER" 2>/dev/null || true
+        fi
+        log_error "Could not probe the backup storage (exit $RC): $(engine_detail "$OUT")"
+        exit 1
+    fi
+
+    if printf '%s' "$OUT" | grep -q '"storage"[[:space:]]*:[[:space:]]*"existing"'; then
+        # THE REBUILT BOX. Stop before doing damage.
+        write_recovery_marker
+        write_adapter_descriptor
+        log_error "Backup space $BACKUP_SPACE_ID already holds a repository and this box has no password."
+        log_error "Not creating a second one. The owner's encryption password is required to recover (or a reset of the space to start over)."
+        exit 0
+    fi
+
+    if printf '%s' "$OUT" | grep -q '"storage"[[:space:]]*:[[:space:]]*"empty"'; then
+        if [ ! -f "$SECRET_MARKER" ]; then
+            cat > "$SECRET_MARKER" <<EOF
+{
+  "reason": "no-password",
+  "spaceId": "$BACKUP_SPACE_ID",
+  "prefix": "$BACKUP_PREFIX",
+  "detectedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+            chmod 644 "$SECRET_MARKER"
+            chown "$PUID:$PGID" "$SECRET_MARKER" 2>/dev/null || true
+            log_info "Backup space $BACKUP_SPACE_ID is empty - waiting for the owner to choose an encryption password"
+        fi
+        write_adapter_descriptor
+        log_warn "Backups are waiting for the owner's encryption password (onboarding, or Maison > Settings > Backups)"
+        exit 0
+    fi
+
+    log_error "Unexpected answer from the engine's probe: $(engine_detail "$OUT")"
+    exit 1
 fi
 
+# --- a password without a configuration ----------------------------------------
+#
+# Not reached by the current flow, which never writes repository.password without the
+# engine's `init` or `recover` writing repository.config with it. It is a box an older
+# template left half-done: a password it minted before a create that failed halfway.
+# The format blob may already be in storage, encrypted with exactly this password, so
+# the password is kept and `connect` (create-or-connect, idempotent) finishes the job.
+#
 # --endpoint takes the URL as the credential API returned it. Reducing it to the
-# host[:port] kopia actually parses is the adapter's job now, because only the adapter
-# knows what its engine parses — this script used to carry that conversion, and it was
-# the clearest piece of engine-specific knowledge left on the host.
+# host[:port] kopia actually parses is the adapter's job, because only the adapter
+# knows what its engine parses.
 set +e
 # The values are connect.json's (see there): one set, so the two cannot disagree.
 OUT="$(engine_run connect \
@@ -640,44 +754,31 @@ set -e
 
 if [ "$RC" -eq 0 ]; then
     chown "$PUID:$PGID" "$CONFIG_FILE" 2>/dev/null || true
+    rm -f "$SECRET_MARKER"
     write_adapter_descriptor
-    if [ "${MINTED_PASSWORD:-0}" = "1" ]; then
-        log_success "Created the backup repository for space $BACKUP_SPACE_ID"
-        log_warn "The repository password exists ONLY on this box until the user is mailed a copy"
-    else
-        log_success "Connected the backup repository (space $BACKUP_SPACE_ID)"
-    fi
+    log_success "Connected the backup repository (space $BACKUP_SPACE_ID)"
     exit 0
 fi
 
-# 13 is the adapter's "this storage already holds a repository I have no password for".
-# It is its own exit code precisely so this branch cannot be reached by matching an error
-# string: the only safe response is to stop, and a retry that initialised a second
-# repository under the same prefix would strand the first one's snapshots behind a key
-# nobody has.
-if [ "$RC" -eq 13 ]; then
-    if [ "${MINTED_PASSWORD:-0}" = "1" ]; then
-        # Not our repository: the password we just minted opens nothing. Remove it, or
-        # the next run tries to connect with it and fails with "invalid password"
-        # instead of reporting the recoverable truth.
-        rm -f "$PASSWORD_FILE"
-    fi
-    # THE REBUILT BOX. Stop before doing damage.
-    cat > "$RECOVERY_MARKER" <<EOF
-{
-  "reason": "repository-exists-without-password",
-  "spaceId": "$BACKUP_SPACE_ID",
-  "prefix": "$BACKUP_PREFIX",
-  "detectedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-}
-EOF
-    chmod 644 "$RECOVERY_MARKER"
-    chown "$PUID:$PGID" "$RECOVERY_MARKER" 2>/dev/null || true
-    # As in the early exit above: Maison must see the engine to offer key entry, and
-    # without this it would wait a whole cycle for the next run to write the descriptor.
+# 13 is the adapter's "this storage already holds a repository I have no password for",
+# and 14 (engine 1.4.0+) "the password on this box does not open the repository there".
+# Both are their own exit codes precisely so this branch cannot be reached by matching
+# an error string: the only safe response is to stop, and a retry that initialised a
+# second repository under the same prefix would strand the first one's snapshots behind
+# a key nobody has.
+if [ "$RC" -eq 13 ] || [ "$RC" -eq 14 ]; then
+    # The password on disk is KEPT, as it always was on 13: 13 can also follow a connect
+    # that failed for another reason before the create found data, and then it may be
+    # the right one. It cannot loop: the recovery marker stops every later run before
+    # this point. If the owner resets the space instead of recovering,
+    # ensure-backup-credentials.sh moves it aside with the marker, so the fresh
+    # repository is created under a password the owner chooses.
+    write_recovery_marker
+    # Maison must see the engine to offer key entry, and without this it would wait a
+    # whole cycle for the next run to write the descriptor.
     write_adapter_descriptor
-    log_error "Backup space $BACKUP_SPACE_ID already holds a repository and this box has no password."
-    log_error "Not creating a second one. The user's emailed encryption key is required to recover."
+    log_error "Backup space $BACKUP_SPACE_ID already holds a repository this box's password does not open (engine exit $RC)."
+    log_error "Not creating a second one. The owner's encryption password is required to recover."
     exit 0
 fi
 
@@ -685,7 +786,5 @@ fi
 # disk is the only one that could open it if it was. Keep it and let the next run settle
 # the question.
 log_error "Could not connect the backup repository: $(engine_detail "$OUT")"
-if [ "${MINTED_PASSWORD:-0}" = "1" ]; then
-    log_info "Keeping the generated password - the next cycle will try again with it"
-fi
+log_info "Keeping the existing password - the next cycle will try again with it"
 exit 1

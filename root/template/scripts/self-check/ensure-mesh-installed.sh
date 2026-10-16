@@ -41,7 +41,7 @@ YND_ROOT="/DATA/AppData/yundera"
 YND_TEMPLATE="$YND_ROOT/template"
 source "$YND_TEMPLATE/scripts/library/log.sh"
 source "$YND_TEMPLATE/scripts/library/mesh.sh"
-# ensure_secret, for the feedback token below.
+# ensure_secret, for the feedback and onboarding-check tokens below.
 source "$YND_TEMPLATE/scripts/library/secrets.sh"
 
 PROVIDER_STR="$(ynd_source_get PROVIDER_STR || true)"
@@ -64,6 +64,10 @@ PREV_DOMAIN="$(mesh_env_get DOMAIN)"
 # through the mesh .env written just below, admin-app through the unified .env
 # ensure_secret mirrors into — then get the same value in the same run.
 ensure_secret FEEDBACK_TOKEN openssl rand -hex 32
+# Same reasoning for the onboarding check's bearer: admin-app reads it from the unified
+# .env (ensure-user-compose-stack-up.sh, below), Maison from its `onboarding_token`
+# secret, which ensure-maison-onboarding.sh sets from this value at the end of the run.
+ensure_secret ONBOARDING_CHECK_TOKEN openssl rand -hex 32
 mesh_write_contract
 
 # The dev container shares the HOST's Docker socket: installing there would bind
