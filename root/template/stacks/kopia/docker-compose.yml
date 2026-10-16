@@ -71,6 +71,19 @@
 #     the owner installs. On the private bridge below it is reachable by the gate.
 # Maison's engine package refuses any network but `none` and the default bridge for the
 # same reason. These containers reach a bucket, never a peer.
+#
+# THE UI HALF IS THE `ui` PROFILE, and a box in needs-recovery runs without it.
+#
+# Such a box has storage that already holds a repository and no password for it (a
+# rebuild, or any re-create on the same account), so there is no repository.config. The
+# UI cannot start there: its entrypoint reads repository.password and the config. The
+# engine can, and it is what Maison runs the adapter's `recover` in when the owner types
+# their key. So ensure-kopia-stack.sh deploys the engine alone and leaves
+# COMPOSE_PROFILES empty in the .env. Once a repository.config exists it writes
+# COMPOSE_PROFILES=ui and the gate and UI come up.
+#
+# This is in the .env rather than passed as --profile so that anything else running
+# `docker compose up` on this project sees the same selection.
 # =============================================================================
 name: kopia
 
@@ -96,6 +109,7 @@ services:
     image: ghcr.io/yundera/appshield:3.2.0
     container_name: kopia
     hostname: kopia
+    profiles: ["ui"]
     restart: unless-stopped
     user: "0:0"
     cpu_shares: 40
@@ -183,6 +197,7 @@ services:
     image: ${ENGINE_IMAGE}
     container_name: kopia-app
     restart: unless-stopped
+    profiles: ["ui"]
 
     # NO `hostname:` pin, deliberately — unlike kopia-engine below, which needs one.
     # The identity snapshots are filed under comes from repository.config
@@ -303,7 +318,9 @@ services:
     # inside one repository — invisible until a restore comes back empty. Maison
     # verifies this container against that file before using it and falls back to
     # one-shot containers when they disagree, so a wrong value here is slow rather
-    # than dangerous. ensure-kopia-stack.sh reads it from the file itself.
+    # than dangerous. ensure-kopia-stack.sh reads it from the file itself. In
+    # needs-recovery there is no such file yet. It then reads connect.json's hostname,
+    # the device id the adapter's `recover` writes into the config.
     #
     # Maison checks it, and the image, before every exec (engine.residentUsable), which
     # is why the container adapter.json names must be this one and not kopia-app.

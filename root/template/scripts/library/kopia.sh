@@ -139,8 +139,8 @@ KOPIA_LEGACY_ENGINE_DIR="/DATA/AppDataShared/backup/$ENGINE_ID"
 # registers the engine from that descriptor and the user's key reconnects it through the
 # adapter's `recover`, which writes repository.config with that same device id — so any
 # snapshot taken between the recovery and the next host run is already filed under the
-# identity the config will then name. ensure-kopia-stack.sh passes nothing: it skips the
-# stack until repository.config exists, so the fallback never reaches a container there.
+# identity the config will then name. ensure-kopia-stack.sh does the same in recovery,
+# with kopia_connect_hostname: there the value reaches the engine container itself.
 kopia_repo_hostname() {
     local config="$KOPIA_ENGINE_DIR/repository.config"
     local fallback="${1:-maison-unpinned}"
@@ -154,6 +154,18 @@ kopia_repo_hostname() {
         host="$fallback"
     fi
     printf '%s' "$host"
+}
+
+# kopia_connect_hostname prints the hostname in connect.json, or nothing.
+#
+# connect.json is the identity ensure-backup-config.sh hands `connect` and the adapter's
+# `recover`, written every run including in needs-recovery. It is the one source of the
+# identity for a box with no repository.config yet. ensure-backup-config.sh has the
+# value as a variable, so this is for the scripts that run after it.
+kopia_connect_hostname() {
+    local connect="$KOPIA_ENGINE_DIR/connect.json"
+    [ -r "$connect" ] || return 0
+    sed -n 's/.*"hostname"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$connect" | head -n1
 }
 
 # kopia_repo_storage_type prints the repository's storage backend ("s3", "filesystem"),

@@ -75,14 +75,44 @@ esac
 
 # --- is there a repository for it to serve? ----------------------------------
 #
-# Without one the engine would sit idle holding capabilities for nothing, and the UI
-# would not start at all — its entrypoint reads the repository password and the storage
-# credentials from files that do not exist yet. Maison runs one-shot adapter containers
-# meanwhile, and the next self-check after the repository is configured brings the stack
-# up.
-# Deliberately checked by file rather than by asking Maison: this script must not depend
-# on the dashboard being up.
-if [ ! -f "$KOPIA_ENGINE_DIR/repository.config" ]; then
+# Three answers, read from files rather than by asking Maison: this script must not
+# depend on the dashboard being up.
+#
+#   repository.config      the whole stack: gate, UI and engine.
+#   needs-recovery         THE ENGINE ALONE. The storage holds a repository this box has
+#                          no password for, so there is no config yet and the UI cannot
+#                          start: its entrypoint reads the password and the config. The
+#                          engine has a job, though. When the owner types their key,
+#                          Maison runs the adapter's `recover` in it. Leaving the whole
+#                          stack out made a re-created box look as if Kopia was never
+#                          installed, and pushed `recover` onto a one-shot container.
+#                          The UI stays out of the `ui` profile (see the compose) until
+#                          `recover` writes repository.config. The next run then adds it.
+#   neither                nothing. No credentials yet, or the first connect failed:
+#                          ensure-backup-config.sh retries it next cycle, and an engine
+#                          with no repository to serve would hold its capabilities for
+#                          nothing.
+RECOVERY_MARKER="$KOPIA_ENGINE_DIR/needs-recovery"
+if [ -f "$KOPIA_ENGINE_DIR/repository.config" ]; then
+    ENGINE_ONLY=0
+    COMPOSE_PROFILES="ui"
+    # The identity snapshots are filed under, read from the repository config rather
+    # than computed here — two sides computing it independently is how one repository
+    # ends up split into two lineages that never see each other.
+    KOPIA_HOSTNAME="$(kopia_repo_hostname)"
+elif [ -f "$RECOVERY_MARKER" ]; then
+    # connect.json's hostname is the device id `recover` pins into the config it writes,
+    # and the one ensure-backup-config.sh already put in adapter.json. The container
+    # must carry it, or Maison finds a mismatch and falls back to a one-shot.
+    RECOVERY_HOSTNAME="$(kopia_connect_hostname)"
+    if [ -z "$RECOVERY_HOSTNAME" ]; then
+        log_warn "Box is in backup recovery but $KOPIA_ENGINE_DIR/connect.json names no hostname - skipping the kopia stack"
+        exit 0
+    fi
+    ENGINE_ONLY=1
+    COMPOSE_PROFILES=""
+    KOPIA_HOSTNAME="$(kopia_repo_hostname "$RECOVERY_HOSTNAME")"
+else
     log_info "No $KOPIA_ENGINE_DIR/repository.config yet - skipping the kopia stack"
     exit 0
 fi
@@ -98,16 +128,12 @@ else
     TZ="UTC"
 fi
 
-# The identity snapshots are filed under, read from the repository config rather than
-# computed here — two sides computing it independently is how one repository ends up
-# split into two lineages that never see each other.
-KOPIA_HOSTNAME="$(kopia_repo_hostname)"
-
 # A repository on a local filesystem needs no network and must not be given one. It used
 # to get that isolation by accident, because Maison ran those commands in one-shot
 # containers with `--network none`; with the engine resident, the stack has to decide it
 # at deploy time instead. Read from repository.config rather than inferred from whether
-# BACKUP_* is set — the file is what the engine actually connected to.
+# BACKUP_* is set — the file is what the engine actually connected to. In recovery there
+# is no file and the answer is empty: the storage is the bucket `recover` must reach.
 STORAGE_TYPE="$(kopia_repo_storage_type)"
 ENGINE_NETWORK_INTERNAL="false"
 if [ "$STORAGE_TYPE" = "filesystem" ]; then
@@ -124,7 +150,18 @@ log_info "Kopia stack: $ENGINE_IMAGE as $KOPIA_HOSTNAME"
     "TZ=$TZ" \
     "ENGINE_IMAGE=$ENGINE_IMAGE" \
     "ENGINE_NETWORK_INTERNAL=$ENGINE_NETWORK_INTERNAL" \
-    "KOPIA_HOSTNAME=$KOPIA_HOSTNAME"
+    "KOPIA_HOSTNAME=$KOPIA_HOSTNAME" \
+    "COMPOSE_PROFILES=$COMPOSE_PROFILES"
+
+# Compose leaves the containers of an inactive profile running (`up --remove-orphans`
+# does not count them as orphans), so a box that had a UI and is now in recovery takes
+# it down here. The UI would otherwise hold a password that opens nothing. On a box
+# that never had one this removes nothing.
+if [ "$ENGINE_ONLY" = "1" ]; then
+    docker compose --project-directory "$STACK_DIR" -f "$STACK_DIR/docker-compose.yml" \
+        --profile ui rm --stop --force kopia kopia-app >/dev/null 2>&1 \
+        || log_warn "Could not remove the kopia UI containers; continuing"
+fi
 
 # --- credential rotation ------------------------------------------------------
 #
@@ -186,4 +223,8 @@ if docker exec maison-app maison help 2>&1 | grep -q 'backup approve'; then
     fi
 fi
 
-log_success "Kopia stack is up"
+if [ "$ENGINE_ONLY" = "1" ]; then
+    log_success "Kopia engine is up for backup recovery - the UI follows once the owner's key reconnects the repository"
+else
+    log_success "Kopia stack is up"
+fi

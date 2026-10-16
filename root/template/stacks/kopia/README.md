@@ -94,10 +94,13 @@ ensure-backup-config.sh       one-shot `docker run ${ENGINE_IMAGE} … --repo-di
 
 ensure-mesh-installed.sh      … Maison's first boot finds a connected repository
 
-ensure-kopia-stack.sh         skip if BACKUP_ENABLED=false (stack taken down) or no repository.config
+ensure-kopia-stack.sh         skip if BACKUP_ENABLED=false (stack taken down), or if there is
+                              neither repository.config nor needs-recovery
                               tools/deploy-stack.sh kopia /DATA/AppData/kopia
                                 TZ, ENGINE_IMAGE, ENGINE_NETWORK_INTERNAL,
-                                KOPIA_HOSTNAME (read from repository.config)
+                                KOPIA_HOSTNAME (read from repository.config,
+                                  or connect.json in recovery),
+                                COMPOSE_PROFILES (`ui`, or empty in recovery: engine only)
                               restart kopia-app if credentials.env is newer than it
 ```
 
@@ -174,7 +177,10 @@ Things worth knowing:
 A rebuilt box whose space already holds a repository gets exit 13 from `connect` and
 writes `needs-recovery`. It keeps rotating its credential and writing `connect.json`,
 `state.json` and `adapter.json`, so Maison still shows the engine, now flagged as
-needing recovery, but it never mints a password or connects. There are two ways out:
+needing recovery, but it never mints a password or connects. `ensure-kopia-stack.sh`
+deploys `kopia-engine` alone, without the `ui` profile, so `recover` runs in the resident
+container. The gate and UI come up on the first run after the repository is connected.
+There are two ways out:
 
 - **The user has the key.** They enter it in Maison. Maison writes
   `repository.password.candidate` and runs the adapter's `recover`, which connects with
@@ -225,7 +231,7 @@ sudo sh -c 'grep -l "\"errors\":[1-9]\|error reading" /DATA/AppData/kopia/engine
 
 | Symptom | Cause |
 |---|---|
-| No kopia containers, self-check green | `engine/needs-recovery`: a rebuilt box with no password for the existing repository. Maison asks for the emailed key; without it, the user resets the space from the dashboard (see Recovery). Needs adapter 1.1.0+ and a Maison with key entry |
+| Only `kopia-engine` running, self-check green | `engine/needs-recovery`: a rebuilt box (or any re-create on the same account) with no password for the existing repository. Maison asks for the emailed key; without it, the user resets the space from the dashboard (see Recovery). Needs adapter 1.1.0+ and a Maison with key entry |
 | Stack skipped, "no repository.config yet" | No credentials yet (no `USER_JWT`, API down) or `BACKUP_ENABLED=false` |
 | Credentials minted every night | `status` keeps failing, so `needs-credentials` keeps being armed. Check the adapter's detail in the log. Root-owned 0700 dirs in `cache/` read by a non-root run looked exactly like this |
 | Maison shows "backup failed" with spinner frames and `N fatal error(s)` | Maison keeps an 8-line tail, and progress output pushes out the `ERROR` line. Read `engine/logs/cli-logs/` |
