@@ -3,10 +3,8 @@
 # Lines starting with # are comments and will be ignored
 # Empty lines are also ignored
 
-# User and permissions setup
-ensure-pcs-user.sh
-ensure-script-executable.sh
-ensure-admin-user.sh
+# Host accounts (pcs + admin) and script permissions
+ensure-host-users.sh
 # ensure-support-key.sh installs the ONLY lifetime credential on this host —
 # admin's authorized_keys is never seeded from root's bootstrap key, so if this
 # fails the orchestrator has no way back in after handover. It therefore runs as
@@ -21,7 +19,6 @@ ensure-support-key.sh
 # Template and configuration sync
 ensure-template-sync.sh
 ensure-outbound-ip-family.sh
-ensure-yundera-user-data.sh
 
 # System updates and tools
 ensure-ubuntu-up-to-date.sh
@@ -40,8 +37,13 @@ ensure-logrotate.sh
 
 # Docker and application setup
 ensure-docker-installed.sh
+# The box's identity (DOMAIN, PROVIDER_STR, USER_JWT …). After Docker: its
+# first way in is the doorbell reply, run from the admin-app image, which is
+# how a box being provisioned gets an identity at all. Nothing above needs it;
+# everything below (backup credentials, the mesh install) does.
+ensure-yundera-user-data.sh
 # Backup (BACKUP-STORAGE-PLAN.md §6). Both MUST stay after
-# ensure-yundera-user-data.sh, which supplies and rotates the USER_JWT the
+# ensure-yundera-user-data.sh, which supplies the USER_JWT the
 # credentials call needs, and BEFORE ensure-mesh-installed.sh, whose stack-up is
 # Maison's first boot: a freshly provisioned box then finds its engine described
 # (/DATA/AppData/kopia/engine — waiting in needs-secret for the owner's password,
@@ -54,9 +56,6 @@ ensure-docker-installed.sh
 # credential is absent, near expiry, or was refused by the storage.
 ensure-backup-credentials.sh
 ensure-backup-config.sh
-# The provider's IPv6 interface, so the mesh template's own ensure-public-ip.sh
-# (PUBLIC_IP_MODE=interface) finds the address on its first run below.
-ensure-ipv6-interface.sh
 # THE STOCK MESH TEMPLATE (doc/mesh-stock-switch.md). The mesh, auth and maison
 # stacks are Yundera/mesh-router-template-root's, unmodified, in
 # /DATA/AppData/mesh — with their own self-check, cron (03:30), lock, log and

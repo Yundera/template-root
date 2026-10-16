@@ -9,10 +9,8 @@ source ${SCRIPT_DIR}/library/common.sh
 log "=== Starting final user hand over ==="
 
 # basic permission and execution setup
-chmod +x $SCRIPT_DIR/self-check/ensure-pcs-user.sh
-chmod +x $SCRIPT_DIR/self-check/ensure-script-executable.sh
-execute_script_with_logging  $SCRIPT_DIR/self-check/ensure-pcs-user.sh
-execute_script_with_logging  $SCRIPT_DIR/self-check/ensure-script-executable.sh
+chmod +x $SCRIPT_DIR/self-check/ensure-host-users.sh
+execute_script_with_logging  $SCRIPT_DIR/self-check/ensure-host-users.sh
 execute_script_with_logging "$SCRIPT_DIR/tools/generate-default-pwd.sh"
 
 # Remove provisioning-in-progress marker so self-check-reboot.sh can run

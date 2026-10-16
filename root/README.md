@@ -47,8 +47,9 @@ ensure-template-sync.sh       release zip root/template/  → yundera/template/ 
                               root/icon.svg               → yundera/.icon.svg
                               root/README.md              → yundera/README.md
                               (then runs pending migrations)
-ensure-yundera-user-data.sh   identity push (doorbell)    → .pcs.secret.env (USER_JWT, PROVIDER_STR), .ynd.user.env
-                              fallback: ${OPERATOR_API}/user/info (never renews USER_JWT)
+ensure-docker-installed.sh
+ensure-yundera-user-data.sh   doorbell reply (identity-fetch) → .pcs.secret.env (USER_JWT, PROVIDER_STR), .ynd.user.env
+                              fallbacks: push via the doorbell, then ${OPERATOR_API}/user/info (never renews USER_JWT)
 ensure-mesh-installed.sh      install / feed the stock mesh template (see below)
 ensure-env-vars-valid.sh      validate + generate .env (keys the compose interpolates only)
 ensure-connector-yundera.sh   Yundera Login drop-in (see below)
@@ -168,7 +169,7 @@ purpose; nothing reads it. Never `rm -rf /DATA/AppData/casaos` — it still hold
   `ensure_pcs_network`).
 - **auth** — the gate registers with `auth-registrar` and logs in through Dex; logout calls
   Authelia. So this stack comes up after `ensure-mesh-installed.sh`.
-- **Host** — the `admin` sudoer (`ensure-admin-user.sh`): the app writes its fresh pubkey
+- **Host** — the `admin` sudoer (`ensure-host-users.sh`): the app writes its fresh pubkey
   into `/home/admin/.ssh/` on every start and does privileged work over `ssh` + `sudo -n`.
 
 ## Day-to-day

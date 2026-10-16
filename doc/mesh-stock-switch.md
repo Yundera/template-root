@@ -57,7 +57,7 @@ only Yundera has. The Yundera self-check is a **strict addition** over the mesh 
 | Config | its own `.env` | `.pcs.env`, `.pcs.secret.env`, `.ynd.user.env` → unified `.env` |
 | Self-check | its own list, cron entry (`MESH_ROUTER_SELFCHECK`), lock, log (`mesh/log/mesh.log`), migrations, markers | its own list, cron entries, lock, log, migrations, markers |
 | Updates | the branch of this template's channel, or a pinned commit (`UPDATE_URL` in the mesh `.env`, written by this template), applied by its own sync and migrations | its own channel (`UPDATE_URL` in `.pcs.env`, a `.zip`), which also picks the mesh branch |
-| Host | Docker (no-op when present), yq, cron, logrotate | pcs/admin users, sshd, swap, apt, support key, IP family, the `ens19` IPv6 interface |
+| Host | Docker (no-op when present), yq, cron, logrotate | pcs/admin users, sshd, swap, apt, support key, IP family |
 | Control plane | none | `OPERATOR_API`, `USER_JWT`, Yundera Login, backup credentials |
 
 ## How the two runs relate
@@ -153,7 +153,7 @@ without the CLI.
 |---|---|
 | `ensure-mesh-stack.sh`, `ensure-auth-stack.sh`, `ensure-authelia.sh`, `ensure-maison-stack.sh`, `ensure-terminal-stack.sh` | **deleted** — the mesh template's run |
 | `ensure-dex.sh` | a **wrapper**, not a self-check step: runs the mesh copy under the mesh lock. The demo calls it by path after dropping its open-entry connector. |
-| `ensure-public-ip.sh` | **deleted**; its netplan / `ens19` part is `ensure-ipv6-interface.sh`, before the mesh install |
+| `ensure-public-ip.sh` | **deleted**; its netplan / `ens19` part (Proxmox's second NIC) went with the Proxmox provider |
 | `tools/authelia-user-manager.sh` | a **wrapper** that `exec`s the mesh copy — the path every runbook names |
 | `tools/set-default-app.sh`, `tools/provision-dex-frontend.sh` | **deleted**: nothing calls them any more (Mesh Console calls the mesh copy) |
 | `tools/onboarding.sh` | stays (Yundera's onboarding state); claims through the mesh user manager, reads the owner from the mesh `.env`, `reset` runs the mesh `ensure-authelia.sh` / `ensure-dex.sh` |

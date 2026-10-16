@@ -74,7 +74,7 @@ the `-app` suffix.
 Ordered in `scripts/self-check/scripts-config.txt`:
 
 ```
-ensure-yundera-user-data.sh   USER_JWT (and its rotation)        → .pcs.secret.env
+ensure-yundera-user-data.sh   USER_JWT                           → .pcs.secret.env
 
 ensure-backup-credentials.sh  GET ${OPERATOR_API}/user/backup/space?deviceId=…
                               (Bearer USER_JWT)                   → BACKUP_* in .stack.env

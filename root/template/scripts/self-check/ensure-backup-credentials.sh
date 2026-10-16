@@ -6,7 +6,7 @@
 # and parks it as BACKUP_* in the kopia stack's own /DATA/AppData/kopia/.stack.env. It renders nothing and starts nothing:
 # ensure-backup-config.sh turns these values into an engine configuration.
 #
-# MUST RUN AFTER ensure-yundera-user-data.sh, which supplies (and rotates) USER_JWT
+# MUST RUN AFTER ensure-yundera-user-data.sh, which supplies USER_JWT
 # and writes DOMAIN — the label this script sends. MUST RUN BEFORE
 # ensure-backup-config.sh, which consumes what it writes.
 #

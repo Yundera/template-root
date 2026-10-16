@@ -2,7 +2,7 @@
 
 # Safety net for the Yundera support SSH key.
 #
-# After ensure-admin-user.sh's first-run seed, the support key lives in
+# After ensure-host-users.sh's first-run seed, the support key lives in
 # admin@host's authorized_keys with nothing keeping it there — a user
 # (or sshd reconfigure, or a key edit through the dashboard) can remove
 # it and support access is silently gone. This script re-asserts the
@@ -34,7 +34,7 @@ ADMIN_USER="admin"
 # Failure handler. Outside provisioning, a transient miss is harmless —
 # the next self-check tick retries — so keep the historical exit-0
 # safety-net behaviour. During first-boot provisioning os-init.sh exports
-# PCS_PROVISIONING=1; ensure-admin-user.sh no longer seeds admin's
+# PCS_PROVISIONING=1; ensure-host-users.sh no longer seeds admin's
 # authorized_keys from root's bootstrap key, so the support key fetched
 # here is the only thing that will give the orchestrator a way back in.
 # A failure to install it must therefore abort provisioning.
@@ -65,7 +65,7 @@ fi
 SUPPORT_URL="${OPERATOR_API%/}/support/ssh-key"
 
 if ! id "$ADMIN_USER" >/dev/null 2>&1; then
-    fail "User '$ADMIN_USER' not found — run ensure-admin-user.sh first"
+    fail "User '$ADMIN_USER' not found — run ensure-host-users.sh first"
 fi
 
 ADMIN_HOME=$(getent passwd "$ADMIN_USER" | cut -d: -f6)

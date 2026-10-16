@@ -55,7 +55,7 @@ source "${SCRIPT_DIR}/library/common.sh"
 
 # BOOTSTRAP THE EXEC BITS BEFORE TRUSTING ANY SCRIPT IN THE TREE.
 #
-# ensure-script-executable.sh (step 2 of scripts-config.txt) exists to keep this
+# ensure-host-users.sh (step 1 of scripts-config.txt) exists to keep this
 # tree executable, and it cannot fix the one case that matters: if the tree
 # arrives mode 644, execute_script_with_logging refuses to run it —
 # `[ ! -x "$script_path" ] && return 1` in library/log.sh — so the repair script

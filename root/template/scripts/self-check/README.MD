@@ -8,9 +8,7 @@ Listed in execution order from `scripts-config.txt`.
 
 | Script | Purpose |
 |--------|---------|
-| `ensure-pcs-user.sh` | Creates 'pcs' user with sudo privileges and required directory structure |
-| `ensure-script-executable.sh` | Makes all scripts executable and sets proper ownership to the pcs user |
-| `ensure-admin-user.sh` | Configures the admin user account inside the PCS |
+| `ensure-host-users.sh` | Creates the `pcs` sudoer (UID 1000) and its directory structure, makes every script executable and pcs-owned, and configures the `admin` maintenance sudoer (key-only login, NOPASSWD sudo) |
 | `ensure-support-key.sh` | Authorises the operator's support SSH key (operator-controllable, `ENSURE_SUPPORT_KEY` in `.pcs.env`) |
 | `ensure-template-sync.sh` | Downloads `UPDATE_URL`, runs migrations from the new tree, then rsyncs `template/` over `/DATA/AppData/yundera/template/` |
 | `ensure-outbound-ip-family.sh` | Prefers IPv4 for dual-stack outbound connections (gai.conf) — the GHCR IPv6 path is unreliable |
@@ -25,7 +23,6 @@ Listed in execution order from `scripts-config.txt`.
 | `ensure-docker-installed.sh` | Installs and configures Docker CE with proper user permissions |
 | `ensure-backup-credentials.sh` | Fetches/rotates the S3 backup credential into the kopia stack's own `/DATA/AppData/kopia/.stack.env` (`BACKUP_*`; moved out of `.pcs.secret.env` on first run) |
 | `ensure-backup-config.sh` | Writes the engine's storage coordinates, credentials and descriptor from those `BACKUP_*` values; with no password on the box it probes the storage and marks `needs-secret` (empty) or `needs-recovery` (existing) — it never mints a password, the owner chooses it (`tools/backup.sh init`) |
-| `ensure-ipv6-interface.sh` | Configures the provider's IPv6 interface so the mesh template finds the address |
 | `ensure-mesh-installed.sh` | Installs the stock mesh template once, and writes this template's inputs into its `.env` (`library/mesh.sh`) |
 | `ensure-env-vars-valid.sh` | Validates required env vars across `.pcs.env`, `.pcs.secret.env`, `.ynd.user.env` and writes the yundera stack's `.env`: the keys `docker-compose.yml` interpolates, from those three and the stack's own `.stack.env` (`library/env.sh`) |
 | `ensure-connector-yundera.sh` | Writes the "Yundera Login" Dex connector drop-in (`YUNDERA_LOGIN_ENABLED` in `.pcs.env`) |

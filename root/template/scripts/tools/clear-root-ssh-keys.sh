@@ -40,7 +40,7 @@ ADMIN_KEYS="/home/admin/.ssh/authorized_keys"
 if [ ! -s "$ADMIN_KEYS" ]; then
     echo "✗ $ADMIN_KEYS missing or empty — refusing to clear root's bootstrap key."
     echo "  Dropping it now would leave this host with no way in at all."
-    echo "  ensure-admin-user.sh and ensure-support-key.sh must succeed first."
+    echo "  ensure-host-users.sh and ensure-support-key.sh must succeed first."
     exit 1
 fi
 
