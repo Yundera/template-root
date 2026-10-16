@@ -144,7 +144,7 @@ services:
     # The Yundera admin app (settings-center-app 2.x): Go + an embedded Svelte UI.
     # 2.0 replaced the 1.x Next.js image (1.9 GB, ~160 MB resident) with a ~35 MB
     # static binary using ~10 MB, and SSH-to-the-host with the Docker socket.
-    image: ghcr.io/yundera/settings-center-app:2.1.0
+    image: ghcr.io/yundera/settings-center-app:2.2.0
     container_name: admin-app
     hostname: admin-app
     restart: unless-stopped
