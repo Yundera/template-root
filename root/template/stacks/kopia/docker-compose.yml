@@ -452,7 +452,8 @@ networks:
 x-compose-app:
   schema_version: 2
   id: kopia
-  title: Kopia
+  title:
+    en_us: Kopia
   category: pcs
   developer: Yundera Team
   view: system

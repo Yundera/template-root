@@ -302,7 +302,8 @@ x-casaos:
 x-compose-app:
   schema_version: 2
   id: yundera
-  title: Yundera
+  title:
+    en_us: Yundera
   # FALLBACK ONLY. The tile renders from /DATA/AppData/yundera/.icon.svg — placed
   # by the root-move migration from root/icon.svg, which is vendored beside this
   # file and serves the same asset as this URL. Maison prefers that file over the
