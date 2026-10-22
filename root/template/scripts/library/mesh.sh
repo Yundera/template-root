@@ -110,8 +110,10 @@ MESH_KEYS_SEED_ONCE="DEFAULT_SERVICE_HOST DEFAULT_SERVICE_PORT LOCAL_ADMIN_USER
 
 # READ BACK: the mesh template owns them; ensure-env-vars-valid.sh takes them
 # from the mesh .env into the unified .env, over any stale .pcs.env copy.
+# REDIRECT_HOST_SUFFIXES and ROUTING_DOMAINS are the box's routing domains, derived by
+# the mesh template's ensure-routing-domains.sh: the gates' fallback suffix list.
 MESH_KEYS_READ_BACK="PUBLIC_IP PUBLIC_IP_DASH PUBLIC_IPV4 PUBLIC_IPV4_DASH PUBLIC_IPV6 PUBLIC_IPV6_DASH
-    DEFAULT_SERVICE_HOST DEFAULT_SERVICE_PORT LOCAL_ADMIN_USER"
+    DEFAULT_SERVICE_HOST DEFAULT_SERVICE_PORT LOCAL_ADMIN_USER REDIRECT_HOST_SUFFIXES ROUTING_DOMAINS"
 
 # --- reading ---------------------------------------------------------------------
 

@@ -129,6 +129,13 @@ if [ -f "$SRC_README" ] && ! cmp -s "$SRC_README" "$DEST_DIR/README.md"; then
     log_info "Updated $DEST_DIR/README.md from template"
 fi
 
+# --- 1d. routes ------------------------------------------------------------
+# The stack's routes (stacks/<name>/routes), one per routing domain, as labels in
+# docker-compose.override.yml (render_routing_override in library/stacks.sh): the
+# compose file names no domain.
+render_routing_override "$(ynd_routing_domains)" "$(dirname "$SRC_COMPOSE")/routes" \
+    "$DEST_DIR/docker-compose.override.yml"
+
 # --- 2. .env ---------------------------------------------------------------
 # The compose file's keys plus the KEY=value arguments, regenerated whenever it
 # differs. The stack owns nothing in it: what the stack does own (a secret it
@@ -170,7 +177,7 @@ chown 1000:1000 "$DEST_ENV" 2>/dev/null || true
 
 # --- 3. pull + up ----------------------------------------------------------
 compose() {
-    docker compose --project-directory "$DEST_DIR" -f "$DEST_COMPOSE" "$@"
+    stack_compose "$DEST_DIR" "$@"
 }
 
 run_with_backoff() {

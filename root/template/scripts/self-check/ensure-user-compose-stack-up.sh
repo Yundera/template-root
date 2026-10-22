@@ -82,12 +82,17 @@ chown -R "$GATE_UID:$GATE_UID" "$COMPOSE_DIR/admin/gate-data" 2>/dev/null \
 # stack's deploy has made it by now, but this must not depend on that.
 ensure_pcs_network || echo "WARN: could not create the pcs network; up will say why"
 
+# The admin gate's routes, one per routing domain (render_routing_override in
+# library/stacks.sh): the compose file names no domain.
+render_routing_override "$(ynd_routing_domains)" "$COMPOSE_DIR/template/stacks/yundera/routes" \
+    "$COMPOSE_DIR/docker-compose.override.yml"
+
 ORPHANS_FLAG="--remove-orphans"
 
 backoff="$INITIAL_BACKOFF"
 attempt=1
 while [ "$attempt" -le "$MAX_ATTEMPTS" ]; do
-    if docker compose --project-directory "$COMPOSE_DIR" -f "$COMPOSE_FILE" up --quiet-pull $ORPHANS_FLAG -d 2>&1 | tee -a "$LOG_FILE"; then
+    if stack_compose "$COMPOSE_DIR" up --quiet-pull $ORPHANS_FLAG -d 2>&1 | tee -a "$LOG_FILE"; then
         echo "User compose stack is up successfully (attempt $attempt/$MAX_ATTEMPTS)"
         exit 0
     fi

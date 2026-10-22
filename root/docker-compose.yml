@@ -14,8 +14,8 @@ services:
   # an app's client_id from a PTR lookup of the CALLER's container name on the pcs
   # network, and only ever issues redirect URIs under `<client_id>-<suffix>`. So
   # the gate must be the container named `admin`, and the app takes the suffixed
-  # name. Swap them and the OIDC callback lands on a hostname the caddy_* labels
-  # below do not publish, and login dead-ends.
+  # name. Swap them and the OIDC callback lands on a hostname the stack's routes
+  # (template/stacks/yundera/routes) do not publish, and login dead-ends.
   # =============================================================================
   admin:
     image: ghcr.io/yundera/appshield:3.2.0
@@ -38,8 +38,9 @@ services:
       OIDC_REGISTRAR_URL: "http://auth-registrar:9092"
       # Pre-registration guess / fallback if /register is unreachable; the
       # registrar's own list is what actually decides (appshield >= 2.0.10,
-      # mesh-auth >= 1.1.4). Keep it matching the caddy_* labels below.
-      REDIRECT_HOST_SUFFIXES: "${DOMAIN},${PUBLIC_IP_DASH}.nip.io,${PUBLIC_IP_DASH}.sslip.io"
+      # mesh-auth >= 1.1.4). Both come from the box's routing domains (the mesh
+      # template's), like this stack's routes.
+      REDIRECT_HOST_SUFFIXES: "${REDIRECT_HOST_SUFFIXES:-${DOMAIN},${PUBLIC_IP_DASH}.nip.io,${PUBLIC_IP_DASH}.sslip.io}"
       BACKEND_HOST: "admin-app"
       BACKEND_PORT: "80"
       LISTEN_PORT: "80"
@@ -127,18 +128,8 @@ services:
       pcs: null
     depends_on:
       - admin-app
-    labels:
-      # Standard domain with custom CA (gateway-routed)
-      caddy_0: admin-${DOMAIN}
-      caddy_0.import: gateway_tls
-      caddy_0.reverse_proxy: "{{upstreams 80}}"
-      # nip.io variant for direct access (custom CA)
-      caddy_1: admin-${PUBLIC_IP_DASH}.nip.io
-      caddy_1.import: gateway_tls
-      caddy_1.reverse_proxy: "{{upstreams 80}}"
-      # sslip.io variant for direct access (Let's Encrypt)
-      caddy_2: admin-${PUBLIC_IP_DASH}.sslip.io
-      caddy_2.reverse_proxy: "{{upstreams 80}}"
+    # Routed by template/stacks/yundera/routes, rendered into docker-compose.override.yml
+    # once per routing domain of the box: this file names no domain.
 
   admin-app:
     # The Yundera admin app (settings-center-app 2.x): Go + an embedded Svelte UI.
@@ -237,7 +228,7 @@ services:
         source: /etc/localtime
         target: /etc/localtime
         read_only: true
-    # No caddy_* labels and no published port: the ONLY public route in is the
+    # No route and no published port: the ONLY public route in is the
     # gate above, which owns the `admin-*` hostnames. `expose` keeps port 80
     # reachable inside `pcs` — which is precisely why this app verifies the gate's
     # signed assertion instead of trusting forwarded headers: every container on
@@ -298,7 +289,7 @@ x-casaos:
 # install time; this stack is the template itself, never installed, so its
 # placeholder survives on disk. x-compose-app's `webui-host` is the one field
 # Maison substitutes (${DOMAIN}/${domain} -> the APP_DOMAIN it reads from .env.app),
-# which is exactly the value the caddy_0 label on the admin service publishes.
+# which is exactly the host the admin route (template/stacks/yundera/routes) publishes.
 x-compose-app:
   schema_version: 2
   id: yundera

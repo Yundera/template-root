@@ -16,10 +16,10 @@ ORPHANS_FLAG="--remove-orphans"
 ensure_pcs_network || echo "WARN: could not create the pcs network; up will say why"
 
 # Stop any existing containers (with error suppression)
-docker compose --project-directory "$COMPOSE_DIR" -f "$COMPOSE_FILE" down $ORPHANS_FLAG 2>/dev/null || true
+stack_compose "$COMPOSE_DIR" down $ORPHANS_FLAG 2>/dev/null || true
 
 # Start containers and capture output
-if docker compose --project-directory "$COMPOSE_DIR" -f "$COMPOSE_FILE" up --quiet-pull $ORPHANS_FLAG -d 2>&1 | tee -a "$LOG_FILE"; then
+if stack_compose "$COMPOSE_DIR" up --quiet-pull $ORPHANS_FLAG -d 2>&1 | tee -a "$LOG_FILE"; then
     echo "User compose stack is up"
 else
     echo "ERROR: Failed to start docker containers"

@@ -37,6 +37,8 @@ source "$YND_TEMPLATE/scripts/library/log.sh"
 # shared with ensure-backup-config.sh so the containers started here cannot disagree with
 # the repository that script created.
 source "$YND_TEMPLATE/scripts/library/kopia.sh"
+# stack_compose: the stack with its rendered routes (docker-compose.override.yml).
+source "$YND_TEMPLATE/scripts/library/stacks.sh"
 
 PCS_ENV="$YND_ROOT/.pcs.env"
 STACK_DIR="/DATA/AppData/kopia"
@@ -65,8 +67,7 @@ case "$(printf '%s' "$ENABLED" | tr '[:upper:]' '[:lower:]')" in
             log_info "Backups disabled by BACKUP_ENABLED in .pcs.env - taking the kopia stack down"
             # No --volumes: the stack declares none, and a future one must not be wiped
             # by this path.
-            docker compose --project-directory "$STACK_DIR" \
-                -f "$STACK_DIR/docker-compose.yml" down --remove-orphans \
+            stack_compose "$STACK_DIR" down --remove-orphans \
                 || log_warn "Kopia stack teardown failed; continuing"
         fi
         exit 0
@@ -167,8 +168,7 @@ log_info "Kopia stack: $ENGINE_IMAGE as $KOPIA_HOSTNAME"
 # it down here. The UI would otherwise hold a password that opens nothing. On a box
 # that never had one this removes nothing.
 if [ "$ENGINE_ONLY" = "1" ]; then
-    docker compose --project-directory "$STACK_DIR" -f "$STACK_DIR/docker-compose.yml" \
-        --profile ui rm --stop --force kopia kopia-app >/dev/null 2>&1 \
+    stack_compose "$STACK_DIR" --profile ui rm --stop --force kopia kopia-app >/dev/null 2>&1 \
         || log_warn "Could not remove the kopia UI containers; continuing"
 fi
 
