@@ -40,7 +40,7 @@ services:
       # registrar's own list is what actually decides (appshield >= 2.0.10,
       # mesh-auth >= 1.1.4). Both come from the box's routing domains (the mesh
       # template's), like this stack's routes.
-      REDIRECT_HOST_SUFFIXES: "${REDIRECT_HOST_SUFFIXES:-${DOMAIN},${PUBLIC_IP_DASH}.nip.io,${PUBLIC_IP_DASH}.sslip.io}"
+      REDIRECT_HOST_SUFFIXES: "${REDIRECT_HOST_SUFFIXES:-${DOMAIN}}"
       BACKEND_HOST: "admin-app"
       BACKEND_PORT: "80"
       LISTEN_PORT: "80"

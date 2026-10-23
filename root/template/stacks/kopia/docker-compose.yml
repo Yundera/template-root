@@ -123,7 +123,7 @@ services:
       # registrar's REDIRECT_HOST_SUFFIXES is what actually decides. This list is the
       # pre-registration guess, and what gets used if /register is unreachable — the box's
       # routing domains (the mesh template's), like this stack's routes.
-      REDIRECT_HOST_SUFFIXES: "${REDIRECT_HOST_SUFFIXES:-${DOMAIN},${PUBLIC_IP_DASH}.nip.io,${PUBLIC_IP_DASH}.sslip.io}"
+      REDIRECT_HOST_SUFFIXES: "${REDIRECT_HOST_SUFFIXES:-${DOMAIN}}"
       BACKEND_HOST: "kopia-app"
       BACKEND_PORT: "51515"
       LISTEN_PORT: "80"

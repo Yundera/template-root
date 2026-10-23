@@ -91,21 +91,13 @@ evict_name_squatters() {
 # mesh-router-template-root (render_routing_override, stack_compose).
 
 # The mesh template's ROUTING_DOMAINS: `<suffix>[;<label>=<value>...]` per domain,
-# comma-separated, primary first. A mesh template that predates it gets the three
-# domains every box had before (its own, nip.io, sslip.io), so this template can ship
-# first without leaving admin or kopia unrouted. Empty while DOMAIN or PUBLIC_IP_DASH
-# is not known.
+# comma-separated, primary first. This template names no domain of its own: the mesh
+# install runs first in the self-check, and a mesh .env without the key (a template
+# pinned before it) leaves the stacks on the routes they already had.
 ynd_routing_domains() {
-    local env="${MESH_ROOT:-${DATA_ROOT:-/DATA}/AppData/mesh}/.env" value domain ip
+    local env="${MESH_ROOT:-${DATA_ROOT:-/DATA}/AppData/mesh}/.env"
     [ -f "$env" ] || return 0
-    _ynd_mesh_key() { sed -n "s/^$1=//p" "$env" | tail -n 1 | tr -d "\r\"'"; }
-    value="$(_ynd_mesh_key ROUTING_DOMAINS)"
-    if [ -z "$value" ]; then
-        domain="$(_ynd_mesh_key DOMAIN)" ip="$(_ynd_mesh_key PUBLIC_IP_DASH)"
-        [ -n "$domain" ] && [ -n "$ip" ] \
-            && value="$domain;import=gateway_tls,$ip.nip.io;import=gateway_tls,$ip.sslip.io"
-    fi
-    printf '%s' "$value"
+    sed -n "s/^ROUTING_DOMAINS=//p" "$env" | tail -n 1 | tr -d "\r\"'"
 }
 
 # render_routing_override <domains> <routes-file> <out>
