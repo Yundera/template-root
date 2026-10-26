@@ -267,10 +267,10 @@ services:
     networks:
       engine: null
 
-    # Idle while nobody is looking at it; the ceiling is for a browse of a large
-    # snapshot tree. Lower than the engine's, which has to hash whole app directories.
+    # Idle while nobody is looking at it. No memory limit: a long-running server is the
+    # repository's maintenance owner, and the daily full maintenance grows with the
+    # repository — 1g was OOM-killed on a 119 GB repository (watch, 2026-10-25).
     cpu_shares: 50
-    mem_limit: 1g
 
     environment:
       # The image bakes KOPIA_CACHE_DIRECTORY=/app/cache and KOPIA_LOG_DIR=/app/logs,
@@ -347,11 +347,10 @@ services:
     networks:
       engine: null
 
-    # Idle almost always; busy only while a backup or restore runs. The memory limit is
-    # higher than anything else on the box on purpose — a one-shot engine had no limit
-    # at all, and an OOM here fails a restore rather than slowing a page.
+    # Idle almost always; busy only while a backup or restore runs. No memory limit, on
+    # purpose: kopia's memory grows with the repository, and an OOM here fails a backup
+    # or a restore rather than slowing a page.
     cpu_shares: 70
-    mem_limit: 2g
 
     environment:
       # See the note on kopia-app: same reason, same directories, shared deliberately.
