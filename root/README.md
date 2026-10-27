@@ -9,7 +9,7 @@ Terminal are **not** here — they are the mesh template's stacks (below).
 |---|---|
 | `admin-${DOMAIN}` | the `admin` gate → settings-center-app (also the Maison **Yundera** tile) |
 
-Also answers on `admin-${PUBLIC_IP_DASH}.nip.io` and `.sslip.io`.
+Also answers on `admin-${PUBLIC_IP_DASH}.${IP_ZONE}` and `.sslip.io`.
 
 Deployed to `/DATA/AppData/yundera` (project name `yundera`). This README is copied there
 by `ensure-template-sync.sh` on every sync, beside the compose file.

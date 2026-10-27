@@ -10,7 +10,7 @@ snapshots, restore a single file, retention, task log), reachable only through t
 |---|---|
 | `kopia-${DOMAIN}` | the gate → kopia's web UI (also the Maison **Kopia** tile) |
 
-Also answers on the `-${PUBLIC_IP_DASH}.nip.io` and `.sslip.io` variants.
+Also answers on the `-${PUBLIC_IP_DASH}.${IP_ZONE}` and `.sslip.io` variants.
 
 Deployed to `/DATA/AppData/kopia` (project name `kopia`) by `ensure-kopia-stack.sh`.
 This README is copied there on every deploy.
