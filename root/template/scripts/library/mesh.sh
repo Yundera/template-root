@@ -233,17 +233,6 @@ mesh_installer_url() {
     fi
 }
 
-# Whether ZONE resolves this box's public IPv4 the nip.io way (<ip-dashed>.<zone>).
-# The box's own address rather than a sample one: a zone that only answers for
-# registered boxes still answers for this one.
-mesh_ip_zone_answers() {
-    local zone="$1" ip got
-    ip="$(mesh_env_get PUBLIC_IPV4)"
-    [ -n "$ip" ] || return 1
-    got="$(getent ahostsv4 "${ip//./-}.$zone" 2>/dev/null | awk 'NR==1 {print $1}')"
-    [ "$got" = "$ip" ]
-}
-
 # --- writing -------------------------------------------------------------------
 
 # Upsert KEY=VALUE into the mesh .env; a no-op when it already holds that value.
@@ -287,22 +276,11 @@ mesh_write_contract() {
     value="$(ynd_source_get DOMAIN 2>/dev/null || true)"
     [ -z "$value" ] || upsert_mesh_env SETUP_URL "https://admin-$value/"
 
-    # The mesh-router-nameserver zone (mesh template README, IP_ZONE): the agent then
-    # also registers <ip>.<zone> routes and Maison publishes every app there too.
-    # `ip.<server domain>`, once that zone answers for this box's own address — so a
-    # box turns it on by itself when the operator delegates the zone, and nothing
-    # changes before. IP_ZONE in this template's sources overrides it (empty: off). A
-    # lookup that fails leaves the current value alone: one DNS hiccup must not take
-    # the zone away and republish every app.
-    if value="$(ynd_source_get IP_ZONE)"; then
-        upsert_mesh_env IP_ZONE "$value"
-    else
-        value="$(ynd_source_get DOMAIN 2>/dev/null || true)"
-        value="${value#*.}"
-        if [ -n "$value" ] && mesh_ip_zone_answers "ip.$value"; then
-            upsert_mesh_env IP_ZONE "ip.$value"
-        fi
-    fi
+    # The mesh-router-nameserver zone (mesh template README, IP_ZONE). The mesh
+    # template's ensure-ip-zone.sh fills it from the zone mesh-router-backend publishes;
+    # a non-empty IP_ZONE in this template's sources is stated here instead and wins.
+    value="$(ynd_source_get IP_ZONE 2>/dev/null || true)"
+    [ -z "$value" ] || upsert_mesh_env IP_ZONE "$value"
 
     # Maison's "Send feedback" sink: the admin app's ingest route, straight over
     # pcs (not through its gate), with the bearer the admin app also receives.
