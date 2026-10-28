@@ -98,7 +98,8 @@ This template never edits a file the mesh template wrote. It only writes **input
 runs mesh scripts — the whole contract is `template/scripts/library/mesh.sh`:
 
 - **Every run** (Yundera is the source of truth): `EMAIL SMTP_TO APPSTORE_URL
-  OPERATOR_API`, plus PCS constants (`DATA_ROOT=/DATA`,
+  OPERATOR_API SSLIP_ROUTES` (each only when a source states it: the demo sets
+  `SSLIP_ROUTES=off`), plus PCS constants (`DATA_ROOT=/DATA`,
   `PUBLIC_IP_MODE=interface`, `BRAND_NAME`, `DEX_THEME_SRC` → this template's
   `dex-theme/`, `PLATFORM_PROJECTS`, …).
 - **Seed once** (then the mesh's own): default app, `LOCAL_ADMIN_USER`, and the secrets

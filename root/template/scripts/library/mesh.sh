@@ -51,7 +51,9 @@ MESH_ENV_MGR="$YND_TEMPLATE/scripts/tools/env-file-manager.sh"
 # change goes through the mesh install.sh (--provider/--domain), which is what
 # takes the mesh stack down to apply it cleanly. Upserting them here first would
 # hide the change from the installer. See ensure-mesh-installed.sh.
-MESH_KEYS_EVERY_RUN="EMAIL SMTP_TO APPSTORE_URL OPERATOR_API"
+# A key absent from every source is skipped, not cleared: SSLIP_ROUTES (the demo
+# service sets it off in .pcs.env) reaches only the boxes that state it.
+MESH_KEYS_EVERY_RUN="EMAIL SMTP_TO APPSTORE_URL OPERATOR_API SSLIP_ROUTES"
 
 # Constants: what a PCS is, in the mesh template's own knobs (its README,
 # "Configuration (.env keys)"). EMAIL_SYNC=false because on a PCS the
