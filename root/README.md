@@ -66,7 +66,7 @@ generated file:
 | File | Written by | Holds |
 |---|---|---|
 | `.pcs.env` | orchestrator at provisioning | `UPDATE_URL`, `OPERATOR_API`, `YUNDERA_LOGIN_ENABLED`, `SELF_CHECK_CRON`, `SMTP_TO`, `SUPPORT_EMAIL` … |
-| `.pcs.secret.env` | orchestrator + `ensure-yundera-user-data.sh` | `USER_JWT`, `DEFAULT_PWD`, `PROVIDER_STR` |
+| `.pcs.secret.env` | orchestrator + `ensure-yundera-user-data.sh` | `USER_JWT`, `PROVIDER_STR` |
 | `.ynd.user.env` | `ensure-yundera-user-data.sh` | `UID`, `EMAIL`, `DOMAIN` |
 | `.stack.env` | this stack's own scripts (`ensure_secret`, `library/secrets.sh`) | `ADMIN_ASSERTION_SECRET`. Never regenerated; 600 |
 | `.env` | `ensure-env-vars-valid.sh` | **generated** — don't edit |
@@ -97,8 +97,8 @@ migrations and update channel. Each has its own README in that repo
 This template never edits a file the mesh template wrote. It only writes **inputs** and
 runs mesh scripts — the whole contract is `template/scripts/library/mesh.sh`:
 
-- **Every run** (Yundera is the source of truth): `EMAIL DEFAULT_PWD SMTP_TO
-  APPSTORE_URL OPERATOR_API`, plus PCS constants (`DATA_ROOT=/DATA`,
+- **Every run** (Yundera is the source of truth): `EMAIL SMTP_TO APPSTORE_URL
+  OPERATOR_API`, plus PCS constants (`DATA_ROOT=/DATA`,
   `PUBLIC_IP_MODE=interface`, `BRAND_NAME`, `DEX_THEME_SRC` → this template's
   `dex-theme/`, `PLATFORM_PROJECTS`, …).
 - **Seed once** (then the mesh's own): default app, `LOCAL_ADMIN_USER`, and the secrets

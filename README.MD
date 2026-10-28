@@ -87,7 +87,6 @@ The environment files support the following configuration options:
 | `PUBLIC_IPV4` | Public IPv4 address (if available) | `.pcs.env` | Optional |
 | `PUBLIC_IPV6` | Public IPv6 address (if available) | `.pcs.env` | Optional |
 | `USER_JWT` | Yundera JWT token | `.pcs.secret.env` | Required |
-| `DEFAULT_PWD` | Default password | `.pcs.secret.env` | Required |
 | `PROVIDER_STR` | Provider configuration string | `.pcs.secret.env` | Required |
 | `UPDATE_URL` | Template zip URL for updates (or literal `local` for dev) | `.pcs.env` | `https://github.com/Yundera/template-root/archive/refs/heads/stable.zip` |
 | `DEFAULT_SERVICE_HOST` | Catch-all target for custom domains (see Caddyfile docs) | `.pcs.env` | `casaos` |

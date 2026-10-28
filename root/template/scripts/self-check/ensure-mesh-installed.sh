@@ -56,7 +56,7 @@ PREV_PROVIDER_STR="$(mesh_env_get PROVIDER_STR)"
 PREV_DOMAIN="$(mesh_env_get DOMAIN)"
 
 # Before the installer, so its first mesh self-check already runs with Yundera's
-# branding, login theme, IP mode, DEFAULT_PWD and secrets instead of minting or
+# branding, login theme, IP mode and secrets instead of minting or
 # defaulting its own.
 #
 # FEEDBACK_TOKEN is minted here rather than beside ADMIN_ASSERTION_SECRET in
