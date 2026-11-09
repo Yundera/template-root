@@ -83,8 +83,9 @@ evict_name_squatters() {
 # --- routes ------------------------------------------------------------------------
 #
 # The yundera and kopia stacks name no domain: their routes are listed in
-# stacks/<stack>/routes (`<service>|<name>|<port>` per line) and rendered, once per
-# routing domain of the box, into docker-compose.override.yml beside the live stack.
+# stacks/<stack>/routes (`<service>|<name>|<port>[|<opts>]` per line) and rendered, once per
+# routing domain of the box plus the dot form <name>.<DOMAIN>, into
+# docker-compose.override.yml beside the live stack.
 # The domains are the mesh template's (routing_domains in its scripts/library/common.sh),
 # read from the ROUTING_DOMAINS value it writes into the mesh .env — so these routes,
 # Maison's app routes and the login suffixes are one list. Ported from
@@ -100,6 +101,14 @@ ynd_routing_domains() {
     sed -n "s/^ROUTING_DOMAINS=//p" "$env" | tail -n 1 | tr -d "\r\"'"
 }
 
+# The box's DOMAIN as the mesh template has it (<user>.<zone>), for the dot form
+# <name>.<DOMAIN>. Same file as ynd_routing_domains, so the two never disagree.
+ynd_mesh_domain() {
+    local env="${MESH_ROOT:-${DATA_ROOT:-/DATA}/AppData/mesh}/.env"
+    [ -f "$env" ] || return 0
+    sed -n "s/^DOMAIN=//p" "$env" | tail -n 1 | tr -d "\r\"'"
+}
+
 # render_routing_override <domains> <routes-file> <out>
 #
 # The stack's routes as Caddy labels, one group per route per domain. Written only when
@@ -108,14 +117,28 @@ ynd_routing_domains() {
 # compose file, if that file still has them.
 render_routing_override() {
     local domains="$1" spec="$2" out="$3"
-    local svc name port entry suffix l n tmp
+    local svc name port opts entry suffix l n tmp dot upstream dash_only
     local -a services=() entries=() kv=()
     local -A labels=() count=()
     [ -n "$domains" ] && [ -f "$spec" ] || return 0
     IFS=',' read -ra entries <<<"$domains"
-    while IFS='|' read -r svc name port; do
-        svc="${svc//[[:space:]]/}" name="${name//[[:space:]]/}" port="${port//[[:space:]]/}"
+    # Dot form <name>.<DOMAIN> beside the dash routes, as the mesh template renders its
+    # own platform stacks: no label options, the Caddyfile's *.<DOMAIN> site carries
+    # its TLS. A route marked `nodot` keeps the dash routes only.
+    dot="$(ynd_mesh_domain)"
+    while IFS='|' read -r svc name port opts; do
+        svc="${svc//[[:space:]]/}" name="${name//[[:space:]]/}" port="${port//[[:space:]]/}" opts="${opts//[[:space:]]/}"
         case "$svc" in "" | \#*) continue ;; esac
+        dash_only=0
+        upstream="      caddy_N.reverse_proxy: \"{{upstreams $port}}\""$'\n'
+        case ",$opts," in *,nodot,*) dash_only=1 ;; esac
+        case ",$opts," in
+            *,tls,*)
+                upstream="      caddy_N.reverse_proxy: \"{{upstreams https $port}}\""$'\n'
+                upstream+="      caddy_N.reverse_proxy.transport: http"$'\n'
+                upstream+="      caddy_N.reverse_proxy.transport.tls_insecure_skip_verify: \"\""$'\n'
+                ;;
+        esac
         if [ -z "${count[$svc]+set}" ]; then
             services+=("$svc")
             count[$svc]=0
@@ -130,9 +153,15 @@ render_routing_override() {
                     labels[$svc]+="      caddy_$n.${l%%=*}: ${l#*=}"$'\n'
                 done
             fi
-            labels[$svc]+="      caddy_$n.reverse_proxy: \"{{upstreams $port}}\""$'\n'
+            labels[$svc]+="${upstream//caddy_N/caddy_$n}"
             count[$svc]=$((n + 1))
         done
+        if [ -n "$dot" ] && [ "$dash_only" -eq 0 ]; then
+            n="${count[$svc]}"
+            labels[$svc]+="      caddy_$n: $name.$dot"$'\n'
+            labels[$svc]+="${upstream//caddy_N/caddy_$n}"
+            count[$svc]=$((n + 1))
+        fi
     done < <(tr -d '\r' <"$spec")
 
     tmp="$(mktemp)"

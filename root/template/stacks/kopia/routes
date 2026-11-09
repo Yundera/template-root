@@ -1,6 +1,7 @@
-# This stack's routes: <service>|<name>|<port>, one per line. Rendered on every
+# This stack's routes: <service>|<name>|<port>[|<opts>], one per line. Rendered on every
 # self-check into docker-compose.override.yml beside the live stack, once per routing
-# domain of the box (ROUTING_DOMAINS, from the mesh template), so the compose file
-# itself names no domain.
+# domain of the box (ROUTING_DOMAINS, from the mesh template) plus the dot form
+# <name>.<DOMAIN>, so the compose file itself names no domain. Options (comma-separated):
+# `nodot` = dash routes only, `tls` = the upstream speaks HTTPS (self-signed accepted).
 # The Kopia UI, through its AppShield gate.
 kopia|kopia|80
