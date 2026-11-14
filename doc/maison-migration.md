@@ -281,7 +281,7 @@ protection is now a property the app declares, not one the deployment configures
 
 Maison has **no login**, and it mounts the Docker socket — an exposed port is root on the
 host. It is therefore never published: the container only `expose`s 8080 on the `pcs` network,
-and the only route in is the **AppShield gate** (`ghcr.io/yundera/appshield`) in the same
+and the only route in is the **AppShield gate** (`ghcr.io/nsl-sh/appshield`) in the same
 stack, which owns the `caddy_*` labels for `maison-${DOMAIN}` (+ `nip.io` / `sslip.io`
 variants). The gate does interactive SSO via `auth-registrar` → Dex.
 
