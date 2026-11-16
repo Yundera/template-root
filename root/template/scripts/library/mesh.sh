@@ -258,7 +258,7 @@ upsert_mesh_env() {
 # Write the contract: the every-run keys and constants, then the seed-once keys
 # that are absent. Sets MESH_ENV_CHANGED=1 when anything changed.
 mesh_write_contract() {
-    local key value kv
+    local key value kv sep
     MESH_ENV_CHANGED=0
 
     for key in $MESH_KEYS_EVERY_RUN; do
@@ -275,9 +275,15 @@ mesh_write_contract() {
     # hands it to every AppShield gate while Dex is absent for want of a connector
     # — an unclaimed box with Yundera Login off, or before ensure-connector-yundera.sh
     # has run — so the sign-in page links to it instead of a dead end. Derived
-    # from DOMAIN, so every run like the constants.
+    # from DOMAIN, so every run like the constants, in the box's active primary
+    # form (the mesh template's PRIMARY_FORM_ACTIVE: dot only once the box serves
+    # it; the admin app routes both).
     value="$(ynd_source_get DOMAIN 2>/dev/null || true)"
-    [ -z "$value" ] || upsert_mesh_env SETUP_URL "https://admin-$value/"
+    if [ -n "$value" ]; then
+        sep="-"
+        [ "$(mesh_env_get PRIMARY_FORM_ACTIVE)" = dot ] && sep="."
+        upsert_mesh_env SETUP_URL "https://admin$sep$value/"
+    fi
 
     # The mesh-router-nameserver zone (mesh template README, IP_ZONE). The mesh
     # template's ensure-ip-zone.sh fills it from the zone mesh-router-backend publishes;
