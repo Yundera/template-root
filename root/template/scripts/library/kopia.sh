@@ -53,7 +53,7 @@
 # `needsSecret` status field read from the needs-secret marker, and returns 14 instead of
 # 13 when `connect` is given the wrong password for an existing repository.
 # ensure-backup-config.sh depends on `probe`: it no longer mints a password.
-ENGINE_IMAGE="ghcr.io/yundera/maison-kopia-engine:1.4.0"
+ENGINE_IMAGE="ghcr.io/yundera/maison-kopia-engine:1.5.0"
 
 # The adapter binary inside that image. `docker exec` does not apply an image's own
 # ENTRYPOINT, so Maison names this explicitly — and so does this script, which runs the
