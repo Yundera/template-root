@@ -127,6 +127,22 @@ SECRET_MARKER="$ENGINE_DIR/needs-secret"
 
 env_get() { "$ENV_MGR" get "$1" "$2" 2>/dev/null || echo ""; }
 
+# The dashboard's Backups page, which empties a space (recovery) and binds one (setup).
+# Its host is the box's own orchestrator's (OPERATOR_API, https://<host>/service/pcs),
+# so a staging box links to the staging dashboard. The dashboard is a hash-routed app:
+# /dashboard/backup is a 404, /dashboard/#/backup is the page. BACKUP_RECOVERY_HELP_URL
+# in .pcs.env overrides the whole base.
+backup_page_base() {
+    local base api
+    base="$(env_get BACKUP_RECOVERY_HELP_URL "$PCS_ENV")"
+    if [ -z "$base" ]; then
+        api="$(env_get OPERATOR_API "$PCS_ENV")"
+        api="${api:-https://app.yundera.com/service/pcs}"
+        base="${api%/service/pcs}/dashboard/#/backup"
+    fi
+    printf '%s' "${base%/}"
+}
+
 # ensure-backup-credentials.sh has normally done this already; repeated so this script
 # never depends on that one having run first.
 kopia_adopt_backup_env
@@ -234,10 +250,9 @@ if [ -z "$BACKUP_BUCKET" ] || [ -z "$ACCESS_KEY_ID" ] || [ -z "$SECRET_ACCESS_KE
     if [ -f "$ENGINE_DIR/no-space" ] && [ -f "$ADAPTER_FILE" ]; then
         BACKUP_LABEL="$(env_get BACKUP_LABEL "$STACK_ENV")"
         BACKUP_LABEL="${BACKUP_LABEL:-Yundera Backup Storage}"
-        HELP_BASE="$(env_get BACKUP_RECOVERY_HELP_URL "$PCS_ENV")"
-        HELP_BASE="${HELP_BASE:-https://app.yundera.com/dashboard/backup}"
+        HELP_BASE="$(backup_page_base)"
         BOX_DOMAIN="$(env_get DOMAIN "$YND_ROOT/.ynd.user.env")"
-        SETUP_URL="${HELP_BASE%/}/bind${BOX_DOMAIN:+?domain=$BOX_DOMAIN}"
+        SETUP_URL="$HELP_BASE/bind${BOX_DOMAIN:+?domain=$BOX_DOMAIN}"
         PUID="$(env_get PUID "$MESH_ENV")"; PUID="${PUID:-1000}"
         PGID="$(env_get PGID "$MESH_ENV")"; PGID="${PGID:-1000}"
         cat > "$STATE_FILE" <<EOF
@@ -392,8 +407,7 @@ BACKUP_LABEL="${BACKUP_LABEL:-Yundera Backup Storage}"
 # the dashboard page that resets the space. Like label, it describes the space's provider,
 # not the engine, so it is decided here. BACKUP_RECOVERY_HELP_URL in .pcs.env overrides it
 # (a staging orchestrator's dashboard, say).
-RECOVERY_HELP_URL="$(env_get BACKUP_RECOVERY_HELP_URL "$PCS_ENV")"
-RECOVERY_HELP_URL="${RECOVERY_HELP_URL:-https://app.yundera.com/dashboard/backup}"
+RECOVERY_HELP_URL="$(backup_page_base)"
 
 cat > "$STATE_FILE" <<EOF
 {
