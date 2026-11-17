@@ -76,6 +76,10 @@ RECOVERY_MARKER="$ENGINE_DIR/needs-recovery"
 # Written by ensure-backup-config.sh when the storage is empty and the owner has not chosen
 # a password yet. Deliberately NOT a reason to call (see need_refresh).
 SECRET_MARKER="$ENGINE_DIR/needs-secret"
+# Written HERE when the server says no backup space is bound to this box (the user
+# unbound it from the dashboard, or never chose one); read by ensure-backup-config.sh,
+# which then tells Maison where to set one up. Removed as soon as a space answers.
+NO_SPACE_MARKER="$ENGINE_DIR/no-space"
 
 # The key's TTL is 90 days server-side. Renewing at 30 days left gives a box that is
 # switched off for a month, or whose nightly self-check has been failing, three
@@ -138,6 +142,22 @@ fi
 # --- do we need to call at all? ----------------------------------------------
 
 need_refresh() {
+    # The binding pushed with the identity (apply-identity.sh writes it): the user bound
+    # this box to another space, or unbound it, from the dashboard. Without this the box
+    # would keep writing to the old space until its credential expired.
+    local bound current_space current_key
+    bound="$(env_get BACKUP_BOUND_SPACE_ID "$USER_ENV")"
+    current_space="$(env_get BACKUP_SPACE_ID "$STACK_ENV")"
+    current_key="$(env_get BACKUP_ACCESS_KEY_ID "$STACK_ENV")"
+    if [ "$bound" = "none" ] && [ -n "$current_key" ]; then
+        log_info "The dashboard unbound this box from its backup space - asking"
+        return 0
+    fi
+    if [ -n "$bound" ] && [ "$bound" != "none" ] && [ "$bound" != "$current_space" ]; then
+        log_info "The dashboard bound this box to backup space $bound - asking"
+        return 0
+    fi
+
     # A box in recovery asks on EVERY run. It is the one way it learns that the user reset
     # the space from the dashboard (resetAt, below); without it a stuck box stays stuck
     # until an operator steps in, which is the situation the reset exists to end. The cost
@@ -193,6 +213,45 @@ if ! need_refresh; then
     exit 0
 fi
 
+# --- no space bound ------------------------------------------------------------
+#
+# The server answered that no backup space is bound to this box. Whatever this box held
+# describes a space it no longer writes to: the server revokes its key (the space goes
+# cold), so keeping the credential would only turn into a nightly failure.
+#
+# - repository.config and repository.password are RENAMED, never deleted: the password
+#   is the one thing that can still open that space's backups if the user binds it again
+#   (Maison's key entry takes it back), and it was mailed to them once already.
+# - the needs-* markers go: they describe the old space.
+# - BACKUP_* credentials are removed from the stack env, so ensure-backup-config.sh sees
+#   an unprovisioned box; the no-space marker tells it to point Maison at the dashboard.
+release_space() {
+    local stamp f old_space
+    old_space="$(env_get BACKUP_SPACE_ID "$STACK_ENV")"
+    stamp="$(date +%Y%m%d%H%M%S)"
+    mkdir -p "$ENGINE_DIR"
+    for f in "$ENGINE_DIR/repository.config" "$ENGINE_DIR/repository.password"; do
+        if [ -e "$f" ]; then
+            mv -f "$f" "$f.unbound-${old_space:-unknown}-$stamp"
+            log_info "Moved $(basename "$f") aside to $(basename "$f").unbound-${old_space:-unknown}-$stamp"
+        fi
+    done
+    rm -f "$RECOVERY_MARKER" "$SECRET_MARKER" "$REFRESH_MARKER"
+    local key
+    for key in BACKUP_SPACE_ID BACKUP_BUCKET BACKUP_PREFIX BACKUP_ACCESS_KEY_ID BACKUP_SECRET_ACCESS_KEY \
+               BACKUP_EXPIRES_AT BACKUP_STATUS BACKUP_WRITABLE BACKUP_RESET_AT; do
+        "$ENV_MGR" delete "$key" "$STACK_ENV" >/dev/null 2>&1 || true
+    done
+    if [ ! -f "$NO_SPACE_MARKER" ]; then
+        printf '{"since": "%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$NO_SPACE_MARKER"
+    fi
+    if [ -n "$old_space" ]; then
+        log_warn "No backup space is bound to this box any more (was $old_space) - backups stop until one is chosen in the dashboard"
+    else
+        log_info "No backup space is bound to this box - choose one in the dashboard"
+    fi
+}
+
 # --- fetch -------------------------------------------------------------------
 #
 # label is display-only server-side, capped and sanitised there; sending the domain
@@ -215,6 +274,12 @@ BODY="$(echo "$RESPONSE" | sed -E 's/HTTPSTATUS:[0-9]*$//')"
 case "$HTTP_CODE" in
     200) ;;
     404|501)
+        # NO_BACKUP_SPACE: no space is bound to this box. Let the old one go, so nothing
+        # keeps writing to (or failing against) a space the user moved away from.
+        if printf '%s' "$BODY" | grep -q 'NO_BACKUP_SPACE'; then
+            release_space
+            exit 0
+        fi
         # An orchestrator that predates the route. Nothing is wrong with this box.
         log_info "Backup space API not available on $OPERATOR_API - skipping"
         exit 0
@@ -310,7 +375,34 @@ esac
 # failure mode of hesitating is one more night in the current state, and of acting
 # wrongly is a box that abandons its own repository.
 STORED_RESET_AT="$(env_get BACKUP_RESET_AT "$STACK_ENV")"
-if [ -n "$RESET_AT" ]; then
+
+# --- the box was bound to another space ------------------------------------------
+#
+# The user chose another space for this box in the dashboard. The repository this box
+# held lives in the OLD space: its config and password describe nothing in the new one.
+# Moved aside (renamed, never deleted, as for a reset) and the needs-* markers dropped,
+# so ensure-backup-config.sh probes the new space from scratch: an empty one asks the
+# owner for a password (needs-secret), one that holds backups asks for its key
+# (needs-recovery). resetAt is the OLD space's history and is not compared: the reset
+# branch below is skipped and the new space's value is recorded as is.
+STORED_SPACE_ID="$(env_get BACKUP_SPACE_ID "$STACK_ENV")"
+if [ -n "$STORED_SPACE_ID" ] && [ -n "$SPACE_ID" ] && [ "$STORED_SPACE_ID" != "$SPACE_ID" ]; then
+    STAMP="$(date +%Y%m%d%H%M%S)"
+    for f in "$ENGINE_DIR/repository.config" "$ENGINE_DIR/repository.password"; do
+        if [ -e "$f" ]; then
+            mv -f "$f" "$f.space-$STORED_SPACE_ID-$STAMP"
+            log_info "Backup space changed $STORED_SPACE_ID -> $SPACE_ID - moved $(basename "$f") aside"
+        fi
+    done
+    rm -f "$RECOVERY_MARKER" "$SECRET_MARKER"
+    "$ENV_MGR" delete BACKUP_RESET_AT "$STACK_ENV" >/dev/null 2>&1 || true
+    STORED_RESET_AT=""
+    SPACE_CHANGED=true
+else
+    SPACE_CHANGED=false
+fi
+
+if [ -n "$RESET_AT" ] && [ "$SPACE_CHANGED" = false ]; then
     if [ -f "$RECOVERY_MARKER" ]; then
         # Not json_str: ensure-backup-config.sh writes the marker pretty-printed, with a
         # space after each colon, which the API parser's pattern does not allow for.
@@ -362,6 +454,6 @@ if [ -n "$RESET_AT" ]; then
 fi
 
 chmod 600 "$STACK_ENV"
-rm -f "$REFRESH_MARKER"
+rm -f "$REFRESH_MARKER" "$NO_SPACE_MARKER"
 
 log_success "Backup credential refreshed (space $SPACE_ID, expires $EXPIRES_AT, writable ${WRITABLE:-true})"

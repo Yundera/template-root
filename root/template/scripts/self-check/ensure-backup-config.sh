@@ -226,6 +226,36 @@ BACKUP_SPACE_ID="$(env_get BACKUP_SPACE_ID "$STACK_ENV")"
 BACKUP_EXPIRES_AT="$(env_get BACKUP_EXPIRES_AT "$STACK_ENV")"
 
 if [ -z "$BACKUP_BUCKET" ] || [ -z "$ACCESS_KEY_ID" ] || [ -z "$SECRET_ACCESS_KEY" ]; then
+    # No space is bound to this box (ensure-backup-credentials.sh left the no-space
+    # marker). If the engine was set up here before, keep it listed in Maison as "not
+    # configured" with a link to the dashboard page that binds a space: state.json's
+    # setupUrl, which Maison shows beside an engine with no repository. A box that never
+    # had an engine directory stays as it was: no engine, Maison's plain "not configured".
+    if [ -f "$ENGINE_DIR/no-space" ] && [ -f "$ADAPTER_FILE" ]; then
+        BACKUP_LABEL="$(env_get BACKUP_LABEL "$STACK_ENV")"
+        BACKUP_LABEL="${BACKUP_LABEL:-Yundera Backup Storage}"
+        HELP_BASE="$(env_get BACKUP_RECOVERY_HELP_URL "$PCS_ENV")"
+        HELP_BASE="${HELP_BASE:-https://app.yundera.com/dashboard/backup}"
+        BOX_DOMAIN="$(env_get DOMAIN "$YND_ROOT/.ynd.user.env")"
+        SETUP_URL="${HELP_BASE%/}/bind${BOX_DOMAIN:+?domain=$BOX_DOMAIN}"
+        PUID="$(env_get PUID "$MESH_ENV")"; PUID="${PUID:-1000}"
+        PGID="$(env_get PGID "$MESH_ENV")"; PGID="${PGID:-1000}"
+        cat > "$STATE_FILE" <<EOF
+{
+  "engine": "$ENGINE",
+  "label": "$BACKUP_LABEL",
+  "spaceId": "",
+  "deviceId": "$BACKUP_DEVICE_ID",
+  "bound": false,
+  "setupUrl": "$SETUP_URL",
+  "recoveryHelpUrl": "$HELP_BASE"
+}
+EOF
+        chmod 644 "$STATE_FILE"
+        chown "$PUID:$PGID" "$STATE_FILE" 2>/dev/null || true
+        log_info "No backup space is bound to this box - Maison links to $SETUP_URL"
+        exit 0
+    fi
     # The normal state of a box with no backup space. Maison shows "not configured".
     log_info "No backup credentials on this box - nothing to configure"
     exit 0

@@ -6,12 +6,20 @@
 # verified its signature, host and freshness. This script only writes.
 #
 # Input: KEY=VALUE lines on stdin, never on the command line, so the secrets do
-# not show in `ps`. Keys: UID DOMAIN EMAIL DOMAIN_UID USER_JWT PROVIDER_STR.
-# Same files and keys as ensure-yundera-user-data.sh's pull.
+# not show in `ps`. Keys: UID DOMAIN EMAIL DOMAIN_UID USER_JWT PROVIDER_STR, and
+# optionally BACKUP_SPACE_ID. Same files and keys as ensure-yundera-user-data.sh's pull.
 #
 # Prints "identity-changed" when PROVIDER_STR or DOMAIN changed: the mesh only
 # picks those up through ensure-mesh-installed.sh, so the caller starts a
 # self-check.
+#
+# BACKUP_SPACE_ID is the backup space the user bound this box to from the
+# dashboard (a spaceId, or "none" after an unbind). It is recorded as
+# BACKUP_BOUND_SPACE_ID in .ynd.user.env, and a change prints
+# "backup-space-changed": the caller starts a self-check, whose
+# ensure-backup-credentials.sh then fetches the new space's credential (or lets
+# the old one go). An orchestrator that predates it sends nothing, and nothing
+# is written.
 
 set -euo pipefail
 
@@ -25,7 +33,7 @@ declare -A V=()
 while IFS= read -r line || [ -n "$line" ]; do
     key="${line%%=*}"
     case "$key" in
-        UID|DOMAIN|EMAIL|DOMAIN_UID|USER_JWT|PROVIDER_STR) V[$key]="${line#*=}" ;;
+        UID|DOMAIN|EMAIL|DOMAIN_UID|USER_JWT|PROVIDER_STR|BACKUP_SPACE_ID) V[$key]="${line#*=}" ;;
     esac
 done
 
@@ -42,12 +50,22 @@ done
 
 OLD_PROVIDER_STR=$("$ENV_MGR" get PROVIDER_STR "$SECRET_ENV_FILE")
 OLD_DOMAIN=$("$ENV_MGR" get DOMAIN "$USER_ENV_FILE")
+OLD_BOUND=$("$ENV_MGR" get BACKUP_BOUND_SPACE_ID "$USER_ENV_FILE" 2>/dev/null || true)
 
 "$ENV_MGR" set PROVIDER_STR "${V[PROVIDER_STR]}" "$SECRET_ENV_FILE"
 "$ENV_MGR" set USER_JWT "${V[USER_JWT]}" "$SECRET_ENV_FILE"
 "$ENV_MGR" set UID "${V[UID]}" "$USER_ENV_FILE"
 "$ENV_MGR" set DOMAIN "${V[DOMAIN]}" "$USER_ENV_FILE"
 "$ENV_MGR" set EMAIL "${V[EMAIL]:-}" "$USER_ENV_FILE"
+BACKUP_CHANGED=false
+if [ -n "${V[BACKUP_SPACE_ID]:-}" ]; then
+    case "${V[BACKUP_SPACE_ID]}" in
+        none|[0-9a-f]*) ;;
+        *) echo "ERROR: malformed BACKUP_SPACE_ID in the pushed identity" >&2; exit 2 ;;
+    esac
+    "$ENV_MGR" set BACKUP_BOUND_SPACE_ID "${V[BACKUP_SPACE_ID]}" "$USER_ENV_FILE"
+    [ "$OLD_BOUND" != "${V[BACKUP_SPACE_ID]}" ] && BACKUP_CHANGED=true
+fi
 
 chmod 600 "$SECRET_ENV_FILE"
 chmod 644 "$USER_ENV_FILE"
@@ -55,4 +73,7 @@ chmod 644 "$USER_ENV_FILE"
 echo "Applied pushed identity (UID=${V[UID]}, DOMAIN=${V[DOMAIN]})"
 if [ "$OLD_PROVIDER_STR" != "${V[PROVIDER_STR]}" ] || [ "$OLD_DOMAIN" != "${V[DOMAIN]}" ]; then
     echo "identity-changed"
+fi
+if [ "$BACKUP_CHANGED" = true ]; then
+    echo "backup-space-changed"
 fi
