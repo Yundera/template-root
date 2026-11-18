@@ -19,7 +19,8 @@
 # "backup-space-changed": the caller starts a self-check, whose
 # ensure-backup-credentials.sh then fetches the new space's credential (or lets
 # the old one go). An orchestrator that predates it sends nothing, and nothing
-# is written.
+# is written. ensure-backup-credentials.sh also reads the binding from GET
+# /user/backup/binding each run, for a box a push did not reach.
 
 set -euo pipefail
 

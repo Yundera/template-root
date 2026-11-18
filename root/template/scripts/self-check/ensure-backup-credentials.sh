@@ -139,6 +139,41 @@ if [ -z "$BACKUP_DEVICE_ID" ]; then
     log_info "Minted BACKUP_DEVICE_ID for this box"
 fi
 
+# --- the binding, read from the operator -------------------------------------
+#
+# A bind or unbind from the dashboard reaches this box through the identity push, which
+# writes BACKUP_BOUND_SPACE_ID (apply-identity.sh). A push that did not land (box
+# unreachable, admin app down) would leave the box writing to the old space until its key
+# was revoked or the next renewal push, days later. The nightly identity pull does not
+# help: a box holding a fresh pushed token never makes it. So the binding is also read
+# here, every run: a read-only route that mints nothing.
+#
+# Soft like everything else: an operator without the route (404), down, or answering
+# anything unexpected leaves the recorded value alone. `{}` (undecided, or a legacy token
+# naming no box) changes nothing either.
+sync_binding() {
+    local resp code body value current
+    resp="$(curl -s -m 20 -w "HTTPSTATUS:%{http_code}" \
+        -H "Authorization: Bearer $USER_JWT" \
+        "${OPERATOR_API}/user/backup/binding" 2>/dev/null || echo "HTTPSTATUS:000")"
+    code="$(echo "$resp" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)"
+    body="$(echo "$resp" | sed -E 's/HTTPSTATUS:[0-9]*$//')"
+    [ "$code" = "200" ] || return 0
+    value="$(echo "$body" | grep -o '"backupSpaceId":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
+    [ -n "$value" ] || return 0
+    if ! printf '%s' "$value" | grep -Eq '^([0-9a-f]{16,64}|none)$'; then
+        log_warn "Operator returned a malformed backup binding ($value) - ignoring it"
+        return 0
+    fi
+    current="$(env_get BACKUP_BOUND_SPACE_ID "$USER_ENV")"
+    if [ "$value" != "$current" ]; then
+        "$ENV_MGR" set BACKUP_BOUND_SPACE_ID "$value" "$USER_ENV"
+        chmod 644 "$USER_ENV"
+        log_info "Backup binding from the operator: ${current:-unset} -> $value (no push had delivered it)"
+    fi
+}
+sync_binding
+
 # --- do we need to call at all? ----------------------------------------------
 
 need_refresh() {
@@ -207,6 +242,18 @@ need_refresh() {
 
     return 1
 }
+
+# Unbound and already released: the user chose no backup for this box, the old space was
+# let go (release_space below wrote the no-space marker and removed the key) and the
+# operator would only answer NO_BACKUP_SPACE again. Without this, the missing key below
+# reads as "never provisioned" and the box asks on every run. A new bind changes
+# BACKUP_BOUND_SPACE_ID (push or sync_binding above), which ends the skip.
+if [ "$(env_get BACKUP_BOUND_SPACE_ID "$USER_ENV")" = "none" ] \
+    && [ -z "$(env_get BACKUP_ACCESS_KEY_ID "$STACK_ENV")" ] \
+    && [ -f "$NO_SPACE_MARKER" ]; then
+    log_info "No backup space is bound to this box - nothing to fetch until one is chosen in the dashboard"
+    exit 0
+fi
 
 if ! need_refresh; then
     log_success "Backup credential is current - no call needed"
