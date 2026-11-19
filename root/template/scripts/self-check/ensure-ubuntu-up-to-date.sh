@@ -9,10 +9,11 @@ export DEBIAN_FRONTEND=noninteractive
 YND_ROOT="/DATA/AppData/yundera"
 
 YND_TEMPLATE="$YND_ROOT/template"
+source "$YND_TEMPLATE/scripts/library/log.sh"
 
 # Update package list
 [ -x "$YND_TEMPLATE/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_TEMPLATE/scripts/tools/wait-for-apt-lock.sh"
-apt-get update -qq
+retry_net "apt-get update" apt-get update -qq
 
 # Show available upgrades (optional)
 apt-get list -qq --upgradable 2>/dev/null | grep upgradable || echo "All packages are up to date"

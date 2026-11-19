@@ -6,6 +6,7 @@ set -e
 YND_ROOT="/DATA/AppData/yundera"
 
 YND_TEMPLATE="$YND_ROOT/template"
+source "$YND_TEMPLATE/scripts/library/log.sh"
 
 # Install common tools
 "$YND_TEMPLATE/scripts/tools/ensure-packages.sh" wget unzip rsync htop isc-dhcp-client apt-utils
@@ -35,8 +36,10 @@ if ! yq --version &>/dev/null; then
             installed=true
             break
         fi
-        echo "  yq download attempt $attempt/5 failed"
-        [ "$attempt" -lt 5 ] && sleep $((attempt * 5))
+        if [ "$attempt" -lt 5 ]; then
+            log_warn "WARN: retry: yq download failed (attempt $attempt/5), retrying in $((attempt * 5))s"
+            sleep $((attempt * 5))
+        fi
     done
     rm -f "$YQ_TMP"
     if $installed; then

@@ -16,6 +16,7 @@ export DEBIAN_FRONTEND=noninteractive
 YND_ROOT="/DATA/AppData/yundera"
 
 YND_TEMPLATE="$YND_ROOT/template"
+source "$YND_TEMPLATE/scripts/library/log.sh"
 
 if [ $# -eq 0 ]; then
     echo "Usage: ensure-packages.sh <package1> [package2] ..."
@@ -75,11 +76,15 @@ if { DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=nonint
     exit 0
 fi
 
-# Quiet install failed, retry with verbose output for debugging
+# Quiet install failed (apt lock, or a mirror dropping a request): retry with
+# verbose output and backoff, each failed attempt logged as a WARN.
 echo "✗ Quiet installation failed. Retrying with verbose output..."
-[ -x "$YND_TEMPLATE/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_TEMPLATE/scripts/tools/wait-for-apt-lock.sh"
+apt_install_verbose() {
+    [ -x "$YND_TEMPLATE/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_TEMPLATE/scripts/tools/wait-for-apt-lock.sh"
+    apt-get update && apt-get install -y $PACKAGES_TO_INSTALL
+}
 
-if apt-get update && apt-get install -y $PACKAGES_TO_INSTALL; then
+if RETRY_NET_ATTEMPTS=4 retry_net "apt-get install $PACKAGES_TO_INSTALL" apt_install_verbose; then
     echo "✓ Packages installed successfully"
     exit 0
 else

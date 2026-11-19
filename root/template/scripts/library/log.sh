@@ -91,6 +91,35 @@ log_debug() {
     fi
 }
 
+# Retry a network-bound command (download, apt, pull) with backoff.
+# Usage: retry_net "<what>" <command> [args...]
+#
+# Single dropped requests to GitHub releases, ghcr and apt mirrors fail whole
+# provisions (yq download on staging 2026-11-18). Every failed attempt logs a
+# `WARN: retry` line, streamed into pcs-init.log and the orchestrator log, so a
+# flaky network stays visible even when a later attempt succeeds.
+# RETRY_NET_ATTEMPTS / RETRY_NET_BACKOFF override the defaults (5 tries, 5 s
+# doubling to 60 s). Returns the last exit code when every attempt failed.
+# Same helper as mesh-router-template-root's scripts/library/log.sh.
+retry_net() {
+    local what="$1"; shift
+    local max="${RETRY_NET_ATTEMPTS:-5}" backoff="${RETRY_NET_BACKOFF:-5}"
+    local attempt=1 rc=0
+    while :; do
+        rc=0
+        "$@" || rc=$?
+        [ "$rc" -eq 0 ] && return 0
+        if [ "$attempt" -ge "$max" ]; then
+            log_error "retry: $what failed after $attempt attempts (exit $rc)"
+            return "$rc"
+        fi
+        log_warn "WARN: retry: $what failed (attempt $attempt/$max, exit $rc), retrying in ${backoff}s"
+        sleep "$backoff"
+        backoff=$((backoff * 2)); [ "$backoff" -gt 60 ] && backoff=60
+        attempt=$((attempt + 1))
+    done
+}
+
 # Function to set a custom log file for the current script
 set_log_file() {
     LOG_FILE="$1"

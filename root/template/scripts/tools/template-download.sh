@@ -79,8 +79,20 @@ apt_run apt-get install -y wget curl unzip
 # Create target directory
 mkdir -p /DATA/AppData/yundera
 
-# Download the zip file
-wget "$URL" -O /tmp/yundera-template.zip
+# Download the zip file. 5 attempts with backoff; log.sh is not on disk yet, so
+# the WARN line matches retry_net's wording by hand.
+backoff=5
+for attempt in 1 2 3 4 5; do
+    wget -q --timeout=60 "$URL" -O /tmp/yundera-template.zip && break
+    if [ "$attempt" -eq 5 ]; then
+        echo "✗ template download failed after 5 attempts: $URL" >&2
+        rm -f /tmp/yundera-template.zip
+        exit 1
+    fi
+    echo "WARN: retry: template download failed (attempt $attempt/5), retrying in ${backoff}s" >&2
+    sleep "$backoff"
+    backoff=$((backoff * 2))
+done
 
 # Extract, copy, and cleanup.
 #

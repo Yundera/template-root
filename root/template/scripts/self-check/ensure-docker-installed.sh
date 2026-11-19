@@ -12,6 +12,7 @@ export DEBIAN_FRONTEND=noninteractive
 DOCKER_USERS=(pcs admin)
 YND_ROOT="/DATA/AppData/yundera"
 YND_TEMPLATE="$YND_ROOT/template"
+source "$YND_TEMPLATE/scripts/library/log.sh"
 
 ensure_users_in_docker_group() {
     for u in "${DOCKER_USERS[@]}"; do
@@ -41,6 +42,11 @@ check_docker() {
     fi
 }
 
+install_docker_packages_verbose() {
+    [ -x "$YND_TEMPLATE/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_TEMPLATE/scripts/tools/wait-for-apt-lock.sh"
+    apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+}
+
 # Function to install Docker
 install_docker() {
     echo "→ Installing Docker..."
@@ -52,7 +58,7 @@ install_docker() {
     install -m 0755 -d /etc/apt/keyrings
 
     # Add Docker's official GPG key
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+    retry_net "Docker GPG key download" curl -fsSL --max-time 60 https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
     chmod a+r /etc/apt/keyrings/docker.asc
 
     # Add Docker repository to Apt sources
@@ -63,7 +69,7 @@ install_docker() {
 
     # Update package index again
     [ -x "$YND_TEMPLATE/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_TEMPLATE/scripts/tools/wait-for-apt-lock.sh"
-    apt-get -qq update >/dev/null
+    retry_net "apt-get update (Docker repo)" apt-get -qq update >/dev/null
 
     # Install Docker packages
     if ! { DEBIAN_FRONTEND=noninteractive apt-get install -qq -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin; } >/dev/null 2>&1; then
@@ -71,9 +77,10 @@ install_docker() {
         # the update above and the install fails the quiet run and is gone by the
         # time this one starts. Exiting 1 after a retry that installed Docker
         # failed the whole provisioning of a box that was in fact fine.
+        # A mirror dropping a .deb mid-download fails it the same way, so the verbose
+        # retry repeats (update + install) with backoff, each attempt logged as WARN.
         echo "✗ Quiet Docker package installation failed. Retrying with verbose output..."
-        [ -x "$YND_TEMPLATE/scripts/tools/wait-for-apt-lock.sh" ] && "$YND_TEMPLATE/scripts/tools/wait-for-apt-lock.sh"
-        if ! DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin; then
+        if ! RETRY_NET_ATTEMPTS=4 retry_net "Docker packages install" install_docker_packages_verbose; then
             echo "✗ Failed to install Docker packages"
             exit 1
         fi
