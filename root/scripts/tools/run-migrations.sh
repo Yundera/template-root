@@ -76,7 +76,7 @@ while IFS= read -r -d '' migration_file; do
         if [[ "$migration_file" != *.always.sh ]]; then
             echo "Migration completed at: $(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$marker_file"
             echo "Migration: $migration_name" >> "$marker_file"
-            echo "Description: $(head -n 10 "$migration_file" | grep "^# Migration:" | head -1 | cut -d':' -f2- | xargs)" >> "$marker_file"
+            echo "Description: $(head -n 10 "$migration_file" | grep "^# Migration:" | head -1 | cut -d':' -f2- | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')" >> "$marker_file"
         fi
         
         rm -f "$migration_output"

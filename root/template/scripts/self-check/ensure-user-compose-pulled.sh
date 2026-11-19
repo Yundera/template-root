@@ -24,6 +24,12 @@ if [ ! -f "$COMPOSE_FILE" ]; then
     exit 1
 fi
 
+# `pull` interpolates the whole compose, and on a fresh box ADMIN_ASSERTION_SECRET is only
+# minted later, by ensure-user-compose-stack-up.sh: unset, compose warns "variable is not
+# set" on every pull. An image pull never uses it, so a placeholder silences that (the
+# environment wins over .env, for this command only).
+export ADMIN_ASSERTION_SECRET="${ADMIN_ASSERTION_SECRET:-unused-by-pull}"
+
 backoff="$INITIAL_BACKOFF"
 attempt=1
 while [ "$attempt" -le "$MAX_ATTEMPTS" ]; do
