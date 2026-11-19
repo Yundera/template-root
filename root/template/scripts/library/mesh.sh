@@ -1,7 +1,7 @@
 #!/bin/bash
 # mesh.sh - the contract between this template and the stock mesh template.
 #
-# A PCS runs Yundera/mesh-router-template-root UNMODIFIED in /DATA/AppData/mesh
+# A PCS runs the stock mesh-router-template-root UNMODIFIED in /DATA/AppData/mesh
 # (mesh, auth and maison stacks, its own self-check, lock, log and
 # migrations). This template never edits a file the mesh template wrote. It only
 # writes INPUTS the mesh template reads — keys in its .env, drop-in files — and
@@ -30,12 +30,30 @@ MESH_SCRIPTS="$MESH_ROOT/scripts"
 # The mesh self-check's own flock (its scripts/self-check.sh). Disjoint from
 # /var/run/yundera-self-check.lock: the two templates run independently.
 MESH_LOCK="/var/run/mesh-self-check.lock"
-MESH_REPO_URL="https://github.com/yundera/mesh-router-template-root"
-MESH_CDN_BASE="https://cdn.jsdelivr.net/gh/yundera/mesh-router-template-root"
+
+# WHERE THE MESH TEMPLATE IS PUBLISHED: GitHub repo URLs, tried in order. The first
+# whose tarball for the target ref answers is the one the box installs and syncs
+# from (mesh_repo_resolve); every other address (tarball, installer, CDN) is derived
+# from it. This is what lets the repo move from the Yundera GitHub org to NSL-SH
+# without a fleet change: until the transfer the NSL-SH address 404s and every box
+# stays on Yundera; after it, NSL-SH answers first and each box moves at its next
+# self-check. Yundera stays in the list as the fallback: GitHub redirects a
+# transferred repo's old address — as long as no new repo is ever created under the
+# old name.
+#
+# MESH_REPO_URLS in .pcs.env (space-separated) replaces the list, for one box or —
+# through the orchestrator's .pcs.env defaults — every new create. Only
+# https://github.com/<owner>/<name> URLs: the installer and CDN addresses are
+# derived from owner/name. Anything else goes through MESH_UPDATE_URL and
+# MESH_INSTALLER_URL below.
+MESH_REPO_URLS_DEFAULT="https://github.com/nsl-sh/mesh-router-template-root https://github.com/yundera/mesh-router-template-root"
+# Set by mesh_repo_resolve. Call that in the parent shell before any $(mesh_*_url):
+# a command substitution's subshell cannot hand the probe result back.
+MESH_REPO_URL=""
 
 # OPTIONAL PIN. Empty: every box follows the mesh branch of its channel (see
 # mesh_target_ref). Set to a full, pushed commit SHA of
-# Yundera/mesh-router-template-root to hold this template-root branch on that
+# mesh-router-template-root to hold this template-root branch on that
 # commit instead — an escape hatch while a mesh branch carries a bad release. Never
 # point it at an older commit than the boxes run: mesh migrations are not
 # reversible.
@@ -195,6 +213,56 @@ mesh_is_commit() {
     [[ "$1" =~ ^[0-9a-f]{40}$ ]]
 }
 
+# --- where -----------------------------------------------------------------------
+
+mesh_repo_candidates() {
+    local list
+    list="$("$MESH_ENV_MGR" get MESH_REPO_URLS "$YND_ROOT/.pcs.env" 2>/dev/null || true)"
+    echo "${list:-$MESH_REPO_URLS_DEFAULT}"
+}
+
+# owner/name of a https://github.com/<owner>/<name> URL.
+mesh_repo_path() {
+    local u="${1%/}"
+    u="${u%.git}"
+    echo "${u#https://github.com/}"
+}
+
+# The tarball of <repo> at <ref>: a commit tarball or a branch tarball.
+mesh_ref_tarball() {
+    if mesh_is_commit "$2"; then
+        echo "${1%/}/archive/$2.tar.gz"
+    else
+        echo "${1%/}/archive/refs/heads/${2:-stable}.tar.gz"
+    fi
+}
+
+# Pick the repo: the first candidate whose tarball for the target ref answers a
+# HEAD (curl does not retry a 404, so a not-yet-existing repo costs one round trip).
+# When none answers — no egress, GitHub down — keep the repo the mesh .env already
+# records if it is still a candidate, so a network blip never flips UPDATE_URL;
+# else the LAST candidate, the long-lived fallback. Once per process.
+mesh_repo_resolve() {
+    [ -n "$MESH_REPO_URL" ] && return 0
+    local ref repo candidates current last=""
+    ref="$(mesh_target_ref)"
+    candidates="$(mesh_repo_candidates)"
+    for repo in $candidates; do
+        if curl -fsIL --retry 2 --retry-delay 3 --max-time 20 -o /dev/null \
+            "$(mesh_ref_tarball "$repo" "$ref")" 2>/dev/null; then
+            MESH_REPO_URL="${repo%/}"
+            return 0
+        fi
+    done
+    current="$(mesh_env_get MESH_REPO_URL)"
+    for repo in $candidates; do
+        [ -n "$current" ] && [ "${repo%/}" = "$current" ] && MESH_REPO_URL="$current"
+        last="${repo%/}"
+    done
+    [ -n "$MESH_REPO_URL" ] || MESH_REPO_URL="$last"
+    log_warn "no mesh template repo answered for ref ${ref:-stable} ($candidates); using $MESH_REPO_URL" >&2
+}
+
 # The tarball the mesh installs and syncs from: a branch tarball, re-downloaded by
 # the mesh sync every night, or a commit tarball, which can only ever be
 # re-applied. MESH_UPDATE_URL in .pcs.env overrides it — a test tree served as
@@ -208,12 +276,8 @@ mesh_channel_url() {
         echo "$override"
         return
     fi
-    ref="$(mesh_target_ref)"
-    if mesh_is_commit "$ref"; then
-        echo "$MESH_REPO_URL/archive/$ref.tar.gz"
-    else
-        echo "$MESH_REPO_URL/archive/refs/heads/${ref:-stable}.tar.gz"
-    fi
+    mesh_repo_resolve
+    mesh_ref_tarball "$MESH_REPO_URL" "$(mesh_target_ref)"
 }
 
 # The installer at the same ref. A commit comes from jsDelivr, immutable. A branch
@@ -228,11 +292,12 @@ mesh_installer_url() {
         echo "$override"
         return
     fi
+    mesh_repo_resolve
     ref="$(mesh_target_ref)"
     if mesh_is_commit "$ref"; then
-        echo "$MESH_CDN_BASE@$ref/install.sh"
+        echo "https://cdn.jsdelivr.net/gh/$(mesh_repo_path "$MESH_REPO_URL")@$ref/install.sh"
     else
-        echo "https://raw.githubusercontent.com/yundera/mesh-router-template-root/${ref:-stable}/install.sh"
+        echo "https://raw.githubusercontent.com/$(mesh_repo_path "$MESH_REPO_URL")/${ref:-stable}/install.sh"
     fi
 }
 
@@ -319,8 +384,13 @@ mesh_write_contract() {
         && [ -z "$(mesh_installed_commit)" ]; then
         upsert_mesh_env MESH_AUTO_UPDATE false
     else
+        mesh_repo_resolve
         upsert_mesh_env MESH_AUTO_UPDATE true
         upsert_mesh_env UPDATE_URL "$(mesh_channel_url)"
+        # The repo the box follows, for the mesh template's own scripts (channel
+        # switch, migrations) and Mesh Console's channel badge. A mesh template
+        # that predates the key ignores it.
+        upsert_mesh_env MESH_REPO_URL "$MESH_REPO_URL"
     fi
 }
 

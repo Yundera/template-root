@@ -2,7 +2,7 @@
 # ensure-mesh-installed.sh - Install the stock mesh template once, keep its inputs
 # current, and run it.
 #
-# A PCS runs Yundera/mesh-router-template-root UNMODIFIED in /DATA/AppData/mesh:
+# A PCS runs the stock mesh-router-template-root UNMODIFIED in /DATA/AppData/mesh:
 # the mesh, auth and maison stacks, with its own self-check, lock, log
 # and migrations. This template hands it inputs (the contract in library/mesh.sh,
 # doc/mesh-stock-switch.md) and drives it: it picks the mesh version (the mesh
@@ -114,6 +114,7 @@ if [ "$INSTALL_REASON" = "adopt" ]; then
     sed -i "/^# OWNED BY THE 'mesh' STACK\./d; /^# \/DATA\/AppData\/yundera\/template\/scripts\/tools\/deploy-stack.sh sets a fixed list/d; /^# of keys here on every self-check and touches nothing else/d; /^# those, edit its source: \/DATA\/AppData\/yundera\//d" "$MESH_ENV"
 fi
 
+mesh_repo_resolve   # once, in this shell: the two lookups below run in subshells
 INSTALLER_URL="$(mesh_installer_url)"
 CHANNEL_URL="$(mesh_channel_url)"
 INSTALLER="$(mktemp --suffix=.sh /tmp/mesh-install.XXXXXX)"

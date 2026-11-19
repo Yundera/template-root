@@ -6,7 +6,7 @@ template through its `install.sh` and hands it inputs (`self-check/ensure-mesh-i
 `library/mesh.sh`). Rehearsed on wisera and holyhorse; staging is next, production needs the
 mesh `stable` branch first — see "Rollout".
 
-"The mesh template" below is `Yundera/mesh-router-template-root`, the FOSS `install.sh`
+"The mesh template" below is `mesh-router-template-root` (published under NSL-SH or Yundera — `library/mesh.sh` tries both, see `MESH_REPO_URLS_DEFAULT`), the FOSS `install.sh`
 product behind nsl.sh; "this template" is `Yundera/template-root`. The mesh-side record of
 the same work is its `doc/alignment-with-template-root.md`.
 

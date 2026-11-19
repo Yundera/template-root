@@ -57,7 +57,7 @@ ensure-yundera-user-data.sh
 ensure-backup-credentials.sh
 ensure-backup-config.sh
 # THE STOCK MESH TEMPLATE (doc/mesh-stock-switch.md). The mesh, auth and maison
-# stacks are Yundera/mesh-router-template-root's, unmodified, in
+# stacks are the stock mesh-router-template-root's, unmodified, in
 # /DATA/AppData/mesh — with their own self-check, cron (03:30), lock, log and
 # update channel. This step installs it once through its install.sh (a fresh VM,
 # an adoption, an identity change) and otherwise only writes the keys this
