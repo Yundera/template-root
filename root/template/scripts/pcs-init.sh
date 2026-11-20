@@ -1,5 +1,5 @@
 #!/bin/bash
-# pcs-init.sh — bootstrap a fresh Ubuntu host into a Yundera PCS.
+# pcs-init.sh — bootstrap a fresh Ubuntu or Debian host into a Yundera PCS.
 #
 # Run once per host, by the orchestrator over SSH, immediately after
 # `.pcs.env` and `.pcs.secret.env` have been staged at $YND_ROOT.
@@ -54,6 +54,17 @@ exec 200>"$LOCK_FILE"
 if ! flock -n 200; then
     die "another pcs-init.sh is already running on this host (lock: $LOCK_FILE) — refusing to run concurrently"
 fi
+
+# 0b. Platform guard.
+#
+# The template runs on Ubuntu and Debian (library/platform.sh, which this script
+# cannot source yet: the tree is not on disk). Anything else would fail somewhere
+# deep in the self-check with an apt or repository error; refuse it up front.
+HOST_OS="$( . /etc/os-release 2>/dev/null; echo "${ID:-unknown} ${VERSION_ID:-}" )"
+case "${HOST_OS%% *}" in
+    ubuntu|debian) log "Host platform: $HOST_OS" ;;
+    *)             die "unsupported host platform '$HOST_OS' — Ubuntu or Debian required" ;;
+esac
 
 # 1. Validate the orchestrator-staged env files.
 #

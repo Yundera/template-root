@@ -4,7 +4,8 @@ set -e
 
 export DEBIAN_FRONTEND=noninteractive
 
-# Script to ensure Ubuntu is up to date
+# Script to ensure the host's package lists are fresh (Ubuntu or Debian —
+# plain apt; the filename predates Debian support and is kept for scripts-config.txt)
 
 YND_ROOT="/DATA/AppData/yundera"
 

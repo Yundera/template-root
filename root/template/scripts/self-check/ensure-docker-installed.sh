@@ -1,6 +1,7 @@
 #!/bin/bash
-# Script to ensure Docker is installed and properly configured on Ubuntu systems
-# Compatible with Ubuntu 20.04 LTS, 22.04 LTS, and newer versions
+# Script to ensure Docker is installed and properly configured.
+# Installs from Docker's own apt repository for the host distro (Ubuntu or
+# Debian, see library/platform.sh).
 
 set -e  # Exit on any error
 
@@ -13,6 +14,7 @@ DOCKER_USERS=(pcs admin)
 YND_ROOT="/DATA/AppData/yundera"
 YND_TEMPLATE="$YND_ROOT/template"
 source "$YND_TEMPLATE/scripts/library/log.sh"
+source "$YND_TEMPLATE/scripts/library/platform.sh"
 
 ensure_users_in_docker_group() {
     for u in "${DOCKER_USERS[@]}"; do
@@ -57,14 +59,23 @@ install_docker() {
     # Create directory for keyrings
     install -m 0755 -d /etc/apt/keyrings
 
+    # Docker publishes one repository per distro; the codename only exists in
+    # the matching one (trixie under /debian, noble under /ubuntu).
+    if ! platform_is_supported || [ -z "$PLATFORM_CODENAME" ]; then
+        echo "✗ Unsupported host platform '${PLATFORM_ID:-unknown} ${PLATFORM_VERSION}' — cannot pick a Docker repository"
+        exit 1
+    fi
+    local repo
+    repo="$(platform_docker_repo_url)"
+
     # Add Docker's official GPG key
-    retry_net "Docker GPG key download" curl -fsSL --max-time 60 https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+    retry_net "Docker GPG key download" curl -fsSL --max-time 60 "$repo/gpg" -o /etc/apt/keyrings/docker.asc
     chmod a+r /etc/apt/keyrings/docker.asc
 
     # Add Docker repository to Apt sources
     echo \
-      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] $repo \
+      $PLATFORM_CODENAME stable" | \
       tee /etc/apt/sources.list.d/docker.list > /dev/null
 
     # Update package index again

@@ -16,7 +16,7 @@
 # Ordering is load-bearing:
 #   1. /run/sshd first    — un-wedges an already-broken host with no restart,
 #                           and does not depend on openssh being installable.
-#   2. activation model   — socket-only where the distro offers it.
+#   2. activation model   — the distro's default: socket on Ubuntu, service on Debian.
 #   3. reclaim :22        — only if the socket should own it but doesn't.
 #   4. dpkg              — only after :22 is reclaimed, or the postinst refails.
 #
@@ -86,7 +86,7 @@ try "$YND_TEMPLATE/scripts/tools/ensure-packages.sh" openssh-server
 # --------------------------------------------------------------------------
 # 3. Hardening drop-in
 #
-# Ubuntu's default sshd_config sources /etc/ssh/sshd_config.d/*.conf, so a
+# Ubuntu's and Debian's default sshd_config source /etc/ssh/sshd_config.d/*.conf, so a
 # snippet here overrides the main file without fighting whatever the
 # distro/cloud-init shipped. Idempotent: rewrite every run, only reload if the
 # contents actually changed.
@@ -130,7 +130,14 @@ fi
 # multi-user.target symlink. The running listener is left completely alone, so
 # this converges the host at its next boot with zero risk of cutting SSH now.
 # --------------------------------------------------------------------------
-if systemctl cat ssh.socket >/dev/null 2>&1; then
+# Which model is decided per distro (library/platform.sh): Ubuntu ships
+# socket-activated, Debian ships an ssh.socket unit but runs ssh.service, so a
+# Debian host stays on the service. A host whose socket is already enabled stays
+# on it whatever the distro — the choice never flips back and forth.
+source "$YND_TEMPLATE/scripts/library/platform.sh"
+if ! systemctl cat ssh.socket >/dev/null 2>&1; then
+    SOCKET_MODE=0
+elif platform_ssh_socket_is_default || systemctl is-enabled --quiet ssh.socket 2>/dev/null; then
     SOCKET_MODE=1
 else
     SOCKET_MODE=0
@@ -141,7 +148,7 @@ if [ "$SOCKET_MODE" = "1" ]; then
     try systemctl enable ssh.socket
     try systemctl disable ssh.service
 else
-    echo "→ SSH activation model: service (no ssh.socket on this distro)"
+    echo "→ SSH activation model: service (ssh.service is this distro's default)"
     try systemctl enable ssh.service
     if ! has_listener_22; then
         try systemctl start ssh.service
