@@ -86,12 +86,18 @@ try "$YND_TEMPLATE/scripts/tools/ensure-packages.sh" openssh-server
 # --------------------------------------------------------------------------
 # 3. Hardening drop-in
 #
-# Ubuntu's and Debian's default sshd_config source /etc/ssh/sshd_config.d/*.conf, so a
-# snippet here overrides the main file without fighting whatever the
-# distro/cloud-init shipped. Idempotent: rewrite every run, only reload if the
-# contents actually changed.
+# Ubuntu's and Debian's default sshd_config source /etc/ssh/sshd_config.d/*.conf
+# before their own settings. sshd keeps the FIRST value it reads for a keyword,
+# and the drop-ins are read in lexical order, so the snippet must sort first:
+# cloud-init writes 50-cloud-init.conf (`PasswordAuthentication yes` whenever
+# ssh_pwauth is on, as on Contabo's images), and our former
+# 99-yundera-harden.conf lost to it on every PCS — `sshd -T` reported
+# `passwordauthentication yes` on holyhorse and on Debian demostaging1
+# (2026-11-20). 00- wins over every distro and cloud-init drop-in.
+# Idempotent: rewrite every run, only reload if the contents actually changed.
 # --------------------------------------------------------------------------
-HARDEN_FILE="/etc/ssh/sshd_config.d/99-yundera-harden.conf"
+HARDEN_FILE="/etc/ssh/sshd_config.d/00-yundera-harden.conf"
+LEGACY_HARDEN_FILE="/etc/ssh/sshd_config.d/99-yundera-harden.conf"
 HARDEN_CONTENT="# Managed by ensure-ssh.sh — do not edit.
 PasswordAuthentication no
 PermitRootLogin prohibit-password
@@ -111,6 +117,12 @@ if [ ! -f "$HARDEN_FILE" ] || \
     HARDEN_CHANGED=1
 else
     HARDEN_CHANGED=0
+fi
+# The 99- copy is inert once 00- exists (same settings, read last), but two
+# managed files with one meaning is how they drift apart. Drop it.
+if [ -f "$LEGACY_HARDEN_FILE" ]; then
+    rm -f "$LEGACY_HARDEN_FILE"
+    HARDEN_CHANGED=1
 fi
 
 # --------------------------------------------------------------------------
@@ -134,7 +146,15 @@ fi
 # socket-activated, Debian ships an ssh.socket unit but runs ssh.service, so a
 # Debian host stays on the service. A host whose socket is already enabled stays
 # on it whatever the distro — the choice never flips back and forth.
-source "$YND_TEMPLATE/scripts/library/platform.sh"
+#
+# Tolerate a missing platform.sh (a tree older than v1.17.0, or this file run
+# by hand): SSH is the one thing this script must never get wrong for want of
+# a library, so fall back to the same rule inline.
+if [ -f "$YND_TEMPLATE/scripts/library/platform.sh" ]; then
+    source "$YND_TEMPLATE/scripts/library/platform.sh"
+else
+    platform_ssh_socket_is_default() { [ "$( . /etc/os-release 2>/dev/null; echo "${ID:-}" )" = "ubuntu" ]; }
+fi
 if ! systemctl cat ssh.socket >/dev/null 2>&1; then
     SOCKET_MODE=0
 elif platform_ssh_socket_is_default || systemctl is-enabled --quiet ssh.socket 2>/dev/null; then
@@ -266,6 +286,14 @@ fi
 if ! sshd -t 2>/dev/null; then
     echo "✗ sshd configuration is invalid:"
     sshd -t 2>&1 | sed 's/^/    /'
+    SSH_OK=0
+fi
+
+# The effective value, not the file: a drop-in that sorts before ours can
+# override it silently (see §3). `sshd -T` prints what sshd would really use.
+EFFECTIVE_PWAUTH="$(sshd -T 2>/dev/null | awk '$1 == "passwordauthentication" {print $2}')"
+if [ "$EFFECTIVE_PWAUTH" != "no" ]; then
+    echo "✗ effective PasswordAuthentication is '${EFFECTIVE_PWAUTH:-unknown}', not 'no' — another sshd_config.d drop-in overrides $HARDEN_FILE"
     SSH_OK=0
 fi
 

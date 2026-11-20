@@ -3,7 +3,7 @@
 # One-shot at handover: disable SSH password authentication for good.
 #
 # Belt-and-braces with ensure-ssh.sh, which already ships the same settings as
-# the drop-in /etc/ssh/sshd_config.d/99-yundera-harden.conf. This one edits the
+# the drop-in /etc/ssh/sshd_config.d/00-yundera-harden.conf. This one edits the
 # main sshd_config so the posture survives a distro that stops sourcing the
 # drop-in directory.
 #
