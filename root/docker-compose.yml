@@ -18,7 +18,7 @@ services:
   # (template/stacks/yundera/routes) do not publish, and login dead-ends.
   # =============================================================================
   admin:
-    image: ghcr.io/nsl-sh/appshield:4.1.0
+    image: ghcr.io/nsl-sh/appshield:4.2.0
     container_name: admin
     hostname: admin
     restart: unless-stopped
