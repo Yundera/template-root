@@ -95,6 +95,16 @@ try "$YND_TEMPLATE/scripts/tools/ensure-packages.sh" openssh-server
 # `passwordauthentication yes` on holyhorse and on Debian demostaging1
 # (2026-11-20). 00- wins over every distro and cloud-init drop-in.
 # Idempotent: rewrite every run, only reload if the contents actually changed.
+#
+# MaxStartups / LoginGraceTime: a key-only sshd cannot be brute-forced, only
+# flooded. holyhorse logged ~39 000 pre-auth lines a day from 145 IPs
+# (2026-11-20, doc/study/pcs-edge-protection-study.md §4.5), each holding a
+# MaxStartups slot for up to LoginGraceTime (default 10:30:100 and 120 s), so
+# a flood can make sshd refuse the owner. 20 s is ample for a key exchange;
+# 10:30:60 starts dropping new unauthenticated connections at random from 10
+# and drops them all at 60. PerSourcePenalties (OpenSSH >= 9.8, Debian 13) is
+# on by default there and not settable on Ubuntu 24.04's 9.6, so it is left
+# to the distro default.
 # --------------------------------------------------------------------------
 HARDEN_FILE="/etc/ssh/sshd_config.d/00-yundera-harden.conf"
 LEGACY_HARDEN_FILE="/etc/ssh/sshd_config.d/99-yundera-harden.conf"
@@ -102,6 +112,8 @@ HARDEN_CONTENT="# Managed by ensure-ssh.sh — do not edit.
 PasswordAuthentication no
 PermitRootLogin prohibit-password
 KbdInteractiveAuthentication no
+MaxStartups 10:30:60
+LoginGraceTime 20
 "
 mkdir -p /etc/ssh/sshd_config.d
 # Same trailing-newline trap as the tmpfiles comparison above. This one was a
@@ -179,7 +191,7 @@ fi
 # fresh sshd that reads the config anyway, so a reload is only needed for a
 # long-lived activated instance.
 if [ "$HARDEN_CHANGED" = "1" ]; then
-    echo "→ Applied SSH hardening (password auth disabled)"
+    echo "→ Applied SSH hardening (password auth off, MaxStartups 10:30:60, LoginGraceTime 20)"
     if systemctl is-active --quiet ssh.service; then
         try systemctl reload ssh.service
     fi
