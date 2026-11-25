@@ -129,6 +129,7 @@ back what they changed.
 | `DEFAULT_SERVICE_HOST` / `_PORT` | from `.pcs.env`; Mesh Console's default-app editor owns them afterwards |
 | `LOCAL_ADMIN_USER` | from `.pcs.env`; the claim owns it afterwards |
 | `MESH_CONSOLE_ASSERTION_SECRET` | from `.pcs.secret.env` when this template minted it before the switch — what keeps it stable across it |
+| `MESH_GUARD` | `on` (the mesh default is `off`): the guard stack, CrowdSec + the NSL fleet ban list. `MESH_GUARD` in `.pcs.env` states another value; an owner's `off` in the mesh `.env` stays |
 
 `AUTHELIA_DEX_SECRET`, `DEX_SESSION_KEY` and `AUTH_CONSOLE_ASSERTION_SECRET` were seeded the same way
 until the mesh template moved them into the auth stack's own `/DATA/AppData/auth/.stack.env` (2026-10);

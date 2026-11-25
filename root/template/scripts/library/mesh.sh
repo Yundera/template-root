@@ -374,6 +374,15 @@ mesh_write_contract() {
         upsert_mesh_env "$key" "$value"
     done
 
+    # The guard stack (CrowdSec + the NSL fleet ban list, the mesh template's
+    # MESH_GUARD, default off there): on for every PCS. Seed once like the keys above,
+    # so an owner who sets MESH_GUARD=off in the mesh .env keeps it off; MESH_GUARD in
+    # .pcs.env states another initial value.
+    if ! mesh_env_has MESH_GUARD; then
+        value="$(ynd_source_get MESH_GUARD 2>/dev/null || true)"
+        upsert_mesh_env MESH_GUARD "${value:-on}"
+    fi
+
     # The mesh version, every run, so a box follows its channel as it changes
     # (staging -> stable, a freeze, an unfreeze). MESH_AUTO_UPDATE stays true so the
     # mesh sync applies a new tree WITH its migrations (false would skip them) —
