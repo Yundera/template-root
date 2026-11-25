@@ -290,6 +290,15 @@ fi
 # --------------------------------------------------------------------------
 SSH_OK=1
 
+# A reload is asynchronous: sshd re-execs on SIGHUP and closes its listener
+# for a moment. Checked in the same second, a healthy host reads as down —
+# the prod demo.nsl.sh create failed exactly so on 2026-11-24 (Debian,
+# hardening just written, reload, check). Wait out the re-exec first.
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    has_listener_22 && break
+    sleep 1
+done
+
 if ! has_listener_22; then
     echo "✗ nothing is listening on port 22"
     SSH_OK=0
