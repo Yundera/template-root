@@ -87,6 +87,15 @@
 # =============================================================================
 name: kopia
 
+# BOUNDED CONTAINER LOGS — the same block as the yundera stack's. This bounds what
+# Docker keeps of stdout/stderr only; kopia's own log FILES are bounded separately,
+# by the KOPIA_*_LOG_DIR_* keys on kopia-app and kopia-engine.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # ===========================================================================
   # APPSHIELD GATE — the only public entrypoint to the kopia UI.
@@ -114,6 +123,7 @@ services:
     user: "0:0"
     cpu_shares: 40
     mem_limit: 128m
+    logging: *logging
     expose:
       - "80"
     environment:
@@ -282,7 +292,19 @@ services:
       # same way.
       KOPIA_CACHE_DIRECTORY: "/DATA/AppData/kopia/engine/cache"
       KOPIA_LOG_DIR: "/DATA/AppData/kopia/engine/logs"
+      # BOUNDED LOG FILES. kopia writes a debug-level log file per invocation under
+      # KOPIA_LOG_DIR (cli-logs/, content-logs/), and its defaults keep 30 days, up to
+      # 1000 + 5000 files and 1 GB per directory: 326 MB to 1.1 GB on the boxes checked
+      # 2026-11-27. Each kopia process sweeps both directories against these limits at
+      # start, so the engine's per-command runs keep them trimmed. Same values on the
+      # engine, which shares the directory: whichever sweeps last must not undo the other.
+      KOPIA_LOG_DIR_MAX_AGE: "168h"
+      KOPIA_LOG_DIR_MAX_SIZE_MB: "20"
+      KOPIA_CONTENT_LOG_DIR_MAX_AGE: "168h"
+      KOPIA_CONTENT_LOG_DIR_MAX_SIZE_MB: "50"
       TZ: "${TZ}"
+
+    logging: *logging
 
     volumes:
       # A restore writes back into an app's data directory, so the UI needs the data
@@ -358,7 +380,16 @@ services:
       # debugging by hand lands in the same place.
       KOPIA_CACHE_DIRECTORY: "/DATA/AppData/kopia/engine/cache"
       KOPIA_LOG_DIR: "/DATA/AppData/kopia/engine/logs"
+      # Log-file bounds: see kopia-app. `docker exec` inherits this environment and the
+      # adapter passes it through to kopia (os.Environ()), so every engine command
+      # sweeps with these.
+      KOPIA_LOG_DIR_MAX_AGE: "168h"
+      KOPIA_LOG_DIR_MAX_SIZE_MB: "20"
+      KOPIA_CONTENT_LOG_DIR_MAX_AGE: "168h"
+      KOPIA_CONTENT_LOG_DIR_MAX_SIZE_MB: "50"
       TZ: "${TZ}"
+
+    logging: *logging
 
     volumes:
       # The engine reads every app's data and writes restores back into it, so it needs

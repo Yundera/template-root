@@ -1,4 +1,15 @@
 name: yundera
+
+# BOUNDED CONTAINER LOGS. Docker's default json-file driver never rotates, and no
+# daemon.json is assumed on the host (none of the PCS boxes has one). 3 x 10 MB per
+# container, the same block as the mesh template's stacks; a change here recreates
+# the containers on the next `up`.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # =============================================================================
   # ADMIN GATE (AppShield) — the only public entrypoint to the dashboard.
@@ -30,6 +41,7 @@ services:
     user: "65534:65534"
     cpu_shares: 40
     mem_limit: 128m
+    logging: *logging
     environment:
       # The gate's identity to the registrar AND the `aud` of every assertion it
       # signs. Explicit rather than relying on AppShield's hostname default,
@@ -141,6 +153,7 @@ services:
     restart: unless-stopped
     cpu_shares: 40
     mem_limit: 128m
+    logging: *logging
     # Env is enumerated, not injected wholesale: the app's key set is small and
     # fixed, and nothing from .pcs.secret.env enters this container through env.
     # The ${...} substitutions resolve against this folder's generated .env.
