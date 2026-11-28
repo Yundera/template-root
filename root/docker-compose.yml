@@ -99,7 +99,8 @@ services:
     # beside the public issuer (INTERNAL_ISSUER_URL, auth stack), and AppShield
     # >= 3.1.0 sends its discovery, code->token exchange and JWKS fetch there —
     # container to container on `pcs` — while the issuer string, the tokens and
-    # every URL the browser sees stay https://auth-${DOMAIN}.
+    # every URL the browser sees stay https://auth.${DOMAIN} (dot form since the
+    # OIDC provisioning round; auth-${DOMAIN} still routes).
     #
     # Resolved publicly, those calls left the PCS, crossed Cloudflare and the
     # mesh-router CF Worker and re-entered this machine. On demostaging2

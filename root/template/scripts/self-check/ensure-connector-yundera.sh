@@ -5,7 +5,7 @@
 # orchestrator's OIDC service (issuer ${OPERATOR_API}/auth); unlike the Authelia
 # connector, whose secret is local, this connector's client is registered
 # DYNAMICALLY: POST the PCS's USER_JWT to ${OPERATOR_API}/auth/pcs-client, which
-# returns a client_id/secret scoped to this PCS's own auth-${DOMAIN} callback
+# returns a client_id/secret scoped to this PCS's own auth.${DOMAIN} callback
 # (idempotent — stable across runs).
 #
 # This script owns the whole Yundera-Login perimeter and nothing else. It writes
@@ -116,7 +116,10 @@ if [ -z "$OPERATOR_API" ] || [ -z "$USER_JWT" ]; then
 fi
 
 ISSUER="${OPERATOR_API}/auth"
-REDIRECT_URI="https://auth-${DOMAIN}/callback"
+# Dex's connector callback is <issuer>/callback, and the issuer is the dot form
+# (the mesh template's dex.config.yaml.tmpl). The orchestrator accepts both forms
+# and updates the client's redirect URI when it changes, keeping its id and secret.
+REDIRECT_URI="https://auth.${DOMAIN}/callback"
 
 # --- register this PCS's client ----------------------------------------------
 # Idempotent server-side: the same PCS gets the same client back, so this runs
